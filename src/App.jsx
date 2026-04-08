@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap');
@@ -509,10 +509,10 @@ const EMPLOYEES = [
 ];
 
 const INVOICES = [
-  { project: "觀塘工業大廈", trigger: "15% 訂金節點", amount: "HK$52,500", status: "yellow", label: "待發送", icon: "📋" },
-  { project: "旺角商業中心", trigger: "50% 中期款項", amount: "HK$175,000", status: "green", label: "已發送", icon: "✅" },
-  { project: "荃灣住宅項目", trigger: "15% 訂金節點", amount: "HK$38,000", status: "red", label: "進度未達", icon: "⏳" },
-  { project: "沙田新城市廣場", trigger: "90% 竣工款項", amount: "HK$84,000", status: "blue", label: "審批中", icon: "🔄" },
+  { project: "觀塘工業大廈", trigger: "20% 進場開工", amount: "HK$70,000", status: "yellow", label: "待發送", icon: "📋" },
+  { project: "旺角商業中心", trigger: "50% 主副路軌完成", amount: "HK$260,000", status: "green", label: "已發送", icon: "✅" },
+  { project: "荃灣住宅項目", trigger: "20% 進場開工", amount: "HK$56,000", status: "red", label: "進度未達", icon: "⏳" },
+  { project: "沙田新城市廣場", trigger: "95% EMSD 驗機完成", amount: "HK$589,000", status: "blue", label: "審批中", icon: "🔄" },
 ];
 
 function Dashboard({ projects = INITIAL_PROJECTS, setActive, employees = EMPLOYEES }) {
@@ -924,17 +924,57 @@ function Progress({ showToast, projects = INITIAL_PROJECTS }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label">今日完成進度</label>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
-              {["5%", "10%", "15%", "20%", "25%", "30%", "40%", "50%", "75%", "100%"].map(p => (
-                <button
-                  key={p}
-                  className={`btn ${pct === p.replace("%","") ? "btn-primary" : "btn-secondary"}`}
-                  style={{ padding: "8px 4px", justifyContent: "center", fontSize: 13 }}
-                  onClick={() => setPct(p.replace("%", ""))}
-                >
-                  {p}
-                </button>
+            <label className="form-label">選擇完工紙範本（快速套用節點）</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              {[
+                { label: "新版完工紙", pcts: [20,50,80,95,100] },
+                { label: "舊版完工紙", pcts: [30,65,100] },
+                { label: "瑪麗醫院", pcts: [20,45,70,95,100] },
+              ].map((t, i) => (
+                <div key={i} style={{
+                  background: "#0d0f12", border: "1px solid #1e2330", borderRadius: 8,
+                  padding: "8px 12px", cursor: "pointer", fontSize: 12, color: "#9aa0b4"
+                }}>
+                  <div style={{ fontWeight: 700, color: "#e8eaf0", marginBottom: 4 }}>{t.label}</div>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {t.pcts.map(p => (
+                      <span key={p}
+                        onClick={() => setPct(String(p))}
+                        style={{
+                          background: pct === String(p) ? "#f0c000" : "#1e2330",
+                          color: pct === String(p) ? "#0d0f12" : "#9aa0b4",
+                          borderRadius: 4, padding: "2px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer"
+                        }}>
+                        {p}%
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">今日完成進度節點</label>
+            <div style={{ marginBottom: 8 }}>
+              {[
+                { p: "20", desc: "已進場開工及提交秤線表" },
+                { p: "50", desc: "已完成外門框、門頭、地砵，主副路軌安裝及調校" },
+                { p: "80", desc: "已完成機房及井道全面安裝，已拆棚交較車行慢車" },
+                { p: "95", desc: "已完成 EMSD 驗機，已完成保養部驗收手尾" },
+                { p: "100", desc: "已完成客戶交機時安裝手尾" },
+              ].map(({ p, desc }) => (
+                <div key={p}
+                  onClick={() => setPct(p)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                    background: pct === p ? "rgba(240,192,0,0.08)" : "#0d0f12",
+                    border: `1px solid ${pct === p ? "rgba(240,192,0,0.4)" : "#1e2330"}`,
+                    borderRadius: 8, marginBottom: 6, cursor: "pointer", transition: "all 0.15s"
+                  }}>
+                  <span style={{ fontFamily: "'Barlow Condensed'", fontSize: 22, fontWeight: 800, color: pct === p ? "#f0c000" : "#555d6e", minWidth: 40 }}>{p}%</span>
+                  <span style={{ fontSize: 12, color: pct === p ? "#c8d0e0" : "#555d6e" }}>{desc}</span>
+                </div>
               ))}
             </div>
           </div>
@@ -1052,7 +1092,7 @@ function Invoice({ showToast }) {
                   系統偵測：觀塘工業大廈 A座 已達「15% 訂金節點」
                 </div>
                 <div style={{ fontSize: 13, color: "#9aa0b4" }}>
-                  進度確認：72% ≥ 觸發條件 15% ✓ &nbsp;|&nbsp; 請款金額：HK$52,500 &nbsp;|&nbsp; 草稿已生成
+                  進度確認：72% ≥ 觸發條件 20% ✓ &nbsp;|&nbsp; 請款金額：HK$70,000 &nbsp;|&nbsp; 草稿已生成
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
@@ -1067,11 +1107,11 @@ function Invoice({ showToast }) {
           <div style={{ fontSize: 12, color: "#555d6e", marginBottom: 12 }}>請款節點設定：</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
             {[
-              { pct: "15%", label: "訂金", color: "#f0c000", done: true },
-              { pct: "50%", label: "中期款", color: "#22c55e", done: true },
-              { pct: "75%", label: "工程款", color: "#60a5fa", done: false },
-              { pct: "90%", label: "竣工款", color: "#a78bfa", done: false },
-              { pct: "100%", label: "尾款", color: "#fb923c", done: false },
+              { pct: "20%", label: "進場開工", color: "#f0c000", done: true },
+              { pct: "50%", label: "路軌完成", color: "#22c55e", done: true },
+              { pct: "80%", label: "全面安裝", color: "#60a5fa", done: false },
+              { pct: "95%", label: "EMSD驗機", color: "#a78bfa", done: false },
+              { pct: "100%", label: "客戶交機", color: "#fb923c", done: false },
             ].map((s, i) => (
               <div key={i} style={{
                 background: s.done ? `rgba(${s.color === "#f0c000" ? "240,192,0" : "34,197,94"},0.08)` : "#0d0f12",
@@ -1099,10 +1139,10 @@ function Invoice({ showToast }) {
             </thead>
             <tbody>
               {[
-                ["觀塘工業大廈", "15% 訂金", "2025-07-15", "HK$52,500", "yellow", "待發", "發送"],
-                ["旺角商業中心", "50% 中期款", "2025-07-01", "HK$175,000", "green", "已收", "–"],
-                ["沙田新城市廣場", "90% 竣工款", "2025-06-28", "HK$84,000", "blue", "審批中", "跟進"],
-                ["旺角商業中心", "15% 訂金", "2025-05-15", "HK$52,500", "green", "已收", "–"],
+                ["觀塘工業大廈", "20% 進場開工", "2025-07-15", "HK$70,000", "yellow", "待發", "發送"],
+                ["旺角商業中心", "50% 路軌完成", "2025-07-01", "HK$260,000", "green", "已收", "–"],
+                ["沙田新城市廣場", "95% EMSD驗機", "2025-06-28", "HK$589,000", "blue", "審批中", "跟進"],
+                ["旺角商業中心", "20% 進場開工", "2025-05-15", "HK$104,000", "green", "已收", "–"],
               ].map((r, i) => (
                 <tr key={i}>
                   <td className="td-name">{r[0]}</td>
@@ -2599,7 +2639,7 @@ export default function App() {
               {pt.icon} &nbsp;<span>{pt.title}</span>&nbsp;{pt.sub}
             </div>
             <div className="topbar-right">
-              <div className="date-badge">2025年7月15日 星期二</div>
+              <div className="date-badge">{new Date().toLocaleDateString("zh-HK", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}</div>
               <div className="alert-btn">
                 🔔 <div className="alert-dot" />
               </div>
