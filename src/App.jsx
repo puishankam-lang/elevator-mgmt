@@ -890,10 +890,18 @@ function Progress({ showToast, projects = INITIAL_PROJECTS }) {
   const [projectIdx, setProjectIdx] = useState(0);
   const [pct, setPct] = useState("15");
   const [note, setNote] = useState("");
+  const [stageDesc, setStageDesc] = useState("");
+
+  const selectStage = (p, desc) => {
+    setPct(p);
+    setStageDesc(desc);
+    setNote(desc); // auto-fill note with stage content
+  };
 
   const handleSubmit = () => {
     showToast(`📊 進度回報已提交：${projects[projectIdx]?.name} — ${pct}%`, "success");
     setNote("");
+    setStageDesc("");
   };
 
   const activeProjects = projects.filter(p => p.phase === "active");
@@ -923,57 +931,70 @@ function Progress({ showToast, projects = INITIAL_PROJECTS }) {
             </select>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">選擇完工紙範本（快速套用節點）</label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              {[
-                { label: "新版完工紙", pcts: [20,50,80,95,100] },
-                { label: "舊版完工紙", pcts: [30,65,100] },
-                { label: "瑪麗醫院", pcts: [20,45,70,95,100] },
-              ].map((t, i) => (
-                <div key={i} style={{
-                  background: "#0d0f12", border: "1px solid #1e2330", borderRadius: 8,
-                  padding: "8px 12px", cursor: "pointer", fontSize: 12, color: "#9aa0b4"
-                }}>
-                  <div style={{ fontWeight: 700, color: "#e8eaf0", marginBottom: 4 }}>{t.label}</div>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {t.pcts.map(p => (
-                      <span key={p}
-                        onClick={() => setPct(String(p))}
-                        style={{
-                          background: pct === String(p) ? "#f0c000" : "#1e2330",
-                          color: pct === String(p) ? "#0d0f12" : "#9aa0b4",
-                          borderRadius: 4, padding: "2px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer"
-                        }}>
-                        {p}%
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
 
           <div className="form-group">
             <label className="form-label">今日完成進度節點</label>
-            <div style={{ marginBottom: 8 }}>
+
+            {/* 新裝完工紙 */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10, color: "#f0c000", fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>🆕 新裝完工紙</div>
               {[
                 { p: "20", desc: "已進場開工及提交秤線表" },
-                { p: "50", desc: "已完成外門框、門頭、地砵，主副路軌安裝及調校" },
+                { p: "50", desc: "已完成外門框、門頭、地砵，已完成主副路軌安裝及調校" },
                 { p: "80", desc: "已完成機房及井道全面安裝，已拆棚交較車行慢車" },
                 { p: "95", desc: "已完成 EMSD 驗機，已完成保養部驗收手尾" },
                 { p: "100", desc: "已完成客戶交機時安裝手尾" },
               ].map(({ p, desc }) => (
-                <div key={p}
-                  onClick={() => setPct(p)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
-                    background: pct === p ? "rgba(240,192,0,0.08)" : "#0d0f12",
-                    border: `1px solid ${pct === p ? "rgba(240,192,0,0.4)" : "#1e2330"}`,
-                    borderRadius: 8, marginBottom: 6, cursor: "pointer", transition: "all 0.15s"
-                  }}>
-                  <span style={{ fontFamily: "'Barlow Condensed'", fontSize: 22, fontWeight: 800, color: pct === p ? "#f0c000" : "#555d6e", minWidth: 40 }}>{p}%</span>
-                  <span style={{ fontSize: 12, color: pct === p ? "#c8d0e0" : "#555d6e" }}>{desc}</span>
+                <div key={`new-${p}`} onClick={() => selectStage(p, desc)} style={{
+                  display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 12px",
+                  background: pct === p ? "rgba(240,192,0,0.08)" : "#0d0f12",
+                  border: `1px solid ${pct === p ? "rgba(240,192,0,0.4)" : "#1e2330"}`,
+                  borderRadius: 8, marginBottom: 6, cursor: "pointer", transition: "all 0.15s"
+                }}>
+                  <span style={{ fontFamily: "'Barlow Condensed'", fontSize: 22, fontWeight: 800, color: pct === p ? "#f0c000" : "#555d6e", minWidth: 40, flexShrink: 0 }}>{p}%</span>
+                  <span style={{ fontSize: 12, color: pct === p ? "#c8d0e0" : "#555d6e", lineHeight: 1.6 }}>{desc}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* 舊裝翻新完工紙 */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10, color: "#60a5fa", fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>🔄 舊裝翻新完工紙</div>
+              {[
+                { p: "30", desc: "已完成拆除機房物料，已完成拆除井道物料（不包括外門、外門框及外門地砵），已提供已簽到工地的「升降機/自動梯工作日誌」，已提供有效的廢料回收紙回條/載貨入帳票回條" },
+                { p: "65", desc: "已提交秤線表，已完成機房及井道全面安裝，已完成外門框、門頭、地砵、外門，已完成主副路軌安裝及調校，已交較車行快車，已提供已簽到工地的「升降機/自動梯工作日誌」，已提供有效的廢料回收紙回條/載貨入帳票回條" },
+                { p: "100", desc: "已完成 EMSD 驗機，已完成保養部驗收手尾，已完成客戶交機時安裝手尾，EMSD 發出准用証六個月內" },
+              ].map(({ p, desc }) => (
+                <div key={`old-${p}`} onClick={() => selectStage(p, desc)} style={{
+                  display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 12px",
+                  background: pct === p ? "rgba(96,165,250,0.08)" : "#0d0f12",
+                  border: `1px solid ${pct === p ? "rgba(96,165,250,0.4)" : "#1e2330"}`,
+                  borderRadius: 8, marginBottom: 6, cursor: "pointer", transition: "all 0.15s"
+                }}>
+                  <span style={{ fontFamily: "'Barlow Condensed'", fontSize: 22, fontWeight: 800, color: pct === p ? "#60a5fa" : "#555d6e", minWidth: 40, flexShrink: 0 }}>{p}%</span>
+                  <span style={{ fontSize: 12, color: pct === p ? "#c8d0e0" : "#555d6e", lineHeight: 1.6 }}>{desc}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* 特殊工程（多期） */}
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: 10, color: "#a78bfa", fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>🏥 特殊工程（多期）</div>
+              {[
+                { p: "20", desc: "進場開工，提交秤線表，完成初期外門框、門頭、地砵，完成初期主副路軌安裝及調校" },
+                { p: "45", desc: "完成機房及井道全面安裝，協助快車慢車調試，完成 EMSD 驗機" },
+                { p: "70", desc: "完成第二期安裝及升機，協助快車慢車調試，完成 EMSD 驗機" },
+                { p: "95", desc: "完成第三期安裝及升機，協助快車慢車調試，完成 EMSD 驗機" },
+                { p: "100", desc: "完成拆卸及清理" },
+              ].map(({ p, desc }) => (
+                <div key={`special-${p}`} onClick={() => selectStage(p, desc)} style={{
+                  display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 12px",
+                  background: pct === p ? "rgba(167,139,250,0.08)" : "#0d0f12",
+                  border: `1px solid ${pct === p ? "rgba(167,139,250,0.4)" : "#1e2330"}`,
+                  borderRadius: 8, marginBottom: 6, cursor: "pointer", transition: "all 0.15s"
+                }}>
+                  <span style={{ fontFamily: "'Barlow Condensed'", fontSize: 22, fontWeight: 800, color: pct === p ? "#a78bfa" : "#555d6e", minWidth: 40, flexShrink: 0 }}>{p}%</span>
+                  <span style={{ fontSize: 12, color: pct === p ? "#c8d0e0" : "#555d6e", lineHeight: 1.6 }}>{desc}</span>
                 </div>
               ))}
             </div>
@@ -992,13 +1013,19 @@ function Progress({ showToast, projects = INITIAL_PROJECTS }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label">現場備注（選填）</label>
+            <label className="form-label">現場備注（可自行修改）</label>
             <input
               className="form-input"
-              placeholder="例如：完成機房佈線，明日繼續安裝主軌道..."
+              placeholder="選擇節點後自動填入，或手動輸入備注..."
               value={note}
               onChange={e => setNote(e.target.value)}
+              style={{ minHeight: 60 }}
             />
+            {stageDesc && note === stageDesc && (
+              <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4 }}>
+                ✅ 已自動帶入節點內容，可直接提交或修改
+              </div>
+            )}
           </div>
 
           <button className="btn btn-primary" onClick={handleSubmit} style={{ width: "100%" }}>
