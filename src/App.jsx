@@ -1898,8 +1898,13 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
     try {
       // Use Supabase join: invoices → projects
       const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=stage.asc&limit=2000`,
-        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+        `${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=stage.asc`,
+        { headers: { 
+          "apikey": SUPABASE_KEY, 
+          "Authorization": `Bearer ${SUPABASE_KEY}`,
+          "Range-Unit": "items",
+          "Range": "0-1499"
+        } }
       );
       const data = await res.json();
       // Flatten: each row = { id, cfNo(stage), ecName, amount, status, pct, description, contractValue }
