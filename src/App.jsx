@@ -491,29 +491,31 @@ const NAV_ITEMS = [
   { id: "tax", icon: "🧾", label: "老闆稅務計算" },
 ];
 
-const INITIAL_PROJECTS = [
-  { id: 1, name: "觀塘工業大廈 - A座",     client: "觀塘地產有限公司", value: 350000, pct: 72, plan: 75, status: "yellow", phase: "active",    start: "2025-04-01", end: "2025-09-30" },
-  { id: 2, name: "旺角商業中心 - 電梯升級", client: "旺角商業管理公司", value: 520000, pct: 45, plan: 40, status: "ok",     phase: "active",    start: "2025-05-15", end: "2025-11-15" },
-  { id: 3, name: "荃灣住宅項目 - B棟",      client: "荃灣業主立案法團", value: 280000, pct: 18, plan: 30, status: "low",    phase: "active",    start: "2025-06-01", end: "2025-12-31" },
-  { id: 4, name: "沙田新城市廣場",           client: "新城市發展有限公司",value: 620000, pct: 90, plan: 88, status: "ok",     phase: "active",    start: "2025-02-01", end: "2025-08-31" },
-  { id: 5, name: "將軍澳住宅大廈",           client: "將軍澳物業管理",   value: 180000, pct:100, plan:100, status: "ok",     phase: "completed", start: "2025-01-01", end: "2025-06-30" },
-  { id: 6, name: "屯門商場翻新",             client: "屯門商場有限公司", value: 410000, pct:  0, plan:  0, status: "ok",     phase: "pending",   start: "2025-08-01", end: "2026-02-28" },
-];
+const INITIAL_PROJECTS = [];
 
 const EMPLOYEES = [
-  { name: "陳偉明", role: "技術主管", days: 22, rate: 1200, color: "#f0c000", signed: true, lat: "22.3193", lng: "114.1694" },
-  { name: "李志強", role: "電梯技工", days: 20, rate: 850, color: "#22c55e", signed: true, lat: "22.3201", lng: "114.1699" },
-  { name: "黃國輝", role: "電梯技工", days: 18, rate: 850, color: "#60a5fa", signed: false, lat: "–", lng: "–" },
-  { name: "張建文", role: "助理技工", days: 21, rate: 650, color: "#a78bfa", signed: true, lat: "22.3190", lng: "114.1691" },
-  { name: "吳志偉", role: "助理技工", days: 19, rate: 650, color: "#fb923c", signed: true, lat: "22.3195", lng: "114.1688" },
+  { name: "姚奇敏", role: "電梯技工", days: 22, rate: 850, color: "#f0c000", signed: true, lat: "22.3193", lng: "114.1694" },
+  { name: "李國森", role: "電梯技工", days: 22, rate: 850, color: "#22c55e", signed: true, lat: "22.3201", lng: "114.1699" },
+  { name: "賴偉志", role: "電梯技工", days: 22, rate: 850, color: "#60a5fa", signed: true, lat: "22.3190", lng: "114.1691" },
+  { name: "韓小錦", role: "電梯技工", days: 22, rate: 850, color: "#a78bfa", signed: true, lat: "22.3195", lng: "114.1688" },
+  { name: "彭金花", role: "電梯技工", days: 22, rate: 850, color: "#fb923c", signed: true, lat: "22.3193", lng: "114.1694" },
+  { name: "李文彪", role: "電梯技工", days: 22, rate: 850, color: "#f43f5e", signed: true, lat: "22.3201", lng: "114.1699" },
+  { name: "吳昭鵬", role: "電梯技工", days: 22, rate: 850, color: "#06b6d4", signed: true, lat: "22.3190", lng: "114.1691" },
+  { name: "耿華成", role: "電梯技工", days: 22, rate: 850, color: "#84cc16", signed: true, lat: "22.3195", lng: "114.1688" },
+  { name: "蔡貴明", role: "電梯技工", days: 22, rate: 850, color: "#e879f9", signed: true, lat: "22.3193", lng: "114.1694" },
+  { name: "莫家文", role: "電梯技工", days: 22, rate: 850, color: "#f0c000", signed: true, lat: "22.3201", lng: "114.1699" },
+  { name: "陳文軒", role: "電梯技工", days: 22, rate: 850, color: "#22c55e", signed: true, lat: "22.3190", lng: "114.1691" },
+  { name: "李志軍", role: "電梯技工", days: 22, rate: 850, color: "#60a5fa", signed: true, lat: "22.3195", lng: "114.1688" },
+  { name: "蔡洵義", role: "電梯技工", days: 22, rate: 850, color: "#a78bfa", signed: true, lat: "22.3193", lng: "114.1694" },
+  { name: "蔡洵忠", role: "電梯技工", days: 22, rate: 850, color: "#fb923c", signed: true, lat: "22.3201", lng: "114.1699" },
+  { name: "鄧達財", role: "電梯技工", days: 22, rate: 850, color: "#f43f5e", signed: true, lat: "22.3190", lng: "114.1691" },
+  { name: "梁培煊", role: "電梯技工", days: 22, rate: 850, color: "#06b6d4", signed: true, lat: "22.3195", lng: "114.1688" },
+  { name: "馮永昌", role: "電梯技工", days: 22, rate: 850, color: "#84cc16", signed: true, lat: "22.3193", lng: "114.1694" },
+  { name: "陳煜良", role: "電梯技工", days: 22, rate: 850, color: "#e879f9", signed: true, lat: "22.3201", lng: "114.1699" },
+  { name: "李華渡", role: "電梯技工", days: 22, rate: 850, color: "#f0c000", signed: true, lat: "22.3190", lng: "114.1691" },
 ];
 
-const INVOICES = [
-  { project: "觀塘工業大廈", trigger: "20% 進場開工", amount: "HK$70,000", status: "yellow", label: "待發送", icon: "📋" },
-  { project: "旺角商業中心", trigger: "50% 主副路軌完成", amount: "HK$260,000", status: "green", label: "已發送", icon: "✅" },
-  { project: "荃灣住宅項目", trigger: "20% 進場開工", amount: "HK$56,000", status: "red", label: "進度未達", icon: "⏳" },
-  { project: "沙田新城市廣場", trigger: "95% EMSD 驗機完成", amount: "HK$589,000", status: "blue", label: "審批中", icon: "🔄" },
-];
+const INVOICES = [];
 
 function Dashboard({ projects = INITIAL_PROJECTS, setActive, employees = EMPLOYEES }) {
   const totalSalary = employees.reduce((a, e) => a + (e.days || 22) * (e.rate || 0), 0);
