@@ -1898,7 +1898,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
     try {
       // Use Supabase join: invoices → projects
       const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=stage.desc&limit=2000`,
+        `${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=stage.asc&limit=2000`,
         { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
       );
       const data = await res.json();
