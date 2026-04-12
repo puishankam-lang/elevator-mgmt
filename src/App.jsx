@@ -773,15 +773,223 @@ function Safety({ showToast, employees = EMPLOYEES }) {
   );
 }
 
-function Attendance({ showToast, employees = EMPLOYEES }) {
-  const [checkedIn, setCheckedIn] = useState([true, true, false, true, true]);
+// ── Site GPS data (can be extended per project) ──────────────────────────────
+const SITE_GPS = {
+  "觀塘工業大廈 - A座":     { lat: "22.3108", lng: "114.2236" },
+  "旺角商業中心 - 電梯升級": { lat: "22.3193", lng: "114.1694" },
+  "荃灣住宅項目 - B棟":      { lat: "22.3726", lng: "114.1085" },
+  "沙田新城市廣場":           { lat: "22.3814", lng: "114.1880" },
+  "將軍澳住宅大廈":           { lat: "22.3059", lng: "114.2599" },
+  "屯門商場翻新":             { lat: "22.3960", lng: "113.9733" },
+};
+
+function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJECTS }) {
+  const today = new Date().toLocaleDateString("zh-HK", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+
+  // empSite[i] = project name selected for employee i (null = 未選擇)
+  const [empSite, setEmpSite] = useState(() => employees.map(() => null));
+  const [checkedIn, setCheckedIn] = useState(() => employees.map(() => false));
+  const [checkInTime, setCheckInTime] = useState(() => employees.map(() => null));
+  const [selectedSiteView, setSelectedSiteView] = useState(null); // for site-focused map view
+  const [viewMode, setViewMode] = useState("employee"); // "employee" | "site"
+
+  const activeProjects = projects.filter(p => p.phase === "active" || p.phase === "pending");
+
+  const handleAssignSite = (empIdx, siteName) => {
+    const updated = [...empSite];
+    updated[empIdx] = siteName;
+    setEmpSite(updated);
+    showToast(`📍 ${employees[empIdx].name} 已分配至「${siteName}」`);
+  };
+
+  const handleCheckIn = (empIdx) => {
+    if (!empSite[empIdx]) { showToast("⚠️ 請先選擇工地", "error"); return; }
+    const updated = [...checkedIn];
+    updated[empIdx] = true;
+    setCheckedIn(updated);
+    const t = new Date().toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" });
+    const times = [...checkInTime];
+    times[empIdx] = t;
+    setCheckInTime(times);
+    showToast(`✅ ${employees[empIdx].name} 已簽到 — ${empSite[empIdx]}`);
+  };
+
+  // Group employees by site
+  const siteGroups = {};
+  activeProjects.forEach(p => { siteGroups[p.name] = []; });
+  employees.forEach((e, i) => {
+    if (empSite[i] && siteGroups[empSite[i]] !== undefined) {
+      siteGroups[empSite[i]].push({ ...e, idx: i, checkedIn: checkedIn[i], time: checkInTime[i] });
+    }
+  });
+
+  const unassigned = employees.filter((e, i) => !empSite[i]);
+  const totalCheckedIn = checkedIn.filter(Boolean).length;
+
+  const focusSite = selectedSiteView || empSite.find(s => s) || activeProjects[0]?.name;
+  const focusGPS = SITE_GPS[focusSite] || { lat: "22.3193", lng: "114.1694" };
+  const focusCount = focusSite ? (siteGroups[focusSite]?.length || 0) : 0;
 
   return (
     <div>
+      {/* Top KPI strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
+        {[
+          { label: "今日出勤", value: `${totalCheckedIn} / ${employees.length}`, color: "#22c55e" },
+          { label: "已分配地盤", value: empSite.filter(Boolean).length, color: "#f0c000" },
+          { label: "未分配", value: unassigned.length, color: "#d63030" },
+          { label: "活躍地盤", value: activeProjects.length, color: "#60a5fa" },
+        ].map((k, i) => (
+          <div key={i} style={{ background: "#13161c", border: "1px solid #1e2330", borderRadius: 10, padding: "12px 16px" }}>
+            <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{k.label}</div>
+            <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 24, fontWeight: 800, color: k.color }}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* View toggle */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {["employee", "site"].map(m => (
+          <button key={m} onClick={() => setViewMode(m)} style={{
+            padding: "6px 18px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13,
+            background: viewMode === m ? "#f0c000" : "#1e2330", color: viewMode === m ? "#0d0f12" : "#8891a4"
+          }}>
+            {m === "employee" ? "👷 員工視角" : "🏗 地盤視角"}
+          </button>
+        ))}
+      </div>
+
       <div className="grid-2">
+        {/* Left: employee or site view */}
+        {viewMode === "employee" ? (
+          <div className="card">
+            <div className="card-header">
+              <div className="card-title">👷 員工地盤分配</div>
+              <div className="date-badge" style={{ fontSize: 11 }}>{today}</div>
+            </div>
+            <div className="card-body" style={{ padding: "8px 16px" }}>
+              {employees.map((e, i) => (
+                <div key={i} style={{ background: "#0d0f12", border: "1px solid #1e2330", borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                    <div className="emp-avatar" style={{ background: e.color }}>{e.name[0]}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{e.name}</div>
+                      <div style={{ fontSize: 11, color: "#555d6e" }}>{e.role}</div>
+                    </div>
+                    {checkedIn[i]
+                      ? <span className="badge green"><span className="badge-dot" /> 已簽到 {checkInTime[i]}</span>
+                      : empSite[i]
+                        ? <span className="badge yellow"><span className="badge-dot" /> 已分配</span>
+                        : <span className="badge red"><span className="badge-dot" /> 未分配</span>
+                    }
+                  </div>
+
+                  {/* Site selector */}
+                  <select
+                    value={empSite[i] || ""}
+                    onChange={e2 => handleAssignSite(i, e2.target.value)}
+                    disabled={checkedIn[i]}
+                    style={{
+                      width: "100%", background: "#13161c", border: "1px solid #2a3045",
+                      color: empSite[i] ? "#e8eaf0" : "#555d6e", borderRadius: 6,
+                      padding: "7px 10px", fontSize: 12, marginBottom: 8, cursor: checkedIn[i] ? "not-allowed" : "pointer"
+                    }}
+                  >
+                    <option value="">── 選擇今日工地 ──</option>
+                    {activeProjects.map(p => (
+                      <option key={p.id} value={p.name}>{p.name}</option>
+                    ))}
+                  </select>
+
+                  {/* GPS coords if site selected */}
+                  {empSite[i] && SITE_GPS[empSite[i]] && (
+                    <div style={{ fontSize: 10, color: "#3a4255", marginBottom: 8 }}>
+                      📍 GPS: {SITE_GPS[empSite[i]].lat}°N {SITE_GPS[empSite[i]].lng}°E
+                    </div>
+                  )}
+
+                  {/* Check-in button */}
+                  {!checkedIn[i] && (
+                    <button
+                      onClick={() => handleCheckIn(i)}
+                      style={{
+                        width: "100%", background: empSite[i] ? "#f0c000" : "#1e2330",
+                        color: empSite[i] ? "#0d0f12" : "#555d6e",
+                        border: "none", borderRadius: 6, padding: "7px 0",
+                        fontWeight: 700, fontSize: 12, cursor: empSite[i] ? "pointer" : "not-allowed"
+                      }}
+                    >
+                      📍 確認簽到
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="card">
+            <div className="card-header">
+              <div className="card-title">🏗 各地盤人員</div>
+              <span className="badge green"><span className="badge-dot" /> 即時</span>
+            </div>
+            <div className="card-body" style={{ padding: "8px 16px" }}>
+              {activeProjects.map(p => {
+                const ppl = siteGroups[p.name] || [];
+                return (
+                  <div key={p.id}
+                    onClick={() => setSelectedSiteView(p.name)}
+                    style={{
+                      background: selectedSiteView === p.name ? "#1a1f2e" : "#0d0f12",
+                      border: `1px solid ${selectedSiteView === p.name ? "#f0c000" : "#1e2330"}`,
+                      borderRadius: 10, padding: "12px 14px", marginBottom: 10, cursor: "pointer"
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{p.name}</div>
+                      <span className={`badge ${ppl.length > 0 ? "green" : "red"}`}>
+                        <span className="badge-dot" /> {ppl.length} 人
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 10, color: "#3a4255", marginBottom: 8 }}>
+                      📍 {SITE_GPS[p.name] ? `${SITE_GPS[p.name].lat}°N ${SITE_GPS[p.name].lng}°E` : "GPS 未設定"}
+                    </div>
+                    {ppl.length > 0 ? (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {ppl.map((emp, j) => (
+                          <div key={j} style={{ display: "flex", alignItems: "center", gap: 4, background: "#13161c", borderRadius: 20, padding: "3px 10px" }}>
+                            <div style={{ width: 18, height: 18, borderRadius: "50%", background: emp.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#0d0f12" }}>{emp.name[0]}</div>
+                            <span style={{ fontSize: 11, color: emp.checkedIn ? "#22c55e" : "#f0c000" }}>{emp.name}</span>
+                            {emp.checkedIn && <span style={{ fontSize: 9, color: "#3a4255" }}>{emp.time}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: "#3a4255" }}>今日暫無人員分配</div>
+                    )}
+                  </div>
+                );
+              })}
+              {unassigned.length > 0 && (
+                <div style={{ background: "#0d0f12", border: "1px solid #d63030", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: "#d63030", marginBottom: 8 }}>⚠️ 未分配地盤</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {unassigned.map((e, j) => (
+                      <div key={j} style={{ display: "flex", alignItems: "center", gap: 4, background: "#13161c", borderRadius: 20, padding: "3px 10px" }}>
+                        <div style={{ width: 18, height: 18, borderRadius: "50%", background: e.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#0d0f12" }}>{e.name[0]}</div>
+                        <span style={{ fontSize: 11, color: "#e8eaf0" }}>{e.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Right: GPS map focus */}
         <div className="card">
           <div className="card-header">
-            <div className="card-title">📍 即時 GPS 定位</div>
+            <div className="card-title">📍 GPS 地盤定位</div>
             <span className="badge green"><span className="badge-dot" /> 系統運行中</span>
           </div>
           <div className="card-body">
@@ -789,63 +997,45 @@ function Attendance({ showToast, employees = EMPLOYEES }) {
               <div className="map-grid" />
               <div className="map-circle" />
               <div className="map-dot" />
-              <div className="map-label">觀塘工業大廈 A座</div>
-              <div className="map-coords">22.3193°N 114.1694°E</div>
+              <div className="map-label">{focusSite || "請選擇地盤"}</div>
+              <div className="map-coords">{focusGPS.lat}°N {focusGPS.lng}°E</div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
               <div style={{ background: "#0d0f12", borderRadius: 8, padding: "10px 14px", border: "1px solid #1e2330" }}>
-                <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>容許範圍半徑</div>
+                <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>容許半徑</div>
                 <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 20, fontWeight: 700, color: "#f0c000" }}>150 m</div>
               </div>
               <div style={{ background: "#0d0f12", borderRadius: 8, padding: "10px 14px", border: "1px solid #1e2330" }}>
-                <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>在場人員</div>
-                <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 20, fontWeight: 700, color: "#22c55e" }}>4 / 5</div>
+                <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>此地盤人數</div>
+                <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 20, fontWeight: 700, color: "#22c55e" }}>{focusCount} 人</div>
               </div>
             </div>
-            <div className="alert-strip" style={{ marginBottom: 0 }}>
-              <div className="alert-icon">⚠️</div>
-              <div className="alert-text">黃國輝 尚未簽到，已超出上班時間 45 分鐘</div>
-            </div>
-          </div>
-        </div>
 
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">今日考勤記錄</div>
-            <div className="date-badge" style={{ fontSize: 11 }}>2025年7月15日</div>
-          </div>
-          <div className="card-body" style={{ padding: "12px 20px" }}>
-            {EMPLOYEES.map((e, i) => (
-              <div key={i} className="emp-row">
-                <div className="emp-avatar" style={{ background: e.color }}>
-                  {e.name[0]}
-                </div>
-                <div className="emp-info">
-                  <div className="emp-name">{e.name}</div>
-                  <div className="emp-role">
-                    {checkedIn[i]
-                      ? `GPS: ${e.lat}°N ${e.lng}°E`
-                      : "尚未抵達工地範圍"}
+            {/* Quick site GPS reference table */}
+            <div style={{ fontSize: 11, color: "#555d6e", marginBottom: 6, fontWeight: 600 }}>各地盤 GPS 座標</div>
+            <div style={{ maxHeight: 180, overflowY: "auto" }}>
+              {activeProjects.map(p => (
+                <div key={p.id}
+                  onClick={() => setSelectedSiteView(p.name)}
+                  style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "6px 10px", borderRadius: 6, marginBottom: 4, cursor: "pointer",
+                    background: selectedSiteView === p.name ? "#1a1f2e" : "#0d0f12",
+                    border: `1px solid ${selectedSiteView === p.name ? "#f0c000" : "#1e2330"}`
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 600 }}>{p.name}</div>
+                  <div style={{ fontSize: 10, color: "#3a4255" }}>
+                    {SITE_GPS[p.name] ? `${SITE_GPS[p.name].lat}, ${SITE_GPS[p.name].lng}` : "未設定"}
                   </div>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  {checkedIn[i] ? (
-                    <>
-                      <span className="badge green"><span className="badge-dot" /> 已簽到</span>
-                      <div style={{ fontSize: 10, color: "#3a4255", marginTop: 3 }}>
-                        {["07:55", "08:02", "–", "08:18", "08:10"][i]}
-                      </div>
-                    </>
-                  ) : (
-                    <span className="badge red"><span className="badge-dot" /> 缺席</span>
-                  )}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
+      {/* Monthly summary table */}
       <div className="card" style={{ marginTop: 4 }}>
         <div className="card-header">
           <div className="card-title">本月出勤彙總</div>
@@ -854,11 +1044,11 @@ function Attendance({ showToast, employees = EMPLOYEES }) {
         <div className="card-body" style={{ padding: 0 }}>
           <table className="data-table">
             <thead>
-              <tr><th>員工</th><th>職位</th><th>應出勤</th><th>實際出勤</th><th>遲到次數</th><th>早退次數</th><th>出勤率</th></tr>
+              <tr><th>員工</th><th>職位</th><th>今日地盤</th><th>應出勤</th><th>實際出勤</th><th>遲到</th><th>出勤率</th></tr>
             </thead>
             <tbody>
-              {EMPLOYEES.map((e, i) => {
-                const rate = Math.round((e.days / 23) * 100);
+              {employees.map((e, i) => {
+                const rate = Math.round(((e.days || 22) / 23) * 100);
                 return (
                   <tr key={i}>
                     <td className="td-name">
@@ -868,10 +1058,12 @@ function Attendance({ showToast, employees = EMPLOYEES }) {
                       </div>
                     </td>
                     <td>{e.role}</td>
+                    <td style={{ fontSize: 11, color: empSite[i] ? "#f0c000" : "#3a4255" }}>
+                      {empSite[i] || "未分配"}
+                    </td>
                     <td>23 天</td>
-                    <td>{e.days} 天</td>
-                    <td>{[1, 0, 3, 0, 1][i]} 次</td>
-                    <td>{[0, 0, 0, 1, 0][i]} 次</td>
+                    <td>{e.days || 22} 天</td>
+                    <td>{[1, 0, 3, 0, 1][i] || 0} 次</td>
                     <td>
                       <span className={`badge ${rate >= 90 ? "green" : rate >= 75 ? "yellow" : "red"}`}>
                         <span className="badge-dot" /> {rate}%
@@ -2680,7 +2872,7 @@ export default function App() {
             {active === "dashboard" && <Dashboard projects={projects} setActive={setActive} employees={employees} />}
             {active === "projects"  && <ProjectManager projects={projects} setProjects={setProjects} showToast={showToast} onAdd={addProjectToDB} onUpdate={updateProjectInDB} onDelete={deleteProjectFromDB} dbConnected={dbStatus === "connected"} />}
             {active === "safety" && <Safety showToast={showToast} employees={employees} />}
-            {active === "attendance" && <Attendance showToast={showToast} employees={employees} />}
+            {active === "attendance" && <Attendance showToast={showToast} employees={employees} projects={projects} />}
             {active === "progress" && <Progress showToast={showToast} projects={projects} />}
             {active === "invoice" && <Invoice showToast={showToast} />}
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
