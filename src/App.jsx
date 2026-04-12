@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap');
@@ -1810,325 +1810,355 @@ function ProfitCalc({ showToast }) {
 }
 
 // ─── PROJECT MANAGER ────────────────────────────────────────────────────────
+// ── Invoice PDF Generator (俊輝格式) ─────────────────────────────────────────
+function generateInvoicePDF(inv) {
+  const w = window.open("", "_blank");
+  if (!w) { alert("請允許彈出視窗以生成 PDF"); return; }
+  const dateStr = new Date().toLocaleDateString("zh-HK", { year: "numeric", month: "long", day: "numeric" });
+  const amt = Number(inv.amount || 0);
+  const amtFmt = amt.toLocaleString("en-HK", { minimumFractionDigits: 2 });
+  const ecName = inv.ecName || inv.projectName || "";
+  const desc = inv.description || "";
+  const pct = inv.pct ? `${inv.pct}%` : "";
+  const contractVal = inv.contractValue ? Number(inv.contractValue).toLocaleString() : "";
+  const pctLine = contractVal && pct ? `${contractVal}元的${pct}, 共$${amtFmt}元` : "";
+
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <style>
+    body{font-family:Arial,sans-serif;padding:40px;font-size:13px;color:#000}
+    .order-no{text-align:right;font-weight:bold;font-size:14px;margin-bottom:4px}
+    .date{text-align:right;color:#666;font-size:12px;margin-bottom:30px}
+    .bill-label{font-weight:bold;font-size:15px;margin-bottom:6px}
+    table{width:100%;border-collapse:collapse;margin:20px 0}
+    th{background:#1a1a1a;color:#fff;padding:10px 12px;text-align:left;font-size:13px}
+    th:nth-child(3),th:nth-child(4),th:nth-child(5){text-align:right}
+    td{padding:14px 12px;border:1px solid #ddd;vertical-align:top}
+    td:nth-child(3),td:nth-child(4),td:nth-child(5){text-align:right}
+    .total td{font-weight:bold;background:#f5f5f5;border:1px solid #ddd}
+    .total-amt{font-size:16px}
+    .footer{line-height:2;margin-top:20px}
+    .co{font-weight:bold}
+    @media print{body{padding:20px}}
+  </style></head><body>
+  <div class="order-no">INVOICE NO.: ${inv.cfNo}</div>
+  <div class="date">日期 Date: ${dateStr}</div>
+  <div class="bill-label">BILL TO</div>
+  <div>Anlev Elex Elevator Ltd</div>
+  <div>ATAL Tower, 45-51 Kwok Shui Road, Kwai Chung, New Territories, Hong Kong</div>
+  <div style="margin-bottom:20px">Phone: 2561 8278</div>
+  <table>
+    <thead><tr>
+      <th style="width:5%">Items</th>
+      <th style="width:56%">Details</th>
+      <th style="width:10%">Quantity</th>
+      <th style="width:14%">Unit Price</th>
+      <th style="width:15%">AMOUNT</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td style="text-align:center">1</td>
+        <td><strong>${ecName}</strong><br/>${desc ? desc + "<br/><br/>" : ""}${pctLine}</td>
+        <td style="text-align:center">1</td>
+        <td style="text-align:right">$${amtFmt}</td>
+        <td style="text-align:right">$${amtFmt}</td>
+      </tr>
+      <tr class="total">
+        <td colspan="4" style="text-align:right">TOTAL:</td>
+        <td class="total-amt">HKD$${amtFmt}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="footer">
+    <div>Make all checks payable to <span class="co">Chun Fai Lifts Engineering Company Ltd.</span></div>
+    <div class="co">俊輝電梯工程有限公司</div><br/>
+    <div>If you have any questions concerning this invoice, contact Mr. Kam at 5444 2099.</div>
+    <br/><div style="font-weight:bold">THANK YOU FOR YOUR BUSINESS!</div>
+  </div>
+  <script>window.onload=()=>{window.print()}</script>
+  </body></html>`);
+  w.document.close();
+}
+
+// ── ProjectManager (CF-based) ─────────────────────────────────────────────────
 function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onDelete, dbConnected }) {
-  const [filter, setFilter] = useState("all");
+  // CF invoices loaded from Supabase invoices table (joined with project name)
+  const [cfList, setCfList] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [showAdd, setShowAdd] = useState(false);
-  const [editId, setEditId] = useState(null);
-  const formRef = React.useRef(null); // ← for auto-scroll
+  const [filterPaid, setFilterPaid] = useState("all"); // all | paid | unpaid
+  const [filterEC, setFilterEC] = useState("all");
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addForm, setAddForm] = useState({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "" });
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
-  const [form, setForm] = useState({
-    cfNo: "", name: "", client: "", value: "", description: "",
-    start: "", end: "", pct: 0, plan: 0, phase: "active", status: "ok"
-  });
-
-  const PHASE_LABELS = { active: "進行中", completed: "已完成", pending: "待開工" };
-  const PHASE_COLORS = { active: "green", completed: "blue", pending: "yellow" };
-  const STATUS_OPTS = [
-    { v: "ok",     l: "🟢 進度正常" },
-    { v: "yellow", l: "🟡 輕微落後" },
-    { v: "low",    l: "🔴 嚴重落後" },
-  ];
-
-  // Extract CF number from existing name field if cfNo not set
-  const getCF = (p) => {
-    if (p.cfNo) return p.cfNo;
-    const m = (p.name || "").match(/CF\d+/i);
-    return m ? m[0].toUpperCase() : "";
-  };
-
-  // Get display name (strip CF prefix if embedded)
-  const getDisplayName = (p) => {
-    if (p.cfNo) return p.name;
-    return (p.name || "").replace(/^CF\d+[-\s]*/i, "").trim();
-  };
-
-  const filtered = projects.filter(p => {
-    const matchPhase = filter === "all" || p.phase === filter;
-    const cf = getCF(p).toLowerCase();
-    const s = search.toLowerCase();
-    const matchSearch = p.name.toLowerCase().includes(s) ||
-      (p.client || "").toLowerCase().includes(s) ||
-      cf.includes(s);
-    return matchPhase && matchSearch;
-  });
-
-  const totalValue = projects.reduce((a, p) => a + Number(p.value), 0);
-  const activeCount = projects.filter(p => p.phase === "active").length;
-  const alertCount = projects.filter(p => p.pct < p.plan && p.phase === "active").length;
-
-  const resetForm = () => setForm({ cfNo: "", name: "", client: "", value: "", description: "", start: "", end: "", pct: 0, plan: 0, phase: "active", status: "ok" });
-
-  const scrollToForm = () => {
-    setTimeout(() => {
-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 50);
-  };
-
-  const handleAdd = async () => {
-    if (!form.name || !form.value) {
-      showToast("⚠️ 請填寫工程名稱及合約金額", "error"); return;
+  // Load all invoices with project names from Supabase
+  const loadCFList = async () => {
+    setLoading(true);
+    try {
+      // Use Supabase join: invoices → projects
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=stage.desc&limit=2000`,
+        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+      );
+      const data = await res.json();
+      // Flatten: each row = { id, cfNo(stage), ecName, amount, status, pct, description, contractValue }
+      const flat = data.map(inv => ({
+        id: inv.id,
+        cfNo: inv.stage || "",
+        ecName: inv.projects?.name || "",
+        amount: inv.amount || 0,
+        status: inv.status || "pending",
+        pct: inv.pct || "",
+        description: inv.label || inv.description || "",
+        contractValue: inv.contract_value || "",
+        projectId: inv.project_id,
+      }));
+      setCfList(flat);
+    } catch(e) {
+      showToast("⚠️ 載入發票失敗，使用示範數據", "error");
+      // Demo fallback
+      setCfList([
+        { id:1, cfNo:"CF01162", ecName:"EC-550屯門醫院輕鐵站行人天橋NF411", amount:10750, status:"pending", pct:"5", description:"已完成客戶交機時安裝手尾", contractValue:215000, projectId:1 },
+        { id:2, cfNo:"CF01156", ecName:"EC-550屯門鳴琴路旁Footbridge NF198", amount:64500, status:"paid", pct:"30", description:"已完成機房及井道全面安裝，已拆棚交較車行慢車", contractValue:215000, projectId:1 },
+      ]);
     }
-    const tempId = Date.now();
-    const newP = { ...form, id: tempId, value: Number(form.value), pct: Number(form.pct), plan: Number(form.plan) };
-    setProjects([...projects, newP]);
-    resetForm(); setShowAdd(false);
-    if (onAdd) await onAdd(newP);
-    showToast(`✅ 「${form.cfNo} ${form.name}」已新增並儲存！`);
+    setLoading(false);
   };
 
-  const handleEdit = (p) => {
-    setEditId(p.id);
-    setForm({
-      cfNo: getCF(p),
-      name: getDisplayName(p),
-      client: p.client || "",
-      value: String(p.value),
-      description: p.description || "",
-      start: p.start || "",
-      end: p.end || "",
-      pct: p.pct || 0,
-      plan: p.plan || 0,
-      phase: p.phase || "active",
-      status: p.status || "ok",
-    });
-    setShowAdd(true);
-    scrollToForm();
+  useEffect(() => { loadCFList(); }, []);
+
+  const togglePaid = async (item) => {
+    const newStatus = item.status === "paid" ? "pending" : "paid";
+    // Optimistic update
+    setCfList(prev => prev.map(c => c.id === item.id ? { ...c, status: newStatus } : c));
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/invoices?id=eq.${item.id}`, {
+        method: "PATCH",
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus })
+      });
+      showToast(newStatus === "paid" ? `✅ ${item.cfNo} 已確認收款！` : `↩️ ${item.cfNo} 取消收款`);
+    } catch(e) {
+      showToast("❌ 更新失敗", "error");
+      setCfList(prev => prev.map(c => c.id === item.id ? { ...c, status: item.status } : c));
+    }
   };
 
-  const handleUpdate = async () => {
-    const updated = { ...form, id: editId, value: Number(form.value), pct: Number(form.pct), plan: Number(form.plan) };
-    setProjects(projects.map(p => p.id === editId ? updated : p));
-    setEditId(null); resetForm(); setShowAdd(false);
-    if (onUpdate) await onUpdate(updated);
-    showToast("✅ 工程資料已更新並儲存至資料庫！");
+  const handleAddCF = async () => {
+    if (!addForm.cfNo || !addForm.ecName || !addForm.amount) {
+      showToast("⚠️ 請填寫 CF 號、工程名稱及金額", "error"); return;
+    }
+    setSaving(true);
+    try {
+      // Find or create project
+      let projectId = null;
+      const projRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/projects?name=eq.${encodeURIComponent(addForm.ecName)}&limit=1`,
+        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+      );
+      const projData = await projRes.json();
+      if (projData.length > 0) {
+        projectId = projData[0].id;
+      } else {
+        const newProj = await sbInsert("projects", { name: addForm.ecName, client: addForm.ecName.match(/EC-\d+/)?.[0] || "", contract_value: Number(addForm.contractValue||0), progress_pct: Number(addForm.pct||0), plan_pct: Number(addForm.pct||0), status: "ok", phase: "active" });
+        projectId = newProj[0].id;
+      }
+      const newInv = await sbInsert("invoices", {
+        project_id: projectId,
+        stage: addForm.cfNo,
+        amount: Number(addForm.amount),
+        status: "pending",
+        label: addForm.description,
+      });
+      setCfList(prev => [...prev, {
+        id: newInv[0].id, cfNo: addForm.cfNo, ecName: addForm.ecName,
+        amount: Number(addForm.amount), status: "pending",
+        pct: addForm.pct, description: addForm.description,
+        contractValue: addForm.contractValue, projectId,
+      }].sort((a,b) => a.cfNo.localeCompare(b.cfNo)));
+      setAddForm({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "" });
+      setShowAddForm(false);
+      showToast(`✅ ${addForm.cfNo} 已新增！`);
+    } catch(e) {
+      showToast("❌ 新增失敗：" + e.message, "error");
+    }
+    setSaving(false);
   };
 
-  const handleDelete = async (id, name) => {
-    setProjects(projects.filter(p => p.id !== id));
-    if (onDelete) await onDelete(id);
-    showToast(`🗑️ 「${name}」已刪除`);
-  };
+  // Filtered list
+  const ecCodes = [...new Set(cfList.map(c => c.ecName.match(/EC-\d+/)?.[0]).filter(Boolean))].sort();
+  const filtered = cfList.filter(c => {
+    const s = search.toLowerCase();
+    const matchSearch = !s || c.cfNo.toLowerCase().includes(s) || c.ecName.toLowerCase().includes(s) || c.description.toLowerCase().includes(s);
+    const matchPaid = filterPaid === "all" || (filterPaid === "paid" ? c.status === "paid" : c.status !== "paid");
+    const matchEC = filterEC === "all" || c.ecName.includes(filterEC);
+    return matchSearch && matchPaid && matchEC;
+  });
 
-  const F = ({ label, field, type = "text", placeholder = "" }) => (
-    <div className="form-group">
-      <label className="form-label">{label}</label>
-      <input className="form-input" type={type} placeholder={placeholder}
-        value={form[field]} onChange={e => setForm({ ...form, [field]: e.target.value })} />
-    </div>
-  );
+  const totalAmt = filtered.reduce((a,c) => a + c.amount, 0);
+  const paidAmt = filtered.filter(c => c.status === "paid").reduce((a,c) => a + c.amount, 0);
+  const unpaidAmt = totalAmt - paidAmt;
 
   return (
     <div>
-      {/* KPI row */}
-      <div className="kpi-row" style={{ marginBottom: 20 }}>
-        <div className="kpi-card" style={{ "--accent": "#f0c000" }}>
-          <div className="kpi-label">工程總數</div>
-          <div className="kpi-value"><span>{projects.length}</span> 個</div>
-          <div className="kpi-sub">進行中 {activeCount} 個</div>
-        </div>
-        <div className="kpi-card" style={{ "--accent": "#22c55e" }}>
-          <div className="kpi-label">合約總額</div>
-          <div className="kpi-value" style={{ fontSize: 18 }}>HK${(totalValue / 10000).toFixed(0)}萬</div>
-          <div className="kpi-sub">{projects.length} 個項目</div>
-        </div>
-        <div className="kpi-card" style={{ "--accent": "#d63030" }}>
-          <div className="kpi-label">進度預警</div>
-          <div className="kpi-value"><span style={{ color: alertCount > 0 ? "#d63030" : "#22c55e" }}>{alertCount}</span> 個</div>
-          <div className="kpi-sub">{alertCount > 0 ? "需要跟進" : "全部正常"}</div>
-        </div>
-        <div className="kpi-card" style={{ "--accent": "#a78bfa" }}>
-          <div className="kpi-label">已完成工程</div>
-          <div className="kpi-value"><span>{projects.filter(p => p.phase === "completed").length}</span> 個</div>
-          <div className="kpi-sub">待開工 {projects.filter(p => p.phase === "pending").length} 個</div>
-        </div>
+      {/* KPI strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
+        {[
+          { label: "CF 發票總數", value: cfList.length, color: "#f0c000" },
+          { label: "篩選顯示", value: filtered.length, color: "#60a5fa" },
+          { label: "已收款", value: `HK$${(paidAmt/10000).toFixed(0)}萬`, color: "#22c55e" },
+          { label: "待收款", value: `HK$${(unpaidAmt/10000).toFixed(0)}萬`, color: "#d63030" },
+        ].map((k,i) => (
+          <div key={i} style={{ background:"#13161c", border:"1px solid #1e2330", borderRadius:10, padding:"12px 16px" }}>
+            <div style={{ fontSize:10, color:"#3a4255", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>{k.label}</div>
+            <div style={{ fontFamily:"'Barlow Condensed'", fontSize:22, fontWeight:800, color:k.color }}>{k.value}</div>
+          </div>
+        ))}
       </div>
 
-      {/* Search + Filter bar */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-        <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
-          <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: "#555d6e" }}>🔍</span>
-          <input className="form-input" placeholder="搜尋 CF 號、工程名稱或客戶..." value={search}
-            onChange={e => setSearch(e.target.value)} style={{ paddingLeft: 36 }} />
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {[["all","全部"], ["active","進行中"], ["pending","待開工"], ["completed","已完成"]].map(([v, l]) => (
-            <button key={v} className={`btn btn-sm ${filter === v ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => setFilter(v)}>{l}</button>
-          ))}
-        </div>
-        <button className="btn btn-primary" onClick={() => {
-          resetForm(); setEditId(null);
-          if (!showAdd) { setShowAdd(true); scrollToForm(); }
-          else setShowAdd(false);
-        }}>
-          {showAdd && !editId ? "✕ 收起" : "+ 新增工程"}
+      {/* Search + Filters + Add button */}
+      <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
+        <input
+          className="form-input" placeholder="🔍 搜尋 CF 號 / 工程名稱..."
+          value={search} onChange={e => setSearch(e.target.value)}
+          style={{ flex:1, minWidth:200 }}
+        />
+        <select value={filterPaid} onChange={e => setFilterPaid(e.target.value)}
+          style={{ background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 12px", fontSize:12 }}>
+          <option value="all">全部收款狀態</option>
+          <option value="paid">✅ 已收款</option>
+          <option value="unpaid">⏳ 待收款</option>
+        </select>
+        <select value={filterEC} onChange={e => setFilterEC(e.target.value)}
+          style={{ background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 12px", fontSize:12, maxWidth:160 }}>
+          <option value="all">全部 EC 工程</option>
+          {ecCodes.map(ec => <option key={ec} value={ec}>{ec}</option>)}
+        </select>
+        <button className="btn btn-primary" onClick={() => setShowAddForm(!showAddForm)}>
+          {showAddForm ? "✕ 收起" : "+ 新增 CF"}
         </button>
       </div>
 
-      {/* Add / Edit form — ref attached here for auto-scroll */}
-      {showAdd && (
-        <div ref={formRef} className="card" style={{ marginBottom: 20, border: "1px solid rgba(240,192,0,0.4)", scrollMarginTop: 20 }}>
-          <div className="card-header">
-            <div className="card-title">{editId ? `✏️ 編輯工程資料${form.cfNo ? " — " + form.cfNo : ""}` : "➕ 新增工程項目"}</div>
-            <button className="btn btn-secondary btn-sm" onClick={() => { setShowAdd(false); setEditId(null); resetForm(); }}>✕ 收起</button>
+      {/* Add CF form */}
+      {showAddForm && (
+        <div style={{ background:"#13161c", border:"1px solid #f0c000", borderRadius:10, padding:16, marginBottom:16 }}>
+          <div style={{ fontFamily:"'Barlow Condensed'", fontSize:16, fontWeight:700, color:"#f0c000", marginBottom:12 }}>📋 新增 CF 發票</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
+            {[
+              { label:"CF 號碼 *", key:"cfNo", ph:"CF01163" },
+              { label:"完成 % *", key:"pct", ph:"5" },
+              { label:"發票金額 (HK$) *", key:"amount", ph:"10750" },
+              { label:"合約總值 (HK$)", key:"contractValue", ph:"215000" },
+            ].map(f => (
+              <div key={f.key}>
+                <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>{f.label}</div>
+                <input value={addForm[f.key]} onChange={e => setAddForm({...addForm, [f.key]: e.target.value})}
+                  placeholder={f.ph} className="form-input" />
+              </div>
+            ))}
           </div>
-          <div className="card-body">
-            {/* Row 1: CF No + Project Name */}
-            <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label">CF 工程編號</label>
-                <input className="form-input" placeholder="例如：CF00007"
-                  value={form.cfNo} onChange={e => setForm({ ...form, cfNo: e.target.value.toUpperCase() })} />
-              </div>
-              <F label="工程名稱 / 客戶 *" field="name" placeholder="例如：EC-524愛禮信小學" />
-            </div>
-            {/* Row 2: Amount + dates */}
-            <div className="grid-2">
-              <F label="合約金額（HK$）*" field="value" type="number" placeholder="例如：70500" />
-              <div className="form-group">
-                <label className="form-label">工程狀態</label>
-                <select className="form-select" value={form.phase} onChange={e => setForm({ ...form, phase: e.target.value })}>
-                  <option value="pending">待開工</option>
-                  <option value="active">進行中</option>
-                  <option value="completed">已完成</option>
-                </select>
-              </div>
-            </div>
-            {/* Row 3: Dates */}
-            <div className="grid-2">
-              <F label="開工日期" field="start" type="date" />
-              <F label="預計完工日期" field="end" type="date" />
-            </div>
-            {/* Row 4: Description (Col F from Excel) */}
-            <div className="form-group">
-              <label className="form-label">工程描述 / 請款備註（Col F）</label>
-              <textarea className="form-input" rows={3} placeholder="例如：完成路軌及外門口，按裝工程費235000.00元30%，共70,500.00元"
-                value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
-                style={{ resize: "vertical", minHeight: 72 }} />
-            </div>
-            {/* Row 5: Progress */}
-            <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label">現時實際進度（%）</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <input type="range" min="0" max="100" value={form.pct}
-                    onChange={e => setForm({ ...form, pct: e.target.value })}
-                    style={{ flex: 1, accentColor: "#f0c000" }} />
-                  <span style={{ fontFamily: "'Barlow Condensed'", fontSize: 20, fontWeight: 800, color: "#f0c000", minWidth: 40 }}>{form.pct}%</span>
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">計劃目標進度（%）</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <input type="range" min="0" max="100" value={form.plan}
-                    onChange={e => setForm({ ...form, plan: e.target.value })}
-                    style={{ flex: 1, accentColor: "#22c55e" }} />
-                  <span style={{ fontFamily: "'Barlow Condensed'", fontSize: 20, fontWeight: 800, color: "#22c55e", minWidth: 40 }}>{form.plan}%</span>
-                </div>
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">進度標示</label>
-              <div style={{ display: "flex", gap: 8 }}>
-                {STATUS_OPTS.map(o => (
-                  <button key={o.v} className={`btn btn-sm ${form.status === o.v ? "btn-primary" : "btn-secondary"}`}
-                    onClick={() => setForm({ ...form, status: o.v })}>{o.l}</button>
-                ))}
-              </div>
-            </div>
-            <div className="btn-row">
-              <button className="btn btn-primary" onClick={editId ? handleUpdate : handleAdd} style={{ flex: 1 }}>
-                {editId ? "💾 儲存更改" : "✅ 確認新增"}
-              </button>
-              <button className="btn btn-secondary" onClick={() => { setShowAdd(false); setEditId(null); resetForm(); }}>取消</button>
-            </div>
+          <div style={{ marginBottom:10 }}>
+            <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>EC 工程名稱 *</div>
+            <input value={addForm.ecName} onChange={e => setAddForm({...addForm, ecName: e.target.value})}
+              placeholder="EC-550屯門醫院輕鐵站行人天橋NF411" className="form-input" style={{ width:"100%" }} />
+          </div>
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>工程描述</div>
+            <input value={addForm.description} onChange={e => setAddForm({...addForm, description: e.target.value})}
+              placeholder="已完成客戶交機時安裝手尾" className="form-input" style={{ width:"100%" }} />
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button className="btn btn-primary" onClick={handleAddCF} disabled={saving} style={{ flex:1 }}>
+              {saving ? "儲存中..." : "✅ 確認新增"}
+            </button>
+            <button className="btn btn-secondary" onClick={() => setShowAddForm(false)}>取消</button>
           </div>
         </div>
       )}
 
-      {/* Project list */}
-      <div style={{ fontSize: 12, color: "#555d6e", marginBottom: 10 }}>
-        顯示 {filtered.length} / {projects.length} 個工程項目
-        {search && <span>　搜尋：「{search}」</span>}
+      {/* Summary */}
+      <div style={{ fontSize:12, color:"#555d6e", marginBottom:10 }}>
+        顯示 {filtered.length} / {cfList.length} 張發票
+        {filterEC !== "all" && <span style={{ color:"#f0c000", marginLeft:8 }}>· {filterEC}</span>}
       </div>
 
-      {filtered.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "48px 20px", color: "#555d6e", fontSize: 14 }}>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div>
-          搵唔到符合條件的工程，試下調整篩選或搜尋條件
+      {/* CF Table */}
+      {loading ? (
+        <div style={{ textAlign:"center", padding:40, color:"#555d6e" }}>
+          <div style={{ fontSize:24, marginBottom:8 }}>⏳</div>載入發票中...
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign:"center", padding:40, color:"#555d6e" }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>🔍</div>搵唔到符合條件的發票
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {filtered.map((p) => {
-            const cf = getCF(p);
-            const displayName = getDisplayName(p);
-            return (
-              <div key={p.id} className="card" style={{ border: editId === p.id ? "1px solid rgba(240,192,0,0.5)" : undefined }}>
-                <div className="card-body" style={{ padding: "14px 18px" }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-                    <div style={{ flex: 1 }}>
-                      {/* CF badge + name + status */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-                        {cf && (
-                          <div style={{ background: "#f0c000", color: "#0d0f12", borderRadius: 5, padding: "2px 8px", fontFamily: "'Barlow Condensed'", fontSize: 13, fontWeight: 800, letterSpacing: 0.5 }}>
-                            {cf}
-                          </div>
-                        )}
-                        <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 16, fontWeight: 700, color: "#e8eaf0" }}>{displayName || p.name}</div>
-                        <span className={`badge ${PHASE_COLORS[p.phase]}`}><span className="badge-dot" />{PHASE_LABELS[p.phase]}</span>
-                        {p.pct < p.plan && p.phase === "active" && (
-                          <span className="badge red"><span className="badge-dot" />進度落後</span>
-                        )}
+        <div className="card" style={{ padding:0, overflow:"hidden" }}>
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+              <thead>
+                <tr style={{ background:"#13161c", borderBottom:"2px solid #1e2330" }}>
+                  {["✅ 收款","CF 號碼","EC 工程名稱","發票金額","完成 %","工程描述","操作"].map(h => (
+                    <th key={h} style={{ padding:"10px 12px", textAlign:"left", fontSize:10, color:"#3a4255", textTransform:"uppercase", letterSpacing:0.8, whiteSpace:"nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((item, idx) => (
+                  <tr key={item.id} style={{ borderBottom:"1px solid #0d0f12", background: item.status === "paid" ? "rgba(34,197,94,0.04)" : idx%2===0 ? "rgba(255,255,255,0.01)" : "transparent" }}>
+                    {/* Paid checkbox */}
+                    <td style={{ padding:"10px 12px", textAlign:"center" }}>
+                      <input type="checkbox" checked={item.status === "paid"} onChange={() => togglePaid(item)}
+                        style={{ width:16, height:16, accentColor:"#22c55e", cursor:"pointer" }} />
+                    </td>
+                    {/* CF No */}
+                    <td style={{ padding:"10px 12px", whiteSpace:"nowrap" }}>
+                      <span style={{ background: item.status==="paid" ? "#1a2e1a" : "#1a1f2e", color: item.status==="paid" ? "#22c55e" : "#f0c000", borderRadius:5, padding:"3px 9px", fontFamily:"'Barlow Condensed'", fontWeight:800, fontSize:13 }}>
+                        {item.cfNo}
+                      </span>
+                    </td>
+                    {/* EC Name */}
+                    <td style={{ padding:"10px 12px", maxWidth:240 }}>
+                      <div style={{ fontSize:12, color:"#e8eaf0", lineHeight:1.4 }}>{item.ecName}</div>
+                    </td>
+                    {/* Amount */}
+                    <td style={{ padding:"10px 12px", whiteSpace:"nowrap" }}>
+                      <div style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, fontSize:15, color: item.status==="paid" ? "#22c55e" : "#f0c000" }}>
+                        HK${Number(item.amount).toLocaleString()}
                       </div>
-                      {/* Client + dates */}
-                      {p.client && (
-                        <div style={{ fontSize: 11, color: "#555d6e", marginBottom: 6 }}>
-                          👤 {p.client}{p.start ? ` · 📅 ${p.start} → ${p.end}` : ""}
-                        </div>
-                      )}
-                      {/* Description preview */}
-                      {p.description && (
-                        <div style={{ fontSize: 11, color: "#3a4255", marginBottom: 8, lineHeight: 1.5, maxWidth: 560, whiteSpace: "pre-wrap" }}>
-                          📝 {p.description.length > 80 ? p.description.slice(0, 80) + "…" : p.description}
-                        </div>
-                      )}
-                      {/* KPIs */}
-                      <div style={{ display: "flex", gap: 18, marginBottom: 10, flexWrap: "wrap" }}>
-                        <div>
-                          <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>合約金額</div>
-                          <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 17, fontWeight: 800, color: "#f0c000" }}>HK${Number(p.value).toLocaleString()}</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>實際進度</div>
-                          <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 17, fontWeight: 800, color: p.pct >= p.plan ? "#22c55e" : "#d63030" }}>{p.pct}%</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>計劃目標</div>
-                          <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 17, fontWeight: 800, color: "#9aa0b4" }}>{p.plan}%</div>
-                        </div>
-                      </div>
-                      <div className="progress-bar-bg">
-                        <div className={`progress-bar-fill ${p.status}`} style={{ width: `${p.pct}%` }} />
-                      </div>
-                      {p.pct < p.plan && p.phase === "active" && (
-                        <div style={{ fontSize: 11, color: "#d63030", marginTop: 4 }}>▼ 低於計劃 {p.plan - p.pct}%</div>
-                      )}
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => handleEdit(p)}>✏️ 編輯</button>
-                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(p.id, p.name)}>🗑️ 刪除</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                    </td>
+                    {/* % */}
+                    <td style={{ padding:"10px 12px", color:"#9aa0b4", whiteSpace:"nowrap" }}>
+                      {item.pct ? `${item.pct}%` : "—"}
+                    </td>
+                    {/* Description */}
+                    <td style={{ padding:"10px 12px", color:"#555d6e", maxWidth:220 }}>
+                      <div style={{ lineHeight:1.4 }}>{(item.description||"").slice(0,60)}{(item.description||"").length>60?"…":""}</div>
+                    </td>
+                    {/* Actions */}
+                    <td style={{ padding:"10px 12px", whiteSpace:"nowrap" }}>
+                      <button onClick={() => generateInvoicePDF(item)}
+                        style={{ background:"none", border:"1px solid #2a3045", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
+                        🖨️ PDF
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Footer totals */}
+          <div style={{ display:"flex", gap:24, padding:"12px 16px", borderTop:"1px solid #1e2330", background:"#13161c" }}>
+            <div><span style={{ fontSize:10, color:"#3a4255" }}>篩選總額</span> <span style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, color:"#e8eaf0", marginLeft:6 }}>HK${totalAmt.toLocaleString()}</span></div>
+            <div><span style={{ fontSize:10, color:"#3a4255" }}>已收款</span> <span style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, color:"#22c55e", marginLeft:6 }}>HK${paidAmt.toLocaleString()}</span></div>
+            <div><span style={{ fontSize:10, color:"#3a4255" }}>待收款</span> <span style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, color:"#d63030", marginLeft:6 }}>HK${unpaidAmt.toLocaleString()}</span></div>
+          </div>
         </div>
       )}
     </div>
   );
 }
+
 
 // ─── HONG KONG TAX CALCULATOR (Limited Company) ────────────────────────────
 // Tax rates: 2024/25 assessment year
