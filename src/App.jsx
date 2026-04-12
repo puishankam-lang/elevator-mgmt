@@ -1987,6 +1987,9 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
   };
 
   // Filtered list
+  const PAGE_SIZE = 50;
+  const [currentPage, setCurrentPage] = useState(1);
+
   const ecCodes = [...new Set(cfList.map(c => c.ecName.match(/EC-\d+/)?.[0]).filter(Boolean))].sort();
   const filtered = cfList.filter(c => {
     const s = search.toLowerCase();
@@ -1995,6 +1998,14 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
     const matchEC = filterEC === "all" || c.ecName.includes(filterEC);
     return matchSearch && matchPaid && matchEC;
   });
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // Reset to page 1 when filter/search changes
+  const handleSearch = (val) => { setSearch(val); setCurrentPage(1); };
+  const handleFilterPaid = (val) => { setFilterPaid(val); setCurrentPage(1); };
+  const handleFilterEC = (val) => { setFilterEC(val); setCurrentPage(1); };
 
   const totalAmt = filtered.reduce((a,c) => a + c.amount, 0);
   const paidAmt = filtered.filter(c => c.status === "paid").reduce((a,c) => a + c.amount, 0);
@@ -2021,16 +2032,16 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
       <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
         <input
           className="form-input" placeholder="🔍 搜尋 CF 號 / 工程名稱..."
-          value={search} onChange={e => setSearch(e.target.value)}
+          value={search} onChange={e => handleSearch(e.target.value)}
           style={{ flex:1, minWidth:200 }}
         />
-        <select value={filterPaid} onChange={e => setFilterPaid(e.target.value)}
+        <select value={filterPaid} onChange={e => handleFilterPaid(e.target.value)}
           style={{ background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 12px", fontSize:12 }}>
           <option value="all">全部收款狀態</option>
           <option value="paid">✅ 已收款</option>
           <option value="unpaid">⏳ 待收款</option>
         </select>
-        <select value={filterEC} onChange={e => setFilterEC(e.target.value)}
+        <select value={filterEC} onChange={e => handleFilterEC(e.target.value)}
           style={{ background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 12px", fontSize:12, maxWidth:160 }}>
           <option value="all">全部 EC 工程</option>
           {ecCodes.map(ec => <option key={ec} value={ec}>{ec}</option>)}
@@ -2078,9 +2089,47 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
       )}
 
       {/* Summary */}
-      <div style={{ fontSize:12, color:"#555d6e", marginBottom:10 }}>
-        顯示 {filtered.length} / {cfList.length} 張發票
-        {filterEC !== "all" && <span style={{ color:"#f0c000", marginLeft:8 }}>· {filterEC}</span>}
+      <div style={{ fontSize:12, color:"#555d6e", marginBottom:10, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <span>
+          顯示 {filtered.length} / {cfList.length} 張發票
+          {filterEC !== "all" && <span style={{ color:"#f0c000", marginLeft:8 }}>· {filterEC}</span>}
+          　第 {currentPage} / {totalPages || 1} 頁（每頁 {PAGE_SIZE} 個）
+        </span>
+        {/* Pagination controls top */}
+        {totalPages > 1 && (
+          <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+            <button onClick={() => setCurrentPage(1)} disabled={currentPage===1}
+              style={{ background:"#1e2330", border:"none", color: currentPage===1?"#3a4255":"#e8eaf0", borderRadius:5, padding:"4px 10px", cursor: currentPage===1?"default":"pointer", fontSize:12 }}>
+              «
+            </button>
+            <button onClick={() => setCurrentPage(p => Math.max(1,p-1))} disabled={currentPage===1}
+              style={{ background:"#1e2330", border:"none", color: currentPage===1?"#3a4255":"#e8eaf0", borderRadius:5, padding:"4px 10px", cursor: currentPage===1?"default":"pointer", fontSize:12 }}>
+              ‹ 上頁
+            </button>
+            {/* Page numbers */}
+            {Array.from({length: Math.min(7, totalPages)}, (_,i) => {
+              let p;
+              if (totalPages <= 7) p = i+1;
+              else if (currentPage <= 4) p = i+1;
+              else if (currentPage >= totalPages-3) p = totalPages-6+i;
+              else p = currentPage-3+i;
+              return (
+                <button key={p} onClick={() => setCurrentPage(p)}
+                  style={{ background: currentPage===p?"#f0c000":"#1e2330", border:"none", color: currentPage===p?"#0d0f12":"#8891a4", borderRadius:5, padding:"4px 10px", cursor:"pointer", fontSize:12, fontWeight: currentPage===p?800:400, minWidth:32 }}>
+                  {p}
+                </button>
+              );
+            })}
+            <button onClick={() => setCurrentPage(p => Math.min(totalPages,p+1))} disabled={currentPage===totalPages}
+              style={{ background:"#1e2330", border:"none", color: currentPage===totalPages?"#3a4255":"#e8eaf0", borderRadius:5, padding:"4px 10px", cursor: currentPage===totalPages?"default":"pointer", fontSize:12 }}>
+              下頁 ›
+            </button>
+            <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage===totalPages}
+              style={{ background:"#1e2330", border:"none", color: currentPage===totalPages?"#3a4255":"#e8eaf0", borderRadius:5, padding:"4px 10px", cursor: currentPage===totalPages?"default":"pointer", fontSize:12 }}>
+              »
+            </button>
+          </div>
+        )}
       </div>
 
       {/* CF Table */}
@@ -2104,7 +2153,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((item, idx) => (
+                {paginated.map((item, idx) => (
                   <tr key={item.id} style={{ borderBottom:"1px solid #0d0f12", background: item.status === "paid" ? "rgba(34,197,94,0.04)" : idx%2===0 ? "rgba(255,255,255,0.01)" : "transparent" }}>
                     {/* Paid checkbox */}
                     <td style={{ padding:"10px 12px", textAlign:"center" }}>
@@ -2124,7 +2173,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                     {/* Amount */}
                     <td style={{ padding:"10px 12px", whiteSpace:"nowrap" }}>
                       <div style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, fontSize:15, color: item.status==="paid" ? "#22c55e" : "#f0c000" }}>
-                        HK${Number(item.amount).toLocaleString()}
+                        {item.amount > 0 ? `HK$${Number(item.amount).toLocaleString()}` : "—"}
                       </div>
                     </td>
                     {/* % */}
@@ -2147,11 +2196,29 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
               </tbody>
             </table>
           </div>
-          {/* Footer totals */}
-          <div style={{ display:"flex", gap:24, padding:"12px 16px", borderTop:"1px solid #1e2330", background:"#13161c" }}>
-            <div><span style={{ fontSize:10, color:"#3a4255" }}>篩選總額</span> <span style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, color:"#e8eaf0", marginLeft:6 }}>HK${totalAmt.toLocaleString()}</span></div>
-            <div><span style={{ fontSize:10, color:"#3a4255" }}>已收款</span> <span style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, color:"#22c55e", marginLeft:6 }}>HK${paidAmt.toLocaleString()}</span></div>
-            <div><span style={{ fontSize:10, color:"#3a4255" }}>待收款</span> <span style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, color:"#d63030", marginLeft:6 }}>HK${unpaidAmt.toLocaleString()}</span></div>
+          {/* Footer: totals + bottom pagination */}
+          <div style={{ borderTop:"1px solid #1e2330", background:"#13161c" }}>
+            <div style={{ display:"flex", gap:24, padding:"10px 16px", borderBottom:"1px solid #1e2330" }}>
+              <div><span style={{ fontSize:10, color:"#3a4255" }}>篩選總額</span> <span style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, color:"#e8eaf0", marginLeft:6 }}>HK${totalAmt.toLocaleString()}</span></div>
+              <div><span style={{ fontSize:10, color:"#3a4255" }}>已收款</span> <span style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, color:"#22c55e", marginLeft:6 }}>HK${paidAmt.toLocaleString()}</span></div>
+              <div><span style={{ fontSize:10, color:"#3a4255" }}>待收款</span> <span style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, color:"#d63030", marginLeft:6 }}>HK${unpaidAmt.toLocaleString()}</span></div>
+            </div>
+            {/* Bottom pagination */}
+            {totalPages > 1 && (
+              <div style={{ display:"flex", justifyContent:"center", gap:4, padding:"10px 16px" }}>
+                <button onClick={() => setCurrentPage(1)} disabled={currentPage===1}
+                  style={{ background:"#1e2330", border:"none", color: currentPage===1?"#3a4255":"#e8eaf0", borderRadius:5, padding:"6px 12px", cursor: currentPage===1?"default":"pointer", fontSize:12 }}>«</button>
+                <button onClick={() => setCurrentPage(p => Math.max(1,p-1))} disabled={currentPage===1}
+                  style={{ background:"#1e2330", border:"none", color: currentPage===1?"#3a4255":"#e8eaf0", borderRadius:5, padding:"6px 12px", cursor: currentPage===1?"default":"pointer", fontSize:12 }}>‹ 上頁</button>
+                <span style={{ padding:"6px 14px", fontSize:12, color:"#8891a4" }}>
+                  第 <strong style={{ color:"#f0c000" }}>{currentPage}</strong> / {totalPages} 頁
+                </span>
+                <button onClick={() => setCurrentPage(p => Math.min(totalPages,p+1))} disabled={currentPage===totalPages}
+                  style={{ background:"#1e2330", border:"none", color: currentPage===totalPages?"#3a4255":"#e8eaf0", borderRadius:5, padding:"6px 12px", cursor: currentPage===totalPages?"default":"pointer", fontSize:12 }}>下頁 ›</button>
+                <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage===totalPages}
+                  style={{ background:"#1e2330", border:"none", color: currentPage===totalPages?"#3a4255":"#e8eaf0", borderRadius:5, padding:"6px 12px", cursor: currentPage===totalPages?"default":"pointer", fontSize:12 }}>»</button>
+              </div>
+            )}
           </div>
         </div>
       )}
