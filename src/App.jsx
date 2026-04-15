@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap');
@@ -482,11 +482,13 @@ const styles = `
 const NAV_ITEMS = [
   { id: "dashboard", icon: "⬛", label: "總覽儀表板" },
   { id: "projects", icon: "🏗", label: "工程管理" },
+  { id: "staff", icon: "👷", label: "員工管理" },
   { id: "safety", icon: "🛡", label: "安全簽署", badge: 3 },
   { id: "attendance", icon: "📍", label: "GPS 考勤管理" },
   { id: "progress", icon: "📊", label: "施工進度回報", badge: 1 },
   { id: "invoice", icon: "💰", label: "自動化請款" },
   { id: "payroll", icon: "💼", label: "薪酬核算" },
+  { id: "empdocs", icon: "📁", label: "員工文件" },
   { id: "profit", icon: "📈", label: "報價利潤試算" },
   { id: "tax", icon: "🧾", label: "老闆稅務計算" },
 ];
@@ -494,25 +496,25 @@ const NAV_ITEMS = [
 const INITIAL_PROJECTS = [];
 
 const EMPLOYEES = [
-  { name: "姚奇敏", role: "電梯技工", days: 22, rate: 850, color: "#f0c000", signed: true, lat: "22.3193", lng: "114.1694" },
-  { name: "李國森", role: "電梯技工", days: 22, rate: 850, color: "#22c55e", signed: true, lat: "22.3201", lng: "114.1699" },
-  { name: "賴偉志", role: "電梯技工", days: 22, rate: 850, color: "#60a5fa", signed: true, lat: "22.3190", lng: "114.1691" },
-  { name: "韓小錦", role: "電梯技工", days: 22, rate: 850, color: "#a78bfa", signed: true, lat: "22.3195", lng: "114.1688" },
-  { name: "彭金花", role: "電梯技工", days: 22, rate: 850, color: "#fb923c", signed: true, lat: "22.3193", lng: "114.1694" },
-  { name: "李文彪", role: "電梯技工", days: 22, rate: 850, color: "#f43f5e", signed: true, lat: "22.3201", lng: "114.1699" },
-  { name: "吳昭鵬", role: "電梯技工", days: 22, rate: 850, color: "#06b6d4", signed: true, lat: "22.3190", lng: "114.1691" },
-  { name: "耿華成", role: "電梯技工", days: 22, rate: 850, color: "#84cc16", signed: true, lat: "22.3195", lng: "114.1688" },
-  { name: "蔡貴明", role: "電梯技工", days: 22, rate: 850, color: "#e879f9", signed: true, lat: "22.3193", lng: "114.1694" },
-  { name: "莫家文", role: "電梯技工", days: 22, rate: 850, color: "#f0c000", signed: true, lat: "22.3201", lng: "114.1699" },
-  { name: "陳文軒", role: "電梯技工", days: 22, rate: 850, color: "#22c55e", signed: true, lat: "22.3190", lng: "114.1691" },
-  { name: "李志軍", role: "電梯技工", days: 22, rate: 850, color: "#60a5fa", signed: true, lat: "22.3195", lng: "114.1688" },
-  { name: "蔡洵義", role: "電梯技工", days: 22, rate: 850, color: "#a78bfa", signed: true, lat: "22.3193", lng: "114.1694" },
-  { name: "蔡洵忠", role: "電梯技工", days: 22, rate: 850, color: "#fb923c", signed: true, lat: "22.3201", lng: "114.1699" },
-  { name: "鄧達財", role: "電梯技工", days: 22, rate: 850, color: "#f43f5e", signed: true, lat: "22.3190", lng: "114.1691" },
-  { name: "梁培煊", role: "電梯技工", days: 22, rate: 850, color: "#06b6d4", signed: true, lat: "22.3195", lng: "114.1688" },
-  { name: "馮永昌", role: "電梯技工", days: 22, rate: 850, color: "#84cc16", signed: true, lat: "22.3193", lng: "114.1694" },
-  { name: "陳煜良", role: "電梯技工", days: 22, rate: 850, color: "#e879f9", signed: true, lat: "22.3201", lng: "114.1699" },
-  { name: "李華渡", role: "電梯技工", days: 22, rate: 850, color: "#f0c000", signed: true, lat: "22.3190", lng: "114.1691" },
+  { id:1,  name:"姚奇敏", role:"電梯技工",    phone:"52392789", pin:"7823", color:"#FF6B1A", rate:850 },
+  { id:2,  name:"李國森", role:"電梯技工",    phone:"68908731", pin:"4591", color:"#22C55E", rate:850 },
+  { id:3,  name:"賴偉志", role:"電梯技工",    phone:"91498681", pin:"2067", color:"#60A5FA", rate:850 },
+  { id:4,  name:"韓小錦", role:"電梯技工",    phone:"57631557", pin:"9314", color:"#A78BFA", rate:850 },
+  { id:5,  name:"彭金花", role:"電梯技工",    phone:"93405725", pin:"6182", color:"#FB923C", rate:850 },
+  { id:6,  name:"李文彪", role:"電梯技工",    phone:"63573726", pin:"3759", color:"#F43F5E", rate:850 },
+  { id:7,  name:"吳昭鵬", role:"電梯技工",    phone:"56111810", pin:"8426", color:"#06B6D4", rate:850 },
+  { id:8,  name:"耿華成", role:"電梯技工",    phone:"95615270", pin:"1938", color:"#84CC16", rate:850 },
+  { id:9,  name:"蔡貴明", role:"電梯技工",    phone:"59383172", pin:"5073", color:"#E879F9", rate:850 },
+  { id:10, name:"莫家文", role:"電梯技工",    phone:"65704790", pin:"7261", color:"#F0C000", rate:850 },
+  { id:11, name:"陳文軒", role:"電梯技工",    phone:"51115103", pin:"3847", color:"#22C55E", rate:850 },
+  { id:12, name:"李志軍", role:"電梯技工",    phone:"98564747", pin:"6510", color:"#60A5FA", rate:850 },
+  { id:13, name:"蔡洵義", role:"電梯技工",    phone:"61503368", pin:"9284", color:"#A78BFA", rate:850 },
+  { id:14, name:"蔡洵忠", role:"電梯技工",    phone:"69323753", pin:"1673", color:"#FB923C", rate:850 },
+  { id:15, name:"鄧達財", role:"電梯技工",    phone:"55731042", pin:"4928", color:"#F43F5E", rate:850 },
+  { id:16, name:"梁培煊", role:"電梯技工",    phone:"69322800", pin:"7035", color:"#06B6D4", rate:850 },
+  { id:17, name:"馮永昌", role:"電梯技工",    phone:"92848912", pin:"2816", color:"#84CC16", rate:850 },
+  { id:18, name:"陳煜良", role:"電梯技工",    phone:"63062572", pin:"5394", color:"#E879F9", rate:850 },
+  { id:19, name:"李華渡", role:"電梯技工",    phone:"51156023", pin:"8167", color:"#F0C000", rate:850 },
 ];
 
 const INVOICES = [];
@@ -753,11 +755,7 @@ function Safety({ showToast, employees = EMPLOYEES }) {
             </thead>
             <tbody>
               {[
-                ["2025-07-15", "陳偉明", "觀塘工業大廈", "08:15:32", "iPhone 14 / GPS已確認"],
-                ["2025-07-15", "李志強", "觀塘工業大廈", "08:19:44", "Samsung S24 / GPS已確認"],
-                ["2025-07-14", "陳偉明", "旺角商業中心", "07:58:11", "iPhone 14 / GPS已確認"],
-                ["2025-07-14", "張建文", "荃灣住宅項目", "08:30:22", "iPhone 13 / GPS已確認"],
-                ["2025-07-13", "吳志偉", "觀塘工業大廈", "08:22:07", "OPPO A98 / GPS已確認"],
+                // GPS 考勤記錄從 Supabase 即時載入
               ].map((r, i) => (
                 <tr key={i}>
                   <td className="td-name">{r[0]}</td>
@@ -775,12 +773,12 @@ function Safety({ showToast, employees = EMPLOYEES }) {
 
 // ── Site GPS data (can be extended per project) ──────────────────────────────
 const SITE_GPS = {
-  "觀塘工業大廈 - A座":     { lat: "22.3108", lng: "114.2236" },
-  "旺角商業中心 - 電梯升級": { lat: "22.3193", lng: "114.1694" },
-  "荃灣住宅項目 - B棟":      { lat: "22.3726", lng: "114.1085" },
-  "沙田新城市廣場":           { lat: "22.3814", lng: "114.1880" },
-  "將軍澳住宅大廈":           { lat: "22.3059", lng: "114.2599" },
-  "屯門商場翻新":             { lat: "22.3960", lng: "113.9733" },
+  // 真實工地 GPS 座標 — 可在 GPS 考勤管理頁面設定
+  "EC-590大圓街GDS數據中心升降機": { lat: "22.3371", lng: "114.1340" },
+  "EC-662柴灣VTC":               { lat: "22.2786", lng: "114.2368" },
+  "EC-550屯門橋機":               { lat: "22.3960", lng: "113.9733" },
+  "EC-547將軍澳政府聯用辦工大樓":   { lat: "22.3059", lng: "114.2599" },
+  "EC-530西灣河綜合大樓":          { lat: "22.2797", lng: "114.2253" },
 };
 
 function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJECTS }) {
@@ -1268,7 +1266,7 @@ function Progress({ showToast, projects = INITIAL_PROJECTS }) {
                     </div>
                     <div className="timeline-content">
                       <div className="timeline-label">{t.label} <span className="timeline-pct">→ {t.pct}</span></div>
-                      <div className="timeline-meta">{t.meta} &nbsp;·&nbsp; 陳偉明 回報</div>
+                      <div className="timeline-meta">{t.meta} &nbsp;·&nbsp; 員工回報</div>
                     </div>
                   </div>
                 ))}
@@ -1310,7 +1308,7 @@ function Invoice({ showToast }) {
               <div style={{ fontSize: 28 }}>🤖</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 15, fontWeight: 700, color: "#f0c000", marginBottom: 4 }}>
-                  系統偵測：觀塘工業大廈 A座 已達「15% 訂金節點」
+                  系統偵測：工程已達「15% 訂金節點」
                 </div>
                 <div style={{ fontSize: 13, color: "#9aa0b4" }}>
                   進度確認：72% ≥ 觸發條件 20% ✓ &nbsp;|&nbsp; 請款金額：HK$70,000 &nbsp;|&nbsp; 草稿已生成
@@ -1360,10 +1358,7 @@ function Invoice({ showToast }) {
             </thead>
             <tbody>
               {[
-                ["觀塘工業大廈", "20% 進場開工", "2025-07-15", "HK$70,000", "yellow", "待發", "發送"],
-                ["旺角商業中心", "50% 路軌完成", "2025-07-01", "HK$260,000", "green", "已收", "–"],
-                ["沙田新城市廣場", "95% EMSD驗機", "2025-06-28", "HK$589,000", "blue", "審批中", "跟進"],
-                ["旺角商業中心", "20% 進場開工", "2025-05-15", "HK$104,000", "green", "已收", "–"],
+                // 發票記錄從 Supabase 載入
               ].map((r, i) => (
                 <tr key={i}>
                   <td className="td-name">{r[0]}</td>
@@ -1880,7 +1875,7 @@ function generateInvoicePDF(inv) {
 }
 
 // ── ProjectManager (CF-based) ─────────────────────────────────────────────────
-function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onDelete, dbConnected }) {
+function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onDelete, dbConnected, deadlineAlerts = [], sendDeadlineWhatsApp }) {
   // CF invoices loaded from Supabase invoices table (joined with project name)
   const [cfList, setCfList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1888,7 +1883,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
   const [filterPaid, setFilterPaid] = useState("all"); // all | paid | unpaid
   const [filterEC, setFilterEC] = useState("all");
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addForm, setAddForm] = useState({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "" });
+  const [addForm, setAddForm] = useState({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "", startDate: "", endDate: "", contactPhone: "" });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
@@ -1898,12 +1893,13 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
     try {
       // Use Supabase join: invoices → projects
       const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=cf_num.asc.nullslast`,
+        `${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=cf_num.asc.nullslast&limit=2000&offset=0`,
         { headers: { 
           "apikey": SUPABASE_KEY, 
           "Authorization": `Bearer ${SUPABASE_KEY}`,
+          "Prefer": "count=exact",
           "Range-Unit": "items",
-          "Range": "0-1499"
+          "Range": "0-1999"
         } }
       );
       const data = await res.json();
@@ -1918,6 +1914,9 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
         description: inv.label || inv.description || "",
         contractValue: inv.contract_value || "",
         projectId: inv.project_id,
+        startDate: inv.start_date || "",
+        endDate: inv.end_date || "",
+        contactPhone: inv.contact_phone || "",
       }));
       setCfList(flat);
     } catch(e) {
@@ -1932,6 +1931,56 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
   };
 
   useEffect(() => { loadCFList(); }, []);
+
+  // 🔔 Check deadlines every time cfList loads - send WhatsApp for projects ending within 10 days
+  const BOSS_PHONE = "85254442099"; // 老闆電話 (852 + 5444 2099)
+  const MAKE_WEBHOOK_DEADLINE = "https://hook.eu2.make.com/YOUR_DEADLINE_WEBHOOK"; // Make webhook
+
+  const [deadlineAlerts, setDeadlineAlerts] = useState([]);
+  const [notifiedCFs, setNotifiedCFs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("notifiedCFs") || "{}"); } catch { return {}; }
+  });
+
+  const sendDeadlineWhatsApp = async (inv, auto = false) => {
+    const daysLeft = Math.ceil((new Date(inv.endDate) - new Date()) / 86400000);
+    const msg = `⚠️ *工程完工期提醒*\n📋 工程：${inv.ecName}\n🔖 CF 號：${inv.cfNo}\n📅 結束日期：${inv.endDate}\n⏳ 距離結束：*${daysLeft} 日*\n請盡快跟進安排！`;
+    const recipients = [BOSS_PHONE];
+    if (inv.contactPhone && inv.contactPhone !== BOSS_PHONE) recipients.push(`852${inv.contactPhone.replace(/\D/g,"")}`);
+    try {
+      await fetch(MAKE_WEBHOOK_DEADLINE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg, phones: recipients, cf: inv.cfNo, project: inv.ecName, days_left: daysLeft, end_date: inv.endDate }),
+      });
+      if (!auto) showToast(`✅ WhatsApp 已發送至 ${recipients.length} 人 — ${inv.cfNo}`);
+    } catch(e) {
+      if (!auto) showToast("⚠️ 通知發送失敗，請檢查 Make Webhook", "error");
+    }
+  };
+
+  useEffect(() => {
+    if (cfList.length === 0) return;
+    const today = new Date();
+    const todayKey = today.toISOString().slice(0, 10);
+    const alerts = [];
+    cfList.forEach(inv => {
+      if (!inv.endDate || inv.status === "paid") return;
+      const end = new Date(inv.endDate);
+      const daysLeft = Math.ceil((end - today) / 86400000);
+      if (daysLeft >= 0 && daysLeft <= 10) {
+        alerts.push({ ...inv, daysLeft });
+        // Auto-send once per day per CF
+        const key = `${inv.cfNo}_${todayKey}`;
+        if (!notifiedCFs[key] && MAKE_WEBHOOK_DEADLINE !== "https://hook.eu2.make.com/YOUR_DEADLINE_WEBHOOK") {
+          sendDeadlineWhatsApp(inv, true);
+          const updated = { ...notifiedCFs, [key]: true };
+          setNotifiedCFs(updated);
+          try { localStorage.setItem("notifiedCFs", JSON.stringify(updated)); } catch {}
+        }
+      }
+    });
+    setDeadlineAlerts(alerts);
+  }, [cfList]);
 
   const togglePaid = async (item) => {
     const newStatus = item.status === "paid" ? "pending" : "paid";
@@ -1975,14 +2024,20 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
         amount: Number(addForm.amount),
         status: "pending",
         label: addForm.description,
+        start_date: addForm.startDate || null,
+        end_date: addForm.endDate || null,
+        contact_phone: addForm.contactPhone || null,
+        cf_num: parseInt(addForm.cfNo.replace(/[^0-9]/g,'')) || null,
       });
       setCfList(prev => [...prev, {
         id: newInv[0].id, cfNo: addForm.cfNo, ecName: addForm.ecName,
         amount: Number(addForm.amount), status: "pending",
         pct: addForm.pct, description: addForm.description,
         contractValue: addForm.contractValue, projectId,
-      }].sort((a,b) => a.cfNo.localeCompare(b.cfNo)));
-      setAddForm({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "" });
+        startDate: addForm.startDate, endDate: addForm.endDate,
+        contactPhone: addForm.contactPhone,
+      }].sort((a,b) => (a.cfNo||"").localeCompare(b.cfNo||"")));
+      setAddForm({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "", startDate: "", endDate: "", contactPhone: "" });
       setShowAddForm(false);
       showToast(`✅ ${addForm.cfNo} 已新增！`);
     } catch(e) {
@@ -2079,17 +2134,72 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
             <input value={addForm.ecName} onChange={e => setAddForm({...addForm, ecName: e.target.value})}
               placeholder="EC-550屯門醫院輕鐵站行人天橋NF411" className="form-input" style={{ width:"100%" }} />
           </div>
-          <div style={{ marginBottom:12 }}>
+          <div style={{ marginBottom:10 }}>
             <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>工程描述</div>
             <input value={addForm.description} onChange={e => setAddForm({...addForm, description: e.target.value})}
               placeholder="已完成客戶交機時安裝手尾" className="form-input" style={{ width:"100%" }} />
           </div>
+          {/* 🆕 Start/End dates + contact */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
+            <div>
+              <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>📅 開始日期</div>
+              <input type="date" value={addForm.startDate} onChange={e => setAddForm({...addForm, startDate: e.target.value})}
+                className="form-input" />
+            </div>
+            <div>
+              <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>📅 結束日期</div>
+              <input type="date" value={addForm.endDate} onChange={e => setAddForm({...addForm, endDate: e.target.value})}
+                className="form-input" style={{ borderColor: addForm.endDate ? "#f0c000" : "" }} />
+            </div>
+            <div>
+              <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>📱 工程聯絡人電話</div>
+              <input type="tel" value={addForm.contactPhone} onChange={e => setAddForm({...addForm, contactPhone: e.target.value})}
+                placeholder="9XXXXXXX" className="form-input" />
+            </div>
+          </div>
+          {addForm.endDate && (() => {
+            const daysLeft = Math.ceil((new Date(addForm.endDate) - new Date()) / 86400000);
+            return (
+              <div style={{ background: daysLeft <= 10 ? "rgba(239,68,68,0.1)" : "rgba(240,192,0,0.08)", border: `1px solid ${daysLeft <= 10 ? "#EF4444" : "#f0c000"}`, borderRadius:8, padding:"8px 12px", marginBottom:10, fontSize:12, color: daysLeft <= 10 ? "#EF4444" : "#f0c000" }}>
+                {daysLeft <= 0 ? `⚠️ 已超期 ${Math.abs(daysLeft)} 日` : daysLeft <= 10 ? `🔴 距離結束只剩 ${daysLeft} 日！將自動發送 WhatsApp 通知` : `✅ 距離結束還有 ${daysLeft} 日`}
+              </div>
+            );
+          })()}
           <div style={{ display:"flex", gap:8 }}>
             <button className="btn btn-primary" onClick={handleAddCF} disabled={saving} style={{ flex:1 }}>
               {saving ? "儲存中..." : "✅ 確認新增"}
             </button>
             <button className="btn btn-secondary" onClick={() => setShowAddForm(false)}>取消</button>
           </div>
+        </div>
+      )}
+
+      {/* 🔔 Deadline Alerts */}
+      {deadlineAlerts.length > 0 && (
+        <div style={{ background:"rgba(239,68,68,0.08)", border:"1.5px solid #EF4444", borderRadius:10, padding:12, marginBottom:14 }}>
+          <div style={{ fontFamily:"'Barlow Condensed'", fontSize:14, fontWeight:700, color:"#EF4444", marginBottom:10 }}>
+            🔴 即將到期工程 — {deadlineAlerts.length} 個
+          </div>
+          {deadlineAlerts.map(inv => {
+            const daysLeft = Math.ceil((new Date(inv.endDate) - new Date()) / 86400000);
+            return (
+              <div key={inv.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid rgba(239,68,68,0.2)" }}>
+                <div>
+                  <span style={{ color:"#f0c000", fontWeight:700, fontSize:13 }}>{inv.cfNo}</span>
+                  <span style={{ color:"#8891a4", fontSize:12, marginLeft:8 }}>{inv.ecName}</span>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ color: daysLeft <= 3 ? "#EF4444" : "#f0c000", fontWeight:800, fontSize:13 }}>
+                    {daysLeft === 0 ? "今日到期！" : `還剩 ${daysLeft} 日`}
+                  </span>
+                  <button onClick={() => sendDeadlineWhatsApp(inv)}
+                    style={{ background:"#25D366", border:"none", color:"#fff", borderRadius:6, padding:"4px 10px", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                    📱 通知
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -2158,8 +2268,12 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                 </tr>
               </thead>
               <tbody>
-                {paginated.map((item, idx) => (
-                  <tr key={item.id} style={{ borderBottom:"1px solid #0d0f12", background: item.status === "paid" ? "rgba(34,197,94,0.04)" : idx%2===0 ? "rgba(255,255,255,0.01)" : "transparent" }}>
+                {paginated.map((item, idx) => {
+                    const daysLeft = item.endDate ? Math.ceil((new Date(item.endDate) - new Date()) / 86400000) : null;
+                    const isNearDeadline = daysLeft !== null && daysLeft >= 0 && daysLeft <= 10;
+                    const isOverdue = daysLeft !== null && daysLeft < 0;
+                    return (
+                  <tr key={item.id} style={{ borderBottom:"1px solid #0d0f12", background: isNearDeadline ? "rgba(239,68,68,0.04)" : item.status === "paid" ? "rgba(34,197,94,0.04)" : idx%2===0 ? "rgba(255,255,255,0.01)" : "transparent" }}>
                     {/* Paid checkbox */}
                     <td style={{ padding:"10px 12px", textAlign:"center" }}>
                       <input type="checkbox" checked={item.status === "paid"} onChange={() => togglePaid(item)}
@@ -2172,7 +2286,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                       </span>
                     </td>
                     {/* EC Name */}
-                    <td style={{ padding:"10px 12px", maxWidth:240 }}>
+                    <td style={{ padding:"10px 12px", maxWidth:220 }}>
                       <div style={{ fontSize:12, color:"#e8eaf0", lineHeight:1.4 }}>{item.ecName}</div>
                     </td>
                     {/* Amount */}
@@ -2185,19 +2299,39 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                     <td style={{ padding:"10px 12px", color:"#9aa0b4", whiteSpace:"nowrap" }}>
                       {item.pct ? `${item.pct}%` : "—"}
                     </td>
-                    {/* Description */}
-                    <td style={{ padding:"10px 12px", color:"#555d6e", maxWidth:220 }}>
-                      <div style={{ lineHeight:1.4 }}>{(item.description||"").slice(0,60)}{(item.description||"").length>60?"…":""}</div>
+                    {/* Dates */}
+                    <td style={{ padding:"10px 12px", whiteSpace:"nowrap", minWidth:130 }}>
+                      {item.startDate || item.endDate ? (
+                        <div style={{ fontSize:11, lineHeight:1.8 }}>
+                          {item.startDate && <div style={{ color:"#8891a4" }}>▶ {item.startDate}</div>}
+                          {item.endDate && (
+                            <div style={{ color: isOverdue ? "#EF4444" : isNearDeadline ? "#f0c000" : "#8891a4", fontWeight: isNearDeadline||isOverdue ? 700 : 400 }}>
+                              ■ {item.endDate}
+                              {isNearDeadline && <span style={{ marginLeft:4, color:"#EF4444" }}>({daysLeft}日)</span>}
+                              {isOverdue && <span style={{ marginLeft:4, color:"#EF4444" }}>超期!</span>}
+                            </div>
+                          )}
+                        </div>
+                      ) : <span style={{ color:"#3a4255" }}>—</span>}
                     </td>
                     {/* Actions */}
                     <td style={{ padding:"10px 12px", whiteSpace:"nowrap" }}>
-                      <button onClick={() => generateInvoicePDF(item)}
-                        style={{ background:"none", border:"1px solid #2a3045", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
-                        🖨️ PDF
-                      </button>
+                      <div style={{ display:"flex", gap:4 }}>
+                        <button onClick={() => generateInvoicePDF(item)}
+                          style={{ background:"none", border:"1px solid #2a3045", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
+                          🖨️ PDF
+                        </button>
+                        {isNearDeadline && (
+                          <button onClick={() => sendDeadlineWhatsApp(item)}
+                            style={{ background:"#25D366", border:"none", color:"#fff", borderRadius:5, padding:"4px 8px", fontSize:11, cursor:"pointer" }}>
+                            📱
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -2232,6 +2366,539 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
 }
 
 
+// ─── EMPLOYEE DOCUMENTS (Admin View + PDF Export) ──────────────────────────
+function EmployeeDocs({ showToast, employees = [] }) {
+  const [selectedEmp, setSelectedEmp] = useState(null);
+  const [docs, setDocs] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const DOC_LABELS = {
+    greencard: "綠卡（安全訓練證書）",
+    id: "香港身份證",
+    address: "住址證明",
+    license: "升降機技工牌照",
+    medical: "體格檢查證明",
+  };
+
+  const loadDocs = async (empId) => {
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/employee_documents?employee_id=eq.${empId}&order=uploaded_at.desc`,
+        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+      );
+      const data = await res.json();
+      setDocs(data);
+    } catch(e) {
+      showToast("⚠️ 載入文件失敗", "error");
+    }
+    setLoading(false);
+  };
+
+  const handleSelectEmp = (emp) => {
+    setSelectedEmp(emp);
+    loadDocs(emp.id);
+  };
+
+  const generateDocPDF = (emp) => {
+    const w = window.open("", "_blank");
+    const dateStr = new Date().toLocaleDateString("zh-HK", { year:"numeric", month:"long", day:"numeric" });
+    const docRows = docs.map(d => `
+      <tr>
+        <td>${DOC_LABELS[d.doc_type] || d.doc_type}</td>
+        <td>${d.file_name}</td>
+        <td>${new Date(d.uploaded_at).toLocaleDateString("zh-HK")}</td>
+        <td style="color:${d.status==='approved'?'green':d.status==='rejected'?'red':'orange'}">${
+          d.status==='approved'?'✅ 已審批':d.status==='rejected'?'❌ 不合格':'⏳ 待審批'
+        }</td>
+      </tr>
+    `).join('');
+
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <style>
+      body{font-family:Arial,sans-serif;padding:40px;font-size:13px}
+      h1{font-size:20px;margin-bottom:4px}
+      h2{font-size:15px;color:#666;margin-bottom:20px}
+      table{width:100%;border-collapse:collapse;margin-top:16px}
+      th{background:#1a1a1a;color:#fff;padding:10px;text-align:left}
+      td{padding:10px;border-bottom:1px solid #ddd}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+      .company{font-size:18px;font-weight:bold}
+      .badge{background:#f0c000;color:#000;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:bold}
+      @media print{body{padding:20px}}
+    </style></head><body>
+    <div class="header">
+      <div>
+        <div class="company">俊輝電梯工程有限公司</div>
+        <div style="color:#666;font-size:12px;margin-top:4px">Chun Fai Lifts Engineering Co. Ltd.</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;color:#666">列印日期：${dateStr}</div>
+      </div>
+    </div>
+    <h1>員工文件記錄</h1>
+    <div style="margin-bottom:16px;padding:12px;background:#f5f5f5;border-radius:8px">
+      <div><strong>員工姓名：</strong>${emp.name}</div>
+      <div><strong>職位：</strong>${emp.role || "電梯技工"}</div>
+      <div><strong>電話：</strong>${emp.phone || "—"}</div>
+    </div>
+    <table>
+      <thead><tr><th>文件類型</th><th>檔案名稱</th><th>上傳日期</th><th>狀態</th></tr></thead>
+      <tbody>
+        ${docRows || '<tr><td colspan="4" style="text-align:center;color:#999">未有文件記錄</td></tr>'}
+      </tbody>
+    </table>
+    <div style="margin-top:30px;font-size:11px;color:#999;border-top:1px solid #ddd;padding-top:10px">
+      此文件由俊輝電梯工程管理系統自動生成 · 符合《升降機及自動梯條例》（第618章）員工記錄要求
+    </div>
+    <script>window.onload=()=>{window.print()}</script>
+    </body></html>`);
+    w.document.close();
+  };
+
+  const updateDocStatus = async (docId, status) => {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/employee_documents?id=eq.${docId}`, {
+        method: "PATCH",
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      setDocs(prev => prev.map(d => d.id === docId ? { ...d, status } : d));
+      showToast(`✅ 文件狀態已更新`);
+    } catch(e) { showToast("❌ 更新失敗", "error"); }
+  };
+
+  return (
+    <div style={{ display:"grid", gridTemplateColumns: selectedEmp ? "280px 1fr" : "1fr", gap:16 }}>
+      {/* Employee list */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">👷 員工列表</div>
+          <span className="badge green"><span className="badge-dot" />{employees.length} 人</span>
+        </div>
+        <div className="card-body" style={{ padding:"8px 12px" }}>
+          {employees.length === 0 ? (
+            <div style={{ textAlign:"center", color:"#555d6e", padding:20, fontSize:13 }}>
+              未有員工記錄<br/>請在 Supabase 新增員工
+            </div>
+          ) : employees.map(emp => (
+            <div key={emp.id} onClick={() => handleSelectEmp(emp)}
+              style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 8px", borderRadius:8, cursor:"pointer", background: selectedEmp?.id===emp.id?"rgba(240,192,0,0.1)":"transparent", border: selectedEmp?.id===emp.id?"1px solid rgba(240,192,0,0.3)":"1px solid transparent", marginBottom:4 }}>
+              <div style={{ width:32, height:32, borderRadius:"50%", background: emp.color||"#f0c000", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:13, color:"#0d0f12" }}>{emp.name?.[0]}</div>
+              <div>
+                <div style={{ fontSize:13, fontWeight:700, color:"#e8eaf0" }}>{emp.name}</div>
+                <div style={{ fontSize:11, color:"#555d6e" }}>{emp.role||"電梯技工"}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Document viewer */}
+      {selectedEmp && (
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">📁 {selectedEmp.name} 的文件</div>
+            <button onClick={() => generateDocPDF(selectedEmp)}
+              style={{ background:"#f0c000", color:"#0d0f12", border:"none", borderRadius:6, padding:"6px 14px", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+              🖨️ 輸出 PDF
+            </button>
+          </div>
+          <div className="card-body" style={{ padding:"12px 16px" }}>
+            {loading ? (
+              <div style={{ textAlign:"center", padding:24, color:"#555d6e" }}>載入中...</div>
+            ) : docs.length === 0 ? (
+              <div style={{ textAlign:"center", padding:24, color:"#555d6e" }}>
+                <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+                此員工未有上傳任何文件
+              </div>
+            ) : (
+              <table className="data-table">
+                <thead>
+                  <tr><th>文件類型</th><th>檔案名稱</th><th>上傳日期</th><th>狀態</th><th>操作</th></tr>
+                </thead>
+                <tbody>
+                  {docs.map(doc => (
+                    <tr key={doc.id}>
+                      <td style={{ fontWeight:700 }}>{DOC_LABELS[doc.doc_type] || doc.doc_type}</td>
+                      <td style={{ fontSize:12, color:"#9aa0b4" }}>{doc.file_name}</td>
+                      <td style={{ fontSize:12, color:"#9aa0b4" }}>{new Date(doc.uploaded_at).toLocaleDateString("zh-HK")}</td>
+                      <td>
+                        <span className={`badge ${doc.status==="approved"?"green":doc.status==="rejected"?"red":"yellow"}`}>
+                          <span className="badge-dot" />
+                          {doc.status==="approved"?"已審批":doc.status==="rejected"?"不合格":"待審批"}
+                        </span>
+                      </td>
+                      <td style={{ display:"flex", gap:6 }}>
+                        <button onClick={() => updateDocStatus(doc.id, "approved")}
+                          style={{ background:"rgba(34,197,94,0.15)", border:"none", color:"#22c55e", borderRadius:5, padding:"3px 8px", fontSize:11, cursor:"pointer" }}>✅ 批准</button>
+                        <button onClick={() => updateDocStatus(doc.id, "rejected")}
+                          style={{ background:"rgba(239,68,68,0.15)", border:"none", color:"#ef4444", borderRadius:5, padding:"3px 8px", fontSize:11, cursor:"pointer" }}>❌ 拒絕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Employee Docs ─────────────────────────────────────────────────────────────
+function EmployeeDocs({ showToast, employees = [] }) {
+  const [selEmp, setSelEmp] = useState(null);
+  const [docs, setDocs] = useState({}); // { empId: [{type, name, url, date}] }
+  const [loading, setLoading] = useState(false);
+
+  const DOC_TYPES = [
+    { id: "green_card", label: "綠卡（電梯工程安全訓練）", icon: "🟢", required: true },
+    { id: "id_card",    label: "香港身份證",               icon: "🪪", required: true },
+    { id: "address",    label: "住址證明",                 icon: "🏠", required: true },
+    { id: "medical",    label: "體格檢查證明",             icon: "🏥", required: false },
+    { id: "cert",       label: "其他專業資格證書",         icon: "📜", required: false },
+  ];
+
+  const allEmps = employees.length > 0 ? employees : [
+    { id:1, name:"姚奇敏", color:"#FF6B1A" },
+    { id:2, name:"李國森", color:"#22C55E" },
+    { id:3, name:"賴偉志", color:"#60A5FA" },
+  ];
+
+  const loadDocs = async (emp) => {
+    setSelEmp(emp);
+    if (docs[emp.id]) return;
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/employee_docs?employee_id=eq.${emp.id}&order=created_at.desc`,
+        { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+      );
+      const data = await res.json();
+      setDocs(prev => ({ ...prev, [emp.id]: data }));
+    } catch(e) {
+      setDocs(prev => ({ ...prev, [emp.id]: [] }));
+    }
+    setLoading(false);
+  };
+
+  const handleUpload = async (empId, docType, file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target.result;
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/employee_docs`, {
+          method: "POST",
+          headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" },
+          body: JSON.stringify({
+            employee_id: empId,
+            doc_type: docType,
+            file_name: file.name,
+            file_data: base64,
+            file_size: file.size,
+            uploaded_at: new Date().toISOString()
+          })
+        });
+        const [saved] = await res.json();
+        setDocs(prev => ({ ...prev, [empId]: [...(prev[empId] || []), saved] }));
+        showToast(`✅ ${file.name} 上傳成功！`);
+      } catch(e) {
+        showToast("❌ 上傳失敗", "error");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleExportPDF = (emp) => {
+    const empDocs = docs[emp.id] || [];
+    const w = window.open("", "_blank");
+    const today = new Date().toLocaleDateString("zh-HK");
+    const rows = DOC_TYPES.map(dt => {
+      const d = empDocs.find(x => x.doc_type === dt.id);
+      return `<tr>
+        <td>${dt.icon} ${dt.label}</td>
+        <td style="color:${d?"#22c55e":"#ef4444"}">${d?"✅ 已上傳":"❌ 待補交"}</td>
+        <td>${d ? new Date(d.uploaded_at).toLocaleDateString("zh-HK") : "–"}</td>
+        <td>${d ? d.file_name : "–"}</td>
+      </tr>`;
+    }).join("");
+    const imgTags = empDocs.filter(d=>d.file_data&&d.file_data.startsWith("data:image")).map(d=>
+      `<div style="margin:10px 0"><div style="font-size:12px;color:#666;margin-bottom:4px">${DOC_TYPES.find(t=>t.id===d.doc_type)?.label||d.doc_type}: ${d.file_name}</div><img src="${d.file_data}" style="max-width:100%;max-height:300px;border:1px solid #ddd"/></div>`
+    ).join("");
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+      body{font-family:Arial,sans-serif;padding:30px;font-size:13px}
+      h2{color:#1a1a1a}table{width:100%;border-collapse:collapse;margin:16px 0}
+      th{background:#1a1a1a;color:#fff;padding:8px 12px;text-align:left}
+      td{padding:8px 12px;border:1px solid #ddd}
+      .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid #f0c000}
+    </style></head><body>
+    <div class="header"><div><h2>員工文件存檔</h2><div style="font-size:12px;color:#666">俊輝電梯工程有限公司</div></div><div style="text-align:right;font-size:12px;color:#666">列印日期：${today}</div></div>
+    <div style="background:#f9f9f9;padding:12px;border-radius:6px;margin-bottom:16px">
+      <div style="font-size:16px;font-weight:700">${emp.name}</div>
+      <div style="font-size:12px;color:#666">${emp.role||"電梯技工"} · 手機：${emp.phone||"–"}</div>
+    </div>
+    <table><thead><tr><th>文件類型</th><th>狀態</th><th>上傳日期</th><th>檔案名稱</th></tr></thead><tbody>${rows}</tbody></table>
+    ${imgTags ? `<h3>文件圖片</h3>${imgTags}` : ""}
+    <script>window.onload=()=>{window.print()}</script></body></html>`);
+    w.document.close();
+  };
+
+  return (
+    <div>
+      <div style={{ display:"flex", gap:12, marginBottom:16, flexWrap:"wrap" }}>
+        {allEmps.map(emp => (
+          <div key={emp.id} onClick={() => loadDocs(emp)}
+            style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 16px", borderRadius:10, border:`1.5px solid ${selEmp?.id===emp.id?"#f0c000":"#1e2330"}`, background:selEmp?.id===emp.id?"#1a1f2e":"#13161c", cursor:"pointer", minWidth:160 }}>
+            <div style={{ width:34, height:34, borderRadius:"50%", background:emp.color||"#f0c000", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#0d0f12", fontSize:14 }}>{emp.name[0]}</div>
+            <div>
+              <div style={{ fontWeight:700, fontSize:14 }}>{emp.name}</div>
+              <div style={{ fontSize:11, color:"#555d6e" }}>
+                {docs[emp.id] ? `${docs[emp.id].length}/${DOC_TYPES.length} 份` : "點擊查看"}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {selEmp && (
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">📁 {selEmp.name} 的文件</div>
+            <button className="btn btn-primary btn-sm" onClick={() => handleExportPDF(selEmp)}>🖨️ 匯出 PDF</button>
+          </div>
+          <div className="card-body" style={{ padding:"12px 20px" }}>
+            {loading ? (
+              <div style={{ textAlign:"center", padding:24, color:"#555d6e" }}>載入中...</div>
+            ) : DOC_TYPES.map(dt => {
+              const existing = (docs[selEmp.id]||[]).filter(d => d.doc_type === dt.id);
+              return (
+                <div key={dt.id} style={{ marginBottom:16, padding:"14px 16px", background:"#0d0f12", borderRadius:10, border:"1px solid #1e2330" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                    <div>
+                      <span style={{ fontSize:18, marginRight:8 }}>{dt.icon}</span>
+                      <span style={{ fontWeight:700, fontSize:14 }}>{dt.label}</span>
+                      {dt.required && <span style={{ marginLeft:8, fontSize:10, color:"#d63030", fontWeight:700 }}>必須</span>}
+                    </div>
+                    <span style={{ fontSize:12, color: existing.length>0?"#22c55e":"#d63030", fontWeight:700 }}>
+                      {existing.length>0 ? `✅ ${existing.length} 份` : "❌ 待補交"}
+                    </span>
+                  </div>
+                  {existing.map((d,i) => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, padding:"6px 10px", background:"#13161c", borderRadius:6 }}>
+                      <span style={{ fontSize:12, color:"#22c55e" }}>📄</span>
+                      <span style={{ fontSize:12, color:"#e8eaf0", flex:1 }}>{d.file_name}</span>
+                      <span style={{ fontSize:11, color:"#3a4255" }}>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString("zh-HK") : ""}</span>
+                      {d.file_data && d.file_data.startsWith("data:image") && (
+                        <a href={d.file_data} target="_blank" style={{ fontSize:11, color:"#60a5fa" }}>預覽</a>
+                      )}
+                    </div>
+                  ))}
+                  <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", marginTop:6 }}>
+                    <input type="file" accept="image/*,application/pdf" style={{ display:"none" }}
+                      onChange={e => e.target.files[0] && handleUpload(selEmp.id, dt.id, e.target.files[0])} />
+                    <span style={{ background:"#1e2330", border:"1px dashed #2a3045", color:"#8891a4", borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:600 }}>
+                      📎 上傳 / 拍照
+                    </span>
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Staff Management ───────────────────────────────────────────────────────────
+function StaffManagement({ employees, setEmployees, showToast }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [form, setForm] = useState({ name:"", role:"電梯技工", phone:"", pin:"", rate:850, color:"#f0c000" });
+  const [pinVisible, setPinVisible] = useState({});
+
+  const ROLES = ["電梯技工","技術主管","助理技工","文員","管理人員"];
+  const COLORS = ["#FF6B1A","#22C55E","#60A5FA","#A78BFA","#FB923C","#F43F5E","#06B6D4","#84CC16","#E879F9","#F0C000"];
+
+  const genPin = () => Math.floor(1000+Math.random()*9000).toString();
+  const resetForm = () => setForm({ name:"", role:"電梯技工", phone:"", pin:genPin(), rate:850, color:"#f0c000" });
+
+  useEffect(() => { if (showAdd && !editId) setForm(f => ({ ...f, pin: genPin() })); }, [showAdd]);
+
+  const handleSave = async () => {
+    if (!form.name || !form.phone) { showToast("⚠️ 請填寫姓名及電話", "error"); return; }
+    if (form.pin.length !== 4 || !/^\d{4}$/.test(form.pin)) { showToast("⚠️ PIN 必須係4位數字", "error"); return; }
+    try {
+      if (editId) {
+        await sbUpdate("employees", editId, { name:form.name, role:form.role, phone:form.phone, pin:form.pin, daily_rate:Number(form.rate), color:form.color });
+        setEmployees(prev => prev.map(e => e.id===editId ? {...e, ...form, rate:Number(form.rate)} : e));
+        showToast("✅ 員工資料已更新！");
+      } else {
+        const res = await sbInsert("employees", { name:form.name, role:form.role, phone:form.phone, pin:form.pin, daily_rate:Number(form.rate), color:form.color, site:"工地" });
+        setEmployees(prev => [...prev, {...res[0], rate:res[0].daily_rate}]);
+        showToast(`✅ ${form.name} 已加入！PIN: ${form.pin}`);
+      }
+      setShowAdd(false); setEditId(null); resetForm();
+    } catch(e) { showToast("❌ 儲存失敗", "error"); }
+  };
+
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`確定刪除 ${name}？`)) return;
+    try {
+      await sbDelete("employees", id);
+      setEmployees(prev => prev.filter(e => e.id!==id));
+      showToast(`🗑️ ${name} 已移除`);
+    } catch(e) { showToast("❌ 刪除失敗", "error"); }
+  };
+
+  const handleResetPin = (emp) => {
+    const newPin = genPin();
+    setForm({ name:emp.name, role:emp.role||"電梯技工", phone:emp.phone||"", pin:newPin, rate:emp.rate||850, color:emp.color||"#f0c000" });
+    setEditId(emp.id);
+    setShowAdd(true);
+    showToast(`🔐 已產生新 PIN: ${newPin}，請按儲存確認`);
+  };
+
+  const empList = employees.length > 0 ? employees : [];
+
+  return (
+    <div>
+      {/* Stats */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:16 }}>
+        {[
+          { label:"員工總數", value:empList.length, color:"#f0c000" },
+          { label:"技術主管", value:empList.filter(e=>e.role==="技術主管").length, color:"#60a5fa" },
+          { label:"電梯技工", value:empList.filter(e=>e.role==="電梯技工").length, color:"#22c55e" },
+        ].map((k,i) => (
+          <div key={i} style={{ background:"#13161c", border:"1px solid #1e2330", borderRadius:10, padding:"12px 16px" }}>
+            <div style={{ fontSize:10, color:"#3a4255", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>{k.label}</div>
+            <div style={{ fontFamily:"'Barlow Condensed'", fontSize:28, fontWeight:800, color:k.color }}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
+        <button className="btn btn-primary" onClick={() => { resetForm(); setEditId(null); setShowAdd(!showAdd); }}>
+          {showAdd && !editId ? "✕ 收起" : "+ 新增員工"}
+        </button>
+      </div>
+
+      {/* Add/Edit form */}
+      {showAdd && (
+        <div style={{ background:"#13161c", border:"1px solid #f0c000", borderRadius:10, padding:16, marginBottom:16 }}>
+          <div style={{ fontFamily:"'Barlow Condensed'", fontSize:16, fontWeight:700, color:"#f0c000", marginBottom:12 }}>
+            {editId ? "✏️ 編輯員工" : "👷 新增員工"}
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>姓名 *</div>
+              <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="form-input" placeholder="員工姓名" />
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>電話 *</div>
+              <input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} className="form-input" placeholder="香港手機號碼" />
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>職位</div>
+              <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}
+                style={{ width:"100%", background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 10px", fontSize:13 }}>
+                {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>日薪 (HK$)</div>
+              <input type="number" value={form.rate} onChange={e=>setForm({...form,rate:e.target.value})} className="form-input" />
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>登入 PIN（4位數字）</div>
+              <div style={{ display:"flex", gap:6 }}>
+                <input type="text" maxLength={4} value={form.pin} onChange={e=>setForm({...form,pin:e.target.value.replace(/\D/g,"")})}
+                  className="form-input" placeholder="0000" style={{ flex:1, letterSpacing:4, fontWeight:800 }} />
+                <button onClick={() => setForm({...form,pin:genPin()})}
+                  style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#f0c000", borderRadius:6, padding:"6px 12px", cursor:"pointer", fontSize:12, whiteSpace:"nowrap" }}>
+                  🔀 隨機
+                </button>
+              </div>
+              <div style={{ fontSize:10, color:"#3a4255", marginTop:4 }}>員工用呢個 PIN 登入員工 App</div>
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>顏色標記</div>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                {COLORS.map(c => (
+                  <div key={c} onClick={()=>setForm({...form,color:c})}
+                    style={{ width:24, height:24, borderRadius:"50%", background:c, cursor:"pointer", border:form.color===c?"2px solid #fff":"2px solid transparent" }} />
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button className="btn btn-primary" onClick={handleSave} style={{ flex:1 }}>💾 儲存</button>
+            <button className="btn btn-secondary" onClick={() => { setShowAdd(false); setEditId(null); }}>取消</button>
+          </div>
+        </div>
+      )}
+
+      {/* Employee list */}
+      <div className="card" style={{ padding:0 }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+          <thead>
+            <tr style={{ background:"#13161c", borderBottom:"2px solid #1e2330" }}>
+              {["員工","職位","電話","日薪","PIN","操作"].map(h => (
+                <th key={h} style={{ padding:"10px 14px", textAlign:"left", fontSize:11, color:"#3a4255", textTransform:"uppercase", letterSpacing:0.8 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {empList.map((emp, idx) => (
+              <tr key={emp.id} style={{ borderBottom:"1px solid #0d0f12", background:idx%2===0?"rgba(255,255,255,0.01)":"transparent" }}>
+                <td style={{ padding:"10px 14px" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ width:28, height:28, borderRadius:"50%", background:emp.color||"#f0c000", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#0d0f12", fontSize:12 }}>{(emp.name||"?")[0]}</div>
+                    <span style={{ fontWeight:700 }}>{emp.name}</span>
+                  </div>
+                </td>
+                <td style={{ padding:"10px 14px", color:"#9aa0b4" }}>{emp.role||"電梯技工"}</td>
+                <td style={{ padding:"10px 14px", color:"#9aa0b4" }}>{emp.phone||"–"}</td>
+                <td style={{ padding:"10px 14px", color:"#f0c000", fontWeight:700 }}>HK${emp.rate||850}</td>
+                <td style={{ padding:"10px 14px" }}>
+                  <span style={{ background:"#1e2330", borderRadius:6, padding:"3px 10px", fontFamily:"monospace", fontSize:14, fontWeight:800, letterSpacing:2, color:"#f0c000" }}>
+                    {pinVisible[emp.id] ? (emp.pin||"????") : "••••"}
+                  </span>
+                  <button onClick={() => setPinVisible(p=>({...p,[emp.id]:!p[emp.id]}))}
+                    style={{ background:"none", border:"none", color:"#555d6e", cursor:"pointer", fontSize:12, marginLeft:4 }}>
+                    {pinVisible[emp.id]?"🙈":"👁️"}
+                  </button>
+                </td>
+                <td style={{ padding:"10px 14px" }}>
+                  <div style={{ display:"flex", gap:6 }}>
+                    <button onClick={() => { setForm({name:emp.name,role:emp.role||"電梯技工",phone:emp.phone||"",pin:emp.pin||"",rate:emp.rate||850,color:emp.color||"#f0c000"}); setEditId(emp.id); setShowAdd(true); }}
+                      style={{ background:"#1e2330", border:"none", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>✏️</button>
+                    <button onClick={() => handleResetPin(emp)}
+                      style={{ background:"#1e2330", border:"none", color:"#f0c000", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>🔐 PIN</button>
+                    <button onClick={() => handleDelete(emp.id, emp.name)}
+                      style={{ background:"rgba(214,48,48,0.1)", border:"none", color:"#d63030", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>🗑️</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {empList.length === 0 && (
+              <tr><td colSpan={6} style={{ textAlign:"center", padding:40, color:"#555d6e" }}>未有員工資料，請點「新增員工」</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* PIN update note */}
+      <div style={{ marginTop:12, background:"rgba(96,165,250,0.06)", border:"1px solid rgba(96,165,250,0.15)", borderRadius:8, padding:"12px 16px", fontSize:12, color:"#9aa0b4" }}>
+        💡 員工亦可以喺 Employee App 登入後自行更改 PIN 碼
+      </div>
+    </div>
+  );
+}
+
 // ─── HONG KONG TAX CALCULATOR (Limited Company) ────────────────────────────
 // Tax rates: 2024/25 assessment year
 // Profits Tax: 8.25% (first HK$2M), 16.5% (remainder) — two-tier
@@ -2252,9 +2919,9 @@ function TaxCalc({ showToast }) {
 
   // ── MPF inputs ──
   const [empList, setEmpList] = useState([
-    { name: "陳偉明", type: "long", monthlyIncome: 26400 },
-    { name: "李志強", type: "long", monthlyIncome: 17000 },
-    { name: "黃國輝", type: "casual", dailyIncome: 850, daysPerMonth: 18 },
+    { name: "員工A", type: "long", monthlyIncome: 26400 },
+    { name: "員工B", type: "long", monthlyIncome: 17000 },
+    { name: "員工C", type: "casual", dailyIncome: 850, daysPerMonth: 18 },
     { name: "張建文", type: "casual", dailyIncome: 650, daysPerMonth: 21 },
     { name: "吳志偉", type: "casual", dailyIncome: 650, daysPerMonth: 19 },
   ]);
@@ -2875,8 +3542,39 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [projects, setProjectsState] = useState(INITIAL_PROJECTS);
   const [employees, setEmployees] = useState(EMPLOYEES);
-  const [dbStatus, setDbStatus] = useState("loading"); // loading | connected | error
+  const [dbStatus, setDbStatus] = useState("loading");
   const [loadMsg, setLoadMsg] = useState("連接 Supabase...");
+  const [deadlineAlerts, setDeadlineAlerts] = useState([]);
+
+  // ── WhatsApp deadline notification via Make webhook ──
+  const MAKE_WEBHOOK = "https://hook.eu2.make.com/YOUR_WEBHOOK_ID"; // 換成你嘅 Make webhook
+  const BOSS_PHONE = "85254442099"; // 你的 WhatsApp 號碼（香港格式）
+
+  const checkDeadlines = async (projList) => {
+    const today = new Date();
+    const alerts = [];
+    for (const p of projList) {
+      if (!p.end || p.phase === "completed") continue;
+      const endDate = new Date(p.end);
+      const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+      if (daysLeft >= 0 && daysLeft <= 10) {
+        alerts.push({ ...p, daysLeft });
+        // Send WhatsApp via Make
+        try {
+          await fetch(MAKE_WEBHOOK, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              phone: BOSS_PHONE,
+              message: `⚠️ 工程完工期提醒\n工程：${p.name}\n完工日期：${p.end}\n距離完工：${daysLeft} 日\n進度：${p.pct}%\n請跟進！`
+            })
+          });
+        } catch(e) {}
+      }
+    }
+    setDeadlineAlerts(alerts);
+    return alerts;
+  };
 
   // ── Load real data on mount ──
   useEffect(() => {
@@ -2884,7 +3582,8 @@ export default function App() {
       try {
         setLoadMsg("載入工程項目...");
         const proj = await sbFetch("projects", { order: "created_at.asc" });
-        if (proj.length > 0) setProjectsState(proj.map(mapProject));
+        const mapped = proj.length > 0 ? proj.map(mapProject) : INITIAL_PROJECTS;
+        if (proj.length > 0) setProjectsState(mapped);
 
         setLoadMsg("載入員工資料...");
         const emps = await sbFetch("employees", { order: "created_at.asc" });
@@ -2892,6 +3591,12 @@ export default function App() {
 
         setDbStatus("connected");
         showToast("✅ 已連接 Supabase 真實資料庫！");
+
+        // Check deadlines after load
+        const alerts = await checkDeadlines(mapped);
+        if (alerts.length > 0) {
+          showToast(`⚠️ ${alerts.length} 個工程即將完工，已發送 WhatsApp 通知！`, "error");
+        }
       } catch (e) {
         console.error(e);
         setDbStatus("error");
@@ -2964,6 +3669,7 @@ export default function App() {
     progress: { icon: "📊", title: "施工進度", sub: "回報與預警" },
     invoice: { icon: "💰", title: "自動請款", sub: "上單系統" },
     payroll: { icon: "💼", title: "薪酬核算", sub: "自動計算" },
+    empdocs: { icon: "📁", title: "員工文件", sub: "綠卡 / ID / 住址證明" },
     profit: { icon: "📈", title: "報價利潤", sub: "試算工具" },
     tax: { icon: "🧾", title: "老闆稅務", sub: "計算器（香港有限公司）" },
   };
@@ -3023,7 +3729,31 @@ export default function App() {
 
           <div className="content">
             {active === "dashboard" && <Dashboard projects={projects} setActive={setActive} employees={employees} />}
-            {active === "projects"  && <ProjectManager projects={projects} setProjects={setProjects} showToast={showToast} onAdd={addProjectToDB} onUpdate={updateProjectInDB} onDelete={deleteProjectFromDB} dbConnected={dbStatus === "connected"} />}
+            {active === "projects"  && (
+              <>
+                {deadlineAlerts.length > 0 && (
+                  <div style={{ background:"rgba(239,68,68,0.08)", border:"1.5px solid rgba(239,68,68,0.3)", borderRadius:10, padding:"12px 16px", marginBottom:14 }}>
+                    <div style={{ fontWeight:700, color:"#ef4444", marginBottom:8, fontSize:14 }}>🔔 即將完工提醒（{deadlineAlerts.length} 個工程）</div>
+                    {deadlineAlerts.map((p,i) => (
+                      <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 0", borderBottom: i < deadlineAlerts.length-1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+                        <div style={{ fontSize:12, color:"#c4c9d8" }}>
+                          📅 <strong style={{ color:"#e8eaf0" }}>{p.ecName||p.name}</strong>
+                          {" — "}CF: {p.cfNo} — 距完工 <strong style={{ color: p.daysLeft<=3?"#ef4444":"#f0c000" }}>{p.daysLeft} 日</strong>（{p.endDate||p.end}）
+                        </div>
+                        <button onClick={() => { const pm = document.querySelector("[data-senddeadline='"+p.cfNo+"']"); if(pm) pm.click(); }}
+                          style={{ background:"rgba(239,68,68,0.15)", border:"1px solid rgba(239,68,68,0.3)", color:"#ef4444", borderRadius:6, padding:"3px 10px", fontSize:11, cursor:"pointer", whiteSpace:"nowrap", marginLeft:12 }}>
+                          📲 發送通知
+                        </button>
+                      </div>
+                    ))}
+                    <div style={{ fontSize:10, color:"#3a4255", marginTop:8 }}>💡 每日自動發送 WhatsApp 通知至老闆 + 工程負責人</div>
+                  </div>
+                )}
+                <ProjectManager projects={projects} setProjects={setProjects} showToast={showToast} onAdd={addProjectToDB} onUpdate={updateProjectInDB} onDelete={deleteProjectFromDB} dbConnected={dbStatus === "connected"} deadlineAlerts={deadlineAlerts} sendDeadlineWhatsApp={sendDeadlineWhatsApp} />
+              </>
+            )}
+            {active === "staff"   && <StaffManagement employees={employees} setEmployees={setEmployees} showToast={showToast} />}
+            {active === "empdocs" && <EmployeeDocs showToast={showToast} employees={employees} />}
             {active === "safety" && <Safety showToast={showToast} employees={employees} />}
             {active === "attendance" && <Attendance showToast={showToast} employees={employees} projects={projects} />}
             {active === "progress" && <Progress showToast={showToast} projects={projects} />}
