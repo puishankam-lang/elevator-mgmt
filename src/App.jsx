@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@300;400;500;600&display=swap');
@@ -522,42 +522,69 @@ const INVOICES = [];
 function Dashboard({ projects = INITIAL_PROJECTS, setActive, employees = EMPLOYEES }) {
   const totalSalary = employees.reduce((a, e) => a + (e.days || 22) * (e.rate || 0), 0);
   const activeProjects = projects.filter(p => p.phase === "active");
-  const alertProjects = projects.filter(p => p.pct < p.plan && p.phase === "active");
+
+  // Live invoice KPIs from Supabase
+  const [invoiceKpi, setInvoiceKpi] = useState({ total: 0, paid: 0, unpaid: 0, paidAmt: 0, unpaidAmt: 0, ecCount: 0 });
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/invoices?select=amount,status,stage&limit=2000`,
+          { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+        );
+        const data = await res.json();
+        if (!Array.isArray(data)) return;
+        const paid = data.filter(r => r.status === "paid");
+        const unpaid = data.filter(r => r.status !== "paid");
+        const ecSet = new Set(data.map(r => (r.stage||"").match(/^CF\d+/)?.[0]).filter(Boolean));
+        setInvoiceKpi({
+          total: data.length,
+          paid: paid.length,
+          unpaid: unpaid.length,
+          paidAmt: paid.reduce((a,r) => a + (r.amount||0), 0),
+          unpaidAmt: unpaid.reduce((a,r) => a + (r.amount||0), 0),
+          ecCount: ecSet.size,
+        });
+      } catch(e) {}
+    };
+    load();
+  }, []);
+
   return (
     <div>
       <div className="kpi-row">
         <div className="kpi-card" style={{ "--accent": "#f0c000" }}>
           <div className="kpi-icon">🏗</div>
-          <div className="kpi-label">進行中工程</div>
-          <div className="kpi-value"><span>{activeProjects.length}</span> 個</div>
-          <div className="kpi-sub">共 {projects.length} 個工程項目</div>
+          <div className="kpi-label">CF 發票總數</div>
+          <div className="kpi-value"><span>{invoiceKpi.total}</span> 張</div>
+          <div className="kpi-sub">待收款 {invoiceKpi.unpaid} 張</div>
         </div>
         <div className="kpi-card" style={{ "--accent": "#22c55e" }}>
           <div className="kpi-icon">👷</div>
-          <div className="kpi-label">今日簽到人數</div>
-          <div className="kpi-value"><span>4</span>/5</div>
-          <div className="kpi-sub">1 人未簽到 ⚠️</div>
+          <div className="kpi-label">員工人數</div>
+          <div className="kpi-value"><span>{employees.length}</span> 人</div>
+          <div className="kpi-sub">從 Supabase 即時載入</div>
         </div>
         <div className="kpi-card" style={{ "--accent": "#60a5fa" }}>
           <div className="kpi-icon">💰</div>
           <div className="kpi-label">待回收款項</div>
-          <div className="kpi-value"><span style={{fontSize:'22px'}}>HK$</span>349K</div>
-          <div className="kpi-sub">2 張請款單待發</div>
+          <div className="kpi-value"><span style={{fontSize:'22px'}}>HK$</span>{invoiceKpi.unpaidAmt >= 10000 ? (invoiceKpi.unpaidAmt/10000).toFixed(0)+"萬" : invoiceKpi.unpaidAmt.toLocaleString()}</div>
+          <div className="kpi-sub">{invoiceKpi.unpaid} 張請款單待發</div>
         </div>
         <div className="kpi-card" style={{ "--accent": "#a78bfa" }}>
           <div className="kpi-icon">💼</div>
           <div className="kpi-label">本月薪酬試算</div>
           <div className="kpi-value"><span style={{fontSize:'22px'}}>HK$</span>{(totalSalary/1000).toFixed(0)}K</div>
-          <div className="kpi-sub">5 名員工</div>
+          <div className="kpi-sub">{employees.length} 名員工</div>
         </div>
       </div>
 
-      {alertProjects.length > 0 && (
+      {activeProjects.length > 0 && (
         <div className="alert-strip">
           <div className="alert-icon">⚠️</div>
           <div className="alert-text">
             <strong style={{color:'#e8a0a0'}}>進度預警：</strong>
-            {alertProjects.map(p => `${p.name} — 實際 ${p.pct}%，計劃 ${p.plan}%，差距 ${p.plan - p.pct}%`).join('　|　')}
+            {activeProjects.filter(p => p.pct < p.plan).map(p => `${p.name} — 實際 ${p.pct}%，計劃 ${p.plan}%`).join('　|　')}
           </div>
           <div className="alert-time">剛剛</div>
         </div>
@@ -1916,12 +1943,12 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
   const BOSS_PHONE = "85254442099"; // 老闆電話 (852 + 5444 2099)
   const MAKE_WEBHOOK_DEADLINE = "https://hook.eu2.make.com/YOUR_DEADLINE_WEBHOOK"; // Make webhook
 
-  const [deadlineAlerts, setDeadlineAlerts] = useState([]);
+  const [cfDeadlineAlerts, setCfDeadlineAlerts] = useState([]);
   const [notifiedCFs, setNotifiedCFs] = useState(() => {
     try { return JSON.parse(localStorage.getItem("notifiedCFs") || "{}"); } catch { return {}; }
   });
 
-  const sendDeadlineWhatsApp = async (inv, auto = false) => {
+  const sendCFDeadlineWhatsApp = async (inv, auto = false) => {
     const daysLeft = Math.ceil((new Date(inv.endDate) - new Date()) / 86400000);
     const msg = `⚠️ *工程完工期提醒*\n📋 工程：${inv.ecName}\n🔖 CF 號：${inv.cfNo}\n📅 結束日期：${inv.endDate}\n⏳ 距離結束：*${daysLeft} 日*\n請盡快跟進安排！`;
     const recipients = [BOSS_PHONE];
@@ -1952,14 +1979,14 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
         // Auto-send once per day per CF
         const key = `${inv.cfNo}_${todayKey}`;
         if (!notifiedCFs[key] && MAKE_WEBHOOK_DEADLINE !== "https://hook.eu2.make.com/YOUR_DEADLINE_WEBHOOK") {
-          sendDeadlineWhatsApp(inv, true);
+          sendCFDeadlineWhatsApp(inv, true);
           const updated = { ...notifiedCFs, [key]: true };
           setNotifiedCFs(updated);
           try { localStorage.setItem("notifiedCFs", JSON.stringify(updated)); } catch {}
         }
       }
     });
-    setDeadlineAlerts(alerts);
+    setCfDeadlineAlerts(alerts);
   }, [cfList]);
 
   const togglePaid = async (item) => {
@@ -2155,12 +2182,12 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
       )}
 
       {/* 🔔 Deadline Alerts */}
-      {deadlineAlerts.length > 0 && (
+      {cfDeadlineAlerts.length > 0 && (
         <div style={{ background:"rgba(239,68,68,0.08)", border:"1.5px solid #EF4444", borderRadius:10, padding:12, marginBottom:14 }}>
           <div style={{ fontFamily:"'Barlow Condensed'", fontSize:14, fontWeight:700, color:"#EF4444", marginBottom:10 }}>
-            🔴 即將到期工程 — {deadlineAlerts.length} 個
+            🔴 即將到期工程 — {cfDeadlineAlerts.length} 個
           </div>
-          {deadlineAlerts.map(inv => {
+          {cfDeadlineAlerts.map(inv => {
             const daysLeft = Math.ceil((new Date(inv.endDate) - new Date()) / 86400000);
             return (
               <div key={inv.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid rgba(239,68,68,0.2)" }}>
@@ -2172,7 +2199,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                   <span style={{ color: daysLeft <= 3 ? "#EF4444" : "#f0c000", fontWeight:800, fontSize:13 }}>
                     {daysLeft === 0 ? "今日到期！" : `還剩 ${daysLeft} 日`}
                   </span>
-                  <button onClick={() => sendDeadlineWhatsApp(inv)}
+                  <button onClick={() => sendCFDeadlineWhatsApp(inv)}
                     style={{ background:"#25D366", border:"none", color:"#fff", borderRadius:6, padding:"4px 10px", fontSize:11, fontWeight:700, cursor:"pointer" }}>
                     📱 通知
                   </button>
@@ -2302,7 +2329,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                           🖨️ PDF
                         </button>
                         {isNearDeadline && (
-                          <button onClick={() => sendDeadlineWhatsApp(item)}
+                          <button onClick={() => sendCFDeadlineWhatsApp(item)}
                             style={{ background:"#25D366", border:"none", color:"#fff", borderRadius:5, padding:"4px 8px", fontSize:11, cursor:"pointer" }}>
                             📱
                           </button>
@@ -3546,7 +3573,7 @@ export default function App() {
                     <div style={{ fontSize:10, color:"#3a4255", marginTop:8 }}>💡 每日自動發送 WhatsApp 通知至老闆 + 工程負責人</div>
                   </div>
                 )}
-                <ProjectManager projects={projects} setProjects={setProjects} showToast={showToast} onAdd={addProjectToDB} onUpdate={updateProjectInDB} onDelete={deleteProjectFromDB} dbConnected={dbStatus === "connected"} deadlineAlerts={deadlineAlerts} sendDeadlineWhatsApp={sendDeadlineWhatsApp} />
+                <ProjectManager projects={projects} setProjects={setProjects} showToast={showToast} onAdd={addProjectToDB} onUpdate={updateProjectInDB} onDelete={deleteProjectFromDB} dbConnected={dbStatus === "connected"} />
               </>
             )}
             {active === "staff"   && <StaffManagement employees={employees} setEmployees={setEmployees} showToast={showToast} />}
