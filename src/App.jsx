@@ -3488,6 +3488,7 @@ export default function App() {
   const PAGE_TITLES = {
     dashboard: { icon: "⬛", title: "總覽", sub: "儀表板" },
     projects:  { icon: "🏗", title: "工程管理", sub: "新增 / 篩選 / 搜尋" },
+    staff:     { icon: "👷", title: "員工管理", sub: "人員 / PIN / 薪酬" },
     safety: { icon: "🛡", title: "安全條款", sub: "電子簽署" },
     attendance: { icon: "📍", title: "GPS 考勤", sub: "管理" },
     progress: { icon: "📊", title: "施工進度", sub: "回報與預警" },
@@ -3498,7 +3499,7 @@ export default function App() {
     tax: { icon: "🧾", title: "老闆稅務", sub: "計算器（香港有限公司）" },
   };
 
-  const pt = PAGE_TITLES[active];
+  const pt = PAGE_TITLES[active] || { icon: "📋", title: active, sub: "" };
 
   return (
     <>
