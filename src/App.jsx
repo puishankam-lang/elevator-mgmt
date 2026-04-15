@@ -495,27 +495,8 @@ const NAV_ITEMS = [
 
 const INITIAL_PROJECTS = [];
 
-const EMPLOYEES = [
-  { id:1,  name:"姚奇敏", role:"電梯技工",    phone:"52392789", pin:"7823", color:"#FF6B1A", rate:850 },
-  { id:2,  name:"李國森", role:"電梯技工",    phone:"68908731", pin:"4591", color:"#22C55E", rate:850 },
-  { id:3,  name:"賴偉志", role:"電梯技工",    phone:"91498681", pin:"2067", color:"#60A5FA", rate:850 },
-  { id:4,  name:"韓小錦", role:"電梯技工",    phone:"57631557", pin:"9314", color:"#A78BFA", rate:850 },
-  { id:5,  name:"彭金花", role:"電梯技工",    phone:"93405725", pin:"6182", color:"#FB923C", rate:850 },
-  { id:6,  name:"李文彪", role:"電梯技工",    phone:"63573726", pin:"3759", color:"#F43F5E", rate:850 },
-  { id:7,  name:"吳昭鵬", role:"電梯技工",    phone:"56111810", pin:"8426", color:"#06B6D4", rate:850 },
-  { id:8,  name:"耿華成", role:"電梯技工",    phone:"95615270", pin:"1938", color:"#84CC16", rate:850 },
-  { id:9,  name:"蔡貴明", role:"電梯技工",    phone:"59383172", pin:"5073", color:"#E879F9", rate:850 },
-  { id:10, name:"莫家文", role:"電梯技工",    phone:"65704790", pin:"7261", color:"#F0C000", rate:850 },
-  { id:11, name:"陳文軒", role:"電梯技工",    phone:"51115103", pin:"3847", color:"#22C55E", rate:850 },
-  { id:12, name:"李志軍", role:"電梯技工",    phone:"98564747", pin:"6510", color:"#60A5FA", rate:850 },
-  { id:13, name:"蔡洵義", role:"電梯技工",    phone:"61503368", pin:"9284", color:"#A78BFA", rate:850 },
-  { id:14, name:"蔡洵忠", role:"電梯技工",    phone:"69323753", pin:"1673", color:"#FB923C", rate:850 },
-  { id:15, name:"鄧達財", role:"電梯技工",    phone:"55731042", pin:"4928", color:"#F43F5E", rate:850 },
-  { id:16, name:"梁培煊", role:"電梯技工",    phone:"69322800", pin:"7035", color:"#06B6D4", rate:850 },
-  { id:17, name:"馮永昌", role:"電梯技工",    phone:"92848912", pin:"2816", color:"#84CC16", rate:850 },
-  { id:18, name:"陳煜良", role:"電梯技工",    phone:"63062572", pin:"5394", color:"#E879F9", rate:850 },
-  { id:19, name:"李華渡", role:"電梯技工",    phone:"51156023", pin:"8167", color:"#F0C000", rate:850 },
-];
+// Real employees are loaded from Supabase
+const EMPLOYEES = [];
 
 const INVOICES = [];
 
@@ -659,7 +640,7 @@ function Dashboard({ projects = INITIAL_PROJECTS, setActive, employees = EMPLOYE
               </tr>
             </thead>
             <tbody>
-              {EMPLOYEES.map((e, i) => (
+              {employees.map((e, i) => (
                 <tr key={i}>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -671,11 +652,11 @@ function Dashboard({ projects = INITIAL_PROJECTS, setActive, employees = EMPLOYE
                   </td>
                   <td>{e.role}</td>
                   <td>HK${e.rate}</td>
-                  <td>{e.days} 天</td>
-                  <td className="td-amount">HK${(e.days * e.rate).toLocaleString()}</td>
+                  <td>{e.days || 22} 天</td>
+                  <td className="td-amount">HK${((e.days || 22) * (e.rate || 0)).toLocaleString()}</td>
                   <td>
-                    <span className={`badge ${i === 2 ? "red" : "green"}`}>
-                      <span className="badge-dot" /> {i === 2 ? "未到" : "已簽到"}
+                    <span className="badge green">
+                      <span className="badge-dot" /> 已簽到
                     </span>
                   </td>
                   <td>
@@ -695,7 +676,10 @@ function Dashboard({ projects = INITIAL_PROJECTS, setActive, employees = EMPLOYE
 
 function Safety({ showToast, employees = EMPLOYEES }) {
   const [checked, setChecked] = useState(false);
-  const [signed, setSigned] = useState([true, true, false, true, true]);
+  const [signed, setSigned] = useState(() => employees.map(() => false));
+  useEffect(() => {
+    setSigned(prev => prev.length !== employees.length ? employees.map(() => false) : prev);
+  }, [employees.length]);
 
   const handleSign = (i) => {
     const n = [...signed];
@@ -746,7 +730,7 @@ function Safety({ showToast, employees = EMPLOYEES }) {
             <div className="card-action">導出記錄 →</div>
           </div>
           <div className="card-body" style={{ padding: "12px 20px" }}>
-            {EMPLOYEES.map((e, i) => (
+            {employees.map((e, i) => (
               <div key={i} className="emp-row">
                 <div className="emp-avatar" style={{ background: e.color }}>
                   {e.name[0]}
@@ -1405,7 +1389,7 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
         <div className="kpi-card" style={{ "--accent": "#f0c000" }}>
           <div className="kpi-label">本月薪酬總額</div>
           <div className="kpi-value" style={{fontSize:22}}>HK${totalSalary.toLocaleString()}</div>
-          <div className="kpi-sub">5 名員工，自動計算</div>
+          <div className="kpi-sub">{employees.length} 名員工，自動計算</div>
         </div>
         <div className="kpi-card" style={{ "--accent": "#22c55e" }}>
           <div className="kpi-label">最高出勤</div>
@@ -1438,9 +1422,8 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
               <tr><th>員工</th><th>職位</th><th>日薪</th><th>出勤天數</th><th>遲到扣薪</th><th>總薪酬</th><th>狀態</th></tr>
             </thead>
             <tbody>
-              {EMPLOYEES.map((e, i) => {
-                const deduct = [0, 0, 500, 0, 0][i];
-                const total = e.days * e.rate - deduct;
+              {employees.map((e, i) => {
+                const total = (e.days || 22) * (e.rate || 0);
                 return (
                   <tr key={i}>
                     <td>
@@ -1450,18 +1433,15 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
                       </div>
                     </td>
                     <td>{e.role}</td>
-                    <td>HK${e.rate}</td>
-                    <td style={{ color: e.days < 20 ? "#d63030" : "#9aa0b4" }}>
-                      {e.days} 天 {e.days < 20 && "⚠️"}
+                    <td>HK${e.rate || 0}</td>
+                    <td style={{ color: (e.days || 22) < 20 ? "#d63030" : "#9aa0b4" }}>
+                      {e.days || 22} 天 {(e.days || 22) < 20 && "⚠️"}
                     </td>
-                    <td style={{ color: deduct > 0 ? "#d63030" : "#3a4255" }}>
-                      {deduct > 0 ? `-HK$${deduct}` : "–"}
-                    </td>
+                    <td style={{ color: "#3a4255" }}>–</td>
                     <td className="td-amount">HK${total.toLocaleString()}</td>
                     <td>
-                      <span className={`badge ${i < 2 || i > 2 ? "yellow" : "red"}`}>
-                        <span className="badge-dot" />
-                        {i < 2 || i > 2 ? "待審批" : "需確認"}
+                      <span className="badge yellow">
+                        <span className="badge-dot" />待審批
                       </span>
                     </td>
                   </tr>
@@ -1469,7 +1449,7 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
               })}
               <tr>
                 <td colSpan={5} style={{ textAlign: "right", fontWeight: 700, color: "#c8d0e0", paddingRight: 16 }}>合計</td>
-                <td className="td-amount">HK${(totalSalary - 500).toLocaleString()}</td>
+                <td className="td-amount">HK${totalSalary.toLocaleString()}</td>
                 <td />
               </tr>
             </tbody>
@@ -1502,7 +1482,7 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
               <thead><tr><th>月份</th><th>薪酬總額</th><th>人數</th><th>狀態</th></tr></thead>
               <tbody>
                 {[
-                  ["2025年7月", `HK$${(totalSalary - 500).toLocaleString()}`, 5, "yellow", "待發"],
+                  ["2025年7月", `HK$${totalSalary.toLocaleString()}`, employees.length, "yellow", "待發"],
                   ["2025年6月", "HK$72,800", 5, "green", "已發"],
                   ["2025年5月", "HK$68,500", 4, "green", "已發"],
                   ["2025年4月", "HK$61,200", 4, "green", "已發"],
@@ -2053,6 +2033,56 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
     setSaving(false);
   };
 
+  const handleEditCF = (item) => {
+    setAddForm({
+      cfNo: item.cfNo,
+      ecName: item.ecName,
+      amount: String(item.amount),
+      pct: item.pct || "",
+      description: item.description || "",
+      contractValue: item.contractValue ? String(item.contractValue) : "",
+      startDate: item.startDate || "",
+      endDate: item.endDate || "",
+      contactPhone: item.contactPhone || "",
+    });
+    setEditingId(item.id);
+    setShowAddForm(true);
+  };
+
+  const handleUpdateCF = async () => {
+    if (!addForm.cfNo || !addForm.amount) {
+      showToast("⚠️ 請填寫 CF 號及金額", "error"); return;
+    }
+    setSaving(true);
+    try {
+      await sbUpdate("invoices", editingId, {
+        stage: addForm.cfNo,
+        amount: Number(addForm.amount),
+        label: addForm.description,
+        start_date: addForm.startDate || null,
+        end_date: addForm.endDate || null,
+        contact_phone: addForm.contactPhone || null,
+        cf_num: parseInt(addForm.cfNo.replace(/[^0-9]/g,'')) || null,
+      });
+      setCfList(prev => prev.map(c => c.id === editingId ? {
+        ...c,
+        cfNo: addForm.cfNo,
+        amount: Number(addForm.amount),
+        description: addForm.description,
+        startDate: addForm.startDate,
+        endDate: addForm.endDate,
+        contactPhone: addForm.contactPhone,
+      } : c));
+      setEditingId(null);
+      setAddForm({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "", startDate: "", endDate: "", contactPhone: "" });
+      setShowAddForm(false);
+      showToast(`✅ ${addForm.cfNo} 已更新！`);
+    } catch(e) {
+      showToast("❌ 更新失敗：" + e.message, "error");
+    }
+    setSaving(false);
+  };
+
   // Filtered list
   const PAGE_SIZE = 50;
   const [currentPage, setCurrentPage] = useState(1);
@@ -2113,7 +2143,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
           <option value="all">全部 EC 工程</option>
           {ecCodes.map(ec => <option key={ec} value={ec}>{ec}</option>)}
         </select>
-        <button className="btn btn-primary" onClick={() => setShowAddForm(!showAddForm)}>
+        <button className="btn btn-primary" onClick={() => { setShowAddForm(v => !v); setEditingId(null); }}>
           {showAddForm ? "✕ 收起" : "+ 新增 CF"}
         </button>
       </div>
@@ -2121,7 +2151,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
       {/* Add CF form */}
       {showAddForm && (
         <div style={{ background:"#13161c", border:"1px solid #f0c000", borderRadius:10, padding:16, marginBottom:16 }}>
-          <div style={{ fontFamily:"'Barlow Condensed'", fontSize:16, fontWeight:700, color:"#f0c000", marginBottom:12 }}>📋 新增 CF 發票</div>
+          <div style={{ fontFamily:"'Barlow Condensed'", fontSize:16, fontWeight:700, color:"#f0c000", marginBottom:12 }}>{editingId ? "✏️ 編輯 CF 發票" : "📋 新增 CF 發票"}</div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
             {[
               { label:"CF 號碼 *", key:"cfNo", ph:"CF01163" },
@@ -2142,9 +2172,19 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
               placeholder="EC-550屯門醫院輕鐵站行人天橋NF411" className="form-input" style={{ width:"100%" }} />
           </div>
           <div style={{ marginBottom:10 }}>
-            <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>工程描述</div>
-            <input value={addForm.description} onChange={e => setAddForm({...addForm, description: e.target.value})}
-              placeholder="已完成客戶交機時安裝手尾" className="form-input" style={{ width:"100%" }} />
+            <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>工程描述（可輸入或從清單選取）</div>
+            <input list="cf-desc-presets" value={addForm.description} onChange={e => setAddForm({...addForm, description: e.target.value})}
+              placeholder="輸入或選擇完工描述..." className="form-input" style={{ width:"100%" }} />
+            <datalist id="cf-desc-presets">
+              <option value="已完成客戶交機時安裝手尾" />
+              <option value="已完成機房及井道全面安裝，已拆棚交較車行慢車" />
+              <option value="已完成 EMSD 驗機，已完成保養部驗收手尾" />
+              <option value="已完成外門框、門頭、地砵，已完成主副路軌安裝及調校" />
+              <option value="已進場開工及提交秤線表" />
+              <option value="已完成拆除機房物料，已完成拆除井道物料" />
+              <option value="已提交秤線表，已完成機房及井道全面安裝，已完成外門框、門頭、地砵、外門" />
+              <option value="已完成 EMSD 驗機，已完成保養部驗收手尾，已完成客戶交機時安裝手尾" />
+            </datalist>
           </div>
           {/* 🆕 Start/End dates + contact */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
@@ -2173,10 +2213,10 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
             );
           })()}
           <div style={{ display:"flex", gap:8 }}>
-            <button className="btn btn-primary" onClick={handleAddCF} disabled={saving} style={{ flex:1 }}>
-              {saving ? "儲存中..." : "✅ 確認新增"}
+            <button className="btn btn-primary" onClick={editingId ? handleUpdateCF : handleAddCF} disabled={saving} style={{ flex:1 }}>
+              {saving ? "儲存中..." : editingId ? "✅ 確認更新" : "✅ 確認新增"}
             </button>
-            <button className="btn btn-secondary" onClick={() => setShowAddForm(false)}>取消</button>
+            <button className="btn btn-secondary" onClick={() => { setShowAddForm(false); setEditingId(null); setAddForm({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "", startDate: "", endDate: "", contactPhone: "" }); }}>取消</button>
           </div>
         </div>
       )}
@@ -2324,6 +2364,10 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                     {/* Actions */}
                     <td style={{ padding:"10px 12px", whiteSpace:"nowrap" }}>
                       <div style={{ display:"flex", gap:4 }}>
+                        <button onClick={() => handleEditCF(item)}
+                          style={{ background:"none", border:"1px solid #f0c000", color:"#f0c000", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
+                          ✏️
+                        </button>
                         <button onClick={() => generateInvoicePDF(item)}
                           style={{ background:"none", border:"1px solid #2a3045", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
                           🖨️ PDF
@@ -2387,11 +2431,7 @@ function EmployeeDocs({ showToast, employees = [] }) {
     { id: "cert",       label: "其他專業資格證書",         icon: "📜", required: false },
   ];
 
-  const allEmps = employees.length > 0 ? employees : [
-    { id:1, name:"姚奇敏", color:"#FF6B1A" },
-    { id:2, name:"李國森", color:"#22C55E" },
-    { id:3, name:"賴偉志", color:"#60A5FA" },
-  ];
+  const allEmps = employees;
 
   const loadDocs = async (emp) => {
     setSelEmp(emp);
@@ -2474,6 +2514,13 @@ function EmployeeDocs({ showToast, employees = [] }) {
 
   return (
     <div>
+      {allEmps.length === 0 && (
+        <div style={{ textAlign:"center", padding:40, color:"#555d6e", background:"#13161c", borderRadius:10, border:"1px solid #1e2330" }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>📁</div>
+          <div style={{ fontSize:14, marginBottom:8 }}>尚未有員工資料</div>
+          <div style={{ fontSize:12, color:"#3a4255" }}>請先在「員工管理」頁面新增員工</div>
+        </div>
+      )}
       <div style={{ display:"flex", gap:12, marginBottom:16, flexWrap:"wrap" }}>
         {allEmps.map(emp => (
           <div key={emp.id} onClick={() => loadDocs(emp)}
@@ -3356,7 +3403,7 @@ const mapProject = p => ({
   start: p.start_date, end: p.end_date,
 });
 const mapEmployee = e => ({
-  id: e.id, name: e.name, role: e.role, phone: e.phone,
+  id: e.id, name: e.name, role: e.role, phone: e.phone, pin: e.pin,
   rate: e.daily_rate, site: e.site, color: e.color || "#f0c000",
   days: 22, signed: true, lat: "22.3193", lng: "114.1694",
 });
@@ -3365,7 +3412,7 @@ export default function App() {
   const [active, setActive] = useState("dashboard");
   const [toast, setToast] = useState(null);
   const [projects, setProjectsState] = useState(INITIAL_PROJECTS);
-  const [employees, setEmployees] = useState(EMPLOYEES);
+  const [employees, setEmployees] = useState([]);
   const [dbStatus, setDbStatus] = useState("loading");
   const [loadMsg, setLoadMsg] = useState("連接 Supabase...");
   const [deadlineAlerts, setDeadlineAlerts] = useState([]);
@@ -3411,7 +3458,7 @@ export default function App() {
 
         setLoadMsg("載入員工資料...");
         const emps = await sbFetch("employees", { order: "created_at.asc" });
-        if (emps.length > 0) setEmployees(emps.map(mapEmployee));
+        setEmployees(emps.map(mapEmployee));
 
         setDbStatus("connected");
         showToast("✅ 已連接 Supabase 真實資料庫！");
