@@ -680,7 +680,7 @@ function Safety({ showToast, employees = EMPLOYEES }) {
   return (
     <div>
       <div className="sub-tabs" style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 13, color: '#9aa0b4' }}>今日日期：2025年7月15日 &nbsp;|&nbsp; 工地：觀塘工業大廈 A座</div>
+        <div style={{ fontSize: 13, color: '#9aa0b4' }}>今日日期：{new Date().toLocaleDateString('zh-HK', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}</div>
       </div>
 
       <div className="grid-2">
@@ -705,7 +705,7 @@ function Safety({ showToast, employees = EMPLOYEES }) {
           <div className="btn-row">
             <button
               className={`btn ${checked ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => checked && showToast("✅ 簽署成功！時間戳記：2025-07-15 08:23:14", "success")}
+              onClick={() => checked && showToast(`✅ 簽署成功！時間戳記：${new Date().toLocaleString('zh-HK')}`, "success")}
             >
               ✍️ 確認簽署
             </button>
@@ -1249,27 +1249,10 @@ function Progress({ showToast, projects = INITIAL_PROJECTS }) {
           </div>
 
           <div className="card">
-            <div className="card-header"><div className="card-title">回報時間軸（觀塘項目）</div></div>
+            <div className="card-header"><div className="card-title">回報時間軸</div></div>
             <div className="card-body">
-              <div className="timeline">
-                {[
-                  { label: "完成主機房電源接駁", meta: "2025-07-15 17:30", pct: "72%" },
-                  { label: "安裝完成 B2 至 1F 主軌道", meta: "2025-07-10 16:45", pct: "60%" },
-                  { label: "完成基坑防護及底部緩衝器", meta: "2025-07-05 15:20", pct: "45%" },
-                  { label: "機房混凝土澆築完成", meta: "2025-06-28 14:00", pct: "30%" },
-                  { label: "15% 訂金節點達成", meta: "2025-06-20 09:00", pct: "15%" },
-                ].map((t, i) => (
-                  <div key={i} className="timeline-item">
-                    <div className="timeline-line-wrap">
-                      <div className={`timeline-dot ${i > 0 ? "" : ""}`} />
-                      {i < 4 && <div className="timeline-connector" style={{ minHeight: 28 }} />}
-                    </div>
-                    <div className="timeline-content">
-                      <div className="timeline-label">{t.label} <span className="timeline-pct">→ {t.pct}</span></div>
-                      <div className="timeline-meta">{t.meta} &nbsp;·&nbsp; 員工回報</div>
-                    </div>
-                  </div>
-                ))}
+              <div style={{ color: '#9aa0b4', fontSize: 13, padding: '20px 0', textAlign: 'center' }}>
+                📋 進度回報從 Supabase 即時載入
               </div>
             </div>
           </div>
@@ -1400,17 +1383,17 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
         <div className="kpi-card" style={{ "--accent": "#22c55e" }}>
           <div className="kpi-label">最高出勤</div>
           <div className="kpi-value">22 <span style={{fontSize:14}}>天</span></div>
-          <div className="kpi-sub">陳偉明</div>
+          <div className="kpi-sub">從 Supabase 即時載入</div>
         </div>
         <div className="kpi-card" style={{ "--accent": "#d63030" }}>
           <div className="kpi-label">缺勤警示</div>
-          <div className="kpi-value"><span>1</span> 人</div>
-          <div className="kpi-sub">黃國輝 — 18天</div>
+          <div className="kpi-value"><span>—</span></div>
+          <div className="kpi-sub">從考勤記錄計算</div>
         </div>
         <div className="kpi-card" style={{ "--accent": "#60a5fa" }}>
           <div className="kpi-label">發薪日</div>
-          <div className="kpi-value" style={{fontSize:20}}>7 <span style={{fontSize:14}}>月 31 日</span></div>
-          <div className="kpi-sub">距今 16 天</div>
+          <div className="kpi-value" style={{fontSize:20}}>{new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate()} <span style={{fontSize:14}}>日</span></div>
+          <div className="kpi-sub">{new Date().getMonth()+1} 月月底</div>
         </div>
       </div>
 
@@ -1523,10 +1506,7 @@ function ProfitCalc({ showToast }) {
   ]);
   const [subcontract, setSubcontract] = useState(0);
   const [overhead, setOverhead] = useState(5000);
-  const [savedQuotes, setSavedQuotes] = useState([
-    { name: "旺角商業中心報價", value: 350000, labour: 68000, sub: 0, over: 12000, profit: 270000 },
-    { name: "荃灣住宅 B棟報價", value: 200000, labour: 38000, sub: 15000, over: 8000, profit: 139000 },
-  ]);
+  const [savedQuotes, setSavedQuotes] = useState([]);
 
   const labourTotal = workers.reduce((a, w) => a + w.days * w.rate, 0);
   const totalCost = labourTotal + subcontract + overhead;
@@ -2922,8 +2902,6 @@ function TaxCalc({ showToast }) {
     { name: "員工A", type: "long", monthlyIncome: 26400 },
     { name: "員工B", type: "long", monthlyIncome: 17000 },
     { name: "員工C", type: "casual", dailyIncome: 850, daysPerMonth: 18 },
-    { name: "張建文", type: "casual", dailyIncome: 650, daysPerMonth: 21 },
-    { name: "吳志偉", type: "casual", dailyIncome: 650, daysPerMonth: 19 },
   ]);
 
   // ── Director Salaries Tax inputs ──
