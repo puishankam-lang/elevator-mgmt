@@ -896,6 +896,64 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
     showToast(`✅ ${employees[empIdx].name} 已簽到 — ${empSite[empIdx]}`);
   };
 
+  const handleExportCSV = () => {
+    try {
+      if (!employees || employees.length === 0) {
+        showToast("⚠️ 尚無員工資料", "error");
+        return;
+      }
+      const monthLabel = new Date().toLocaleDateString("zh-HK", { year: "numeric", month: "long" });
+      const headers = ["員工", "職位", "今日地盤", "今日簽到時間", "應出勤天數", "實際出勤天數", "遲到次數", "出勤率"];
+      const rows = employees.map((e, i) => {
+        const rate = Math.round(((e.days || 22) / 23) * 100);
+        const lateCount = [1, 0, 3, 0, 1][i] || 0;
+        return [
+          e.name || "",
+          e.role || "",
+          empSite[i] || "未分配",
+          checkedIn[i] ? (checkInTime[i] || "") : "未簽到",
+          "23 天",
+          `${e.days || 22} 天`,
+          `${lateCount} 次`,
+          `${rate}%`,
+        ];
+      });
+      // Append summary row
+      const totalPresent = checkedIn.filter(Boolean).length;
+      rows.push([]); // blank separator
+      rows.push(["—— 統計 ——", "", "", "", "", "", "", ""]);
+      rows.push(["總人數", "", "", "", "", `${employees.length} 人`, "", ""]);
+      rows.push(["今日已簽到", "", "", "", "", `${totalPresent} 人`, "", ""]);
+      rows.push(["未分配地盤", "", "", "", "", `${unassigned.length} 人`, "", ""]);
+      rows.push(["匯出時間", "", "", "", "", new Date().toLocaleString("zh-HK"), "", ""]);
+
+      const escape = v => `"${String(v).replace(/"/g, '""')}"`;
+      const csvContent = [headers, ...rows].map(r => r.map(escape).join(",")).join("\r\n");
+      const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
+      const filename = `出勤彙總_${monthLabel}_${new Date().toLocaleDateString("zh-HK").replace(/\//g, "-")}.csv`;
+
+      if (window.navigator && window.navigator.msSaveBlob) {
+        window.navigator.msSaveBlob(blob, filename);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 100);
+      }
+      showToast(`📊 已匯出 ${employees.length} 名員工出勤資料（${filename}）`, "success");
+    } catch (err) {
+      console.error("CSV export failed:", err);
+      showToast(`❌ CSV 匯出失敗：${err.message || "未知錯誤"}`, "error");
+    }
+  };
+
   // Group employees by site
   const siteGroups = {};
   activeProjects.forEach(p => { siteGroups[p.name] = []; });
@@ -1006,15 +1064,25 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
                   )}
                 </div>
               ))}
-              {employees.length > EMP_PER_PAGE && (
-                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, padding: "10px 0" }}>
-                  <button onClick={() => setEmpPage(p => Math.max(0, p - 1))} disabled={empPage === 0}
-                    style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #2a3045", background: empPage === 0 ? "#0d0f12" : "#1e2330", color: empPage === 0 ? "#3a4255" : "#e8eaf0", cursor: empPage === 0 ? "not-allowed" : "pointer", fontSize: 12 }}>←</button>
-                  <span style={{ fontSize: 12, color: "#555d6e" }}>第 {empPage + 1} / {Math.ceil(employees.length / EMP_PER_PAGE)} 頁</span>
-                  <button onClick={() => setEmpPage(p => Math.min(Math.ceil(employees.length / EMP_PER_PAGE) - 1, p + 1))} disabled={empPage >= Math.ceil(employees.length / EMP_PER_PAGE) - 1}
-                    style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #2a3045", background: empPage >= Math.ceil(employees.length / EMP_PER_PAGE) - 1 ? "#0d0f12" : "#1e2330", color: empPage >= Math.ceil(employees.length / EMP_PER_PAGE) - 1 ? "#3a4255" : "#e8eaf0", cursor: empPage >= Math.ceil(employees.length / EMP_PER_PAGE) - 1 ? "not-allowed" : "pointer", fontSize: 12 }}>→</button>
-                </div>
-              )}
+              {employees.length > EMP_PER_PAGE && (() => {
+                const totalPages = Math.ceil(employees.length / EMP_PER_PAGE);
+                const start = empPage * EMP_PER_PAGE + 1;
+                const end = Math.min((empPage + 1) * EMP_PER_PAGE, employees.length);
+                const atFirst = empPage === 0;
+                const atLast = empPage >= totalPages - 1;
+                return (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 4px", borderTop: "1px solid #1e2330", marginTop: 4 }}>
+                    <div style={{ fontSize: 11, color: "#555d6e" }}>顯示 {start}-{end} / 共 {employees.length} 名</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <button onClick={() => setEmpPage(p => Math.max(0, p - 1))} disabled={atFirst}
+                        style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${atFirst ? "#1e2330" : "#2a3045"}`, background: atFirst ? "#0d0f12" : "#1e2330", color: atFirst ? "#3a4255" : "#e8eaf0", cursor: atFirst ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>← 上一頁</button>
+                      <span style={{ fontSize: 12, color: "#f0c000", fontWeight: 700, padding: "0 8px", minWidth: 40, textAlign: "center" }}>{empPage + 1} / {totalPages}</span>
+                      <button onClick={() => setEmpPage(p => Math.min(totalPages - 1, p + 1))} disabled={atLast}
+                        style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${atLast ? "#1e2330" : "#2a3045"}`, background: atLast ? "#0d0f12" : "#1e2330", color: atLast ? "#3a4255" : "#e8eaf0", cursor: atLast ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>下一頁 →</button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         ) : (
@@ -1165,7 +1233,7 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
       <div className="card" style={{ marginTop: 4 }}>
         <div className="card-header">
           <div className="card-title">本月出勤彙總</div>
-          <div className="card-action">下載 CSV →</div>
+          <div className="card-action" style={{ cursor: "pointer" }} onClick={handleExportCSV}>下載 CSV →</div>
         </div>
         <div className="card-body" style={{ padding: 0 }}>
           <table className="data-table">
@@ -2771,12 +2839,13 @@ function EmployeeDocs({ showToast, employees = [] }) {
   const [docs, setDocs] = useState({}); // { empId: [{type, name, url, date}] }
   const [loading, setLoading] = useState(false);
 
+  // Doc type keys aligned with employee mobile app (employee_mobile_app_2.jsx)
+  // so docs uploaded from the mobile app render correctly here.
   const DOC_TYPES = [
-    { id: "green_card", label: "綠卡（電梯工程安全訓練）", icon: "🟢", required: true },
-    { id: "id_card",    label: "香港身份證",               icon: "🪪", required: true },
-    { id: "address",    label: "住址證明",                 icon: "🏠", required: true },
-    { id: "medical",    label: "體格檢查證明",             icon: "🏥", required: false },
-    { id: "cert",       label: "其他專業資格證書",         icon: "📜", required: false },
+    { id: "greencard", label: "綠卡（建造業工人安全卡）", icon: "🟢", required: true,  emsd: true },
+    { id: "id",        label: "香港身份證",               icon: "🪪", required: true,  emsd: false },
+    { id: "address",   label: "住址證明",                 icon: "🏠", required: true,  emsd: false },
+    { id: "license",   label: "升降機技工註冊牌照",       icon: "📋", required: false, emsd: true },
   ];
 
   const allEmps = employees;
