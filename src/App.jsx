@@ -531,6 +531,7 @@ const NAV_ITEMS = [
   { id: "payroll", icon: "💼", label: "薪酬核算" },
   { id: "empdocs", icon: "📁", label: "員工文件" },
   { id: "leave", icon: "📝", label: "請假審批" },
+  { id: "calendar", icon: "📅", label: "行事曆" },
   { id: "profit", icon: "📈", label: "報價利潤試算" },
   { id: "tax", icon: "🧾", label: "老闆稅務計算" },
   { id: "settings", icon: "⚙️", label: "系統設定" },
@@ -1435,12 +1436,52 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, employees = [], onUp
     setNote(desc); // auto-fill note with stage content
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const activeList = projects.filter(p => p.phase === "active");
     const selected = activeList[projectIdx];
     if (selected && pct) onUpdateProgress?.(selected.name, Number(pct));
     const statusLabel = milestoneStatus === "in_progress" ? "🔄 進行中" : "✅ 已完成";
-    showToast(`📊 進度回報已提交：${selected?.name} — ${pct}% ${statusLabel}（圖表已即時更新）`, "success");
+
+    // Auto-trigger 自動請款: when milestone marked as 已完成此節點, create
+    // a CF invoice for (contract value × pct%) and insert into invoices table.
+    // Admin can then print/send it from 工程管理 → 🖨️ PDF.
+    if (milestoneStatus === "done" && selected) {
+      const contractValue = Number(selected.value || 0);
+      const amount = Math.round(contractValue * Number(pct) / 100);
+      if (contractValue > 0 && amount > 0) {
+        try {
+          // Find next CF number (max existing + 1)
+          const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/invoices?select=cf_num&order=cf_num.desc.nullslast&limit=1`,
+            { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+          );
+          const rows = await res.json();
+          const nextNum = (Array.isArray(rows) && rows[0]?.cf_num ? Number(rows[0].cf_num) : 0) + 1;
+          const cfNoFmt = `CF${String(nextNum).padStart(5, "0")}`;
+          const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/invoices`, {
+            method: "POST",
+            headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+            body: JSON.stringify({
+              project_id: selected.id,
+              stage: cfNoFmt,
+              amount,
+              label: stageDesc || `${pct}% 完工節點`,
+              cf_num: nextNum,
+              status: "pending",
+            }),
+          });
+          if (!insertRes.ok) throw new Error(`HTTP ${insertRes.status}`);
+          showToast(`✅ ${selected.name} ${pct}% 已完成 — 自動產生 ${cfNoFmt} 請款 HK$${amount.toLocaleString()}`, "success");
+        } catch (e) {
+          showToast(`📊 進度已提交，但自動請款失敗：${e.message}`, "error");
+        }
+      } else {
+        showToast(`📊 進度回報已提交：${selected?.name} — ${pct}% ${statusLabel}（合約金額未設定，未產生請款）`, "success");
+      }
+    } else {
+      showToast(`📊 進度回報已提交：${selected?.name} — ${pct}% ${statusLabel}（圖表已即時更新）`, "success");
+    }
+
     setNote("");
     setStageDesc("");
   };
@@ -4483,6 +4524,181 @@ const LEAVE_TYPE_META = {
   other:        { label: "其他",   icon: "📝",  color: "#9CA3AF" },
 };
 
+// ── Calendar Page ─────────────────────────────────────────────────────────────
+// Month-grid view with three event layers: leave (per-employee), project
+// completion deadlines, and project milestone targets. Click a date to see
+// the day's events in a side panel.
+function CalendarPage({ employees = [], projects = [] }) {
+  const [cursor, setCursor] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const [leaves, setLeaves] = useState([]);
+  const [selectedDay, setSelectedDay] = useState(null);
+
+  useEffect(() => {
+    fetch(`${SUPABASE_URL}/rest/v1/leave_requests?status=in.(pending,approved)&order=start_date.asc&limit=500`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setLeaves(d); })
+      .catch(() => {});
+  }, []);
+
+  const empById = id => employees.find(e => e.id === id);
+  const monthLabel = cursor.toLocaleDateString("zh-HK", { year: "numeric", month: "long" });
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const firstWeekday = new Date(year, month, 1).getDay(); // 0 = Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // Build event index keyed by yyyy-mm-dd
+  const eventsByDate = {};
+  const addEvent = (dateStr, ev) => {
+    if (!eventsByDate[dateStr]) eventsByDate[dateStr] = [];
+    eventsByDate[dateStr].push(ev);
+  };
+  // Leaves — fan out across the date range
+  leaves.forEach(l => {
+    if (!l.start_date || !l.end_date) return;
+    const start = new Date(l.start_date);
+    const end = new Date(l.end_date);
+    const emp = empById(l.employee_id);
+    const tMeta = LEAVE_TYPE_META[l.leave_type] || { label: l.leave_type, icon: "📝", color: "#9CA3AF" };
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const key = d.toISOString().split("T")[0];
+      addEvent(key, {
+        kind: "leave",
+        color: tMeta.color,
+        icon: tMeta.icon,
+        label: `${emp?.name || "員工"} ${tMeta.label}`,
+        status: l.status,
+      });
+    }
+  });
+  // Project deadlines (end date)
+  projects.forEach(p => {
+    if (!p.end) return;
+    addEvent(p.end, {
+      kind: "deadline",
+      color: "#EF4444",
+      icon: "⏰",
+      label: `${p.name} 完工`,
+    });
+  });
+
+  // Build the grid: 6 weeks × 7 days
+  const cells = [];
+  for (let i = 0; i < firstWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const dateKey = day => day ? `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}` : "";
+  const selectedEvents = selectedDay ? (eventsByDate[selectedDay] || []) : [];
+
+  return (
+    <div>
+      {/* Month nav */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <button onClick={() => setCursor(new Date(year, month - 1, 1))}
+          style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid #2a3045", background: "#1e2330", color: "#e8eaf0", cursor: "pointer", fontWeight: 600 }}>← 上月</button>
+        <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 24, fontWeight: 800, color: "#f0c000" }}>{monthLabel}</div>
+        <button onClick={() => setCursor(new Date(year, month + 1, 1))}
+          style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid #2a3045", background: "#1e2330", color: "#e8eaf0", cursor: "pointer", fontWeight: 600 }}>下月 →</button>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: "flex", gap: 14, marginBottom: 14, fontSize: 11, color: "#9aa0b4", flexWrap: "wrap" }}>
+        {Object.entries(LEAVE_TYPE_META).map(([k, v]) => (
+          <span key={k} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: v.color }} />
+            {v.icon} {v.label}
+          </span>
+        ))}
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#EF4444" }} />⏰ 工程完工日
+        </span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 14 }}>
+        {/* Calendar grid */}
+        <div className="card">
+          <div className="card-body" style={{ padding: 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "1px solid #1e2330" }}>
+              {["日", "一", "二", "三", "四", "五", "六"].map((d, i) => (
+                <div key={d} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, fontWeight: 700, color: i === 0 || i === 6 ? "#d63030" : "#9aa0b4", borderRight: i < 6 ? "1px solid #1e2330" : "none" }}>{d}</div>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gridAutoRows: "minmax(96px, auto)" }}>
+              {cells.map((day, i) => {
+                const key = dateKey(day);
+                const events = day ? (eventsByDate[key] || []) : [];
+                const isToday = key === todayStr;
+                const isSelected = key === selectedDay;
+                const isWeekend = i % 7 === 0 || i % 7 === 6;
+                return (
+                  <div key={i}
+                    onClick={() => day && setSelectedDay(key === selectedDay ? null : key)}
+                    style={{
+                      borderRight: i % 7 < 6 ? "1px solid #1e2330" : "none",
+                      borderBottom: "1px solid #1e2330",
+                      padding: 6,
+                      background: !day ? "#0a0c10" : isSelected ? "#1a1f2e" : isToday ? "rgba(240,192,0,0.05)" : "#13161c",
+                      cursor: day ? "pointer" : "default",
+                      minHeight: 96,
+                      position: "relative",
+                    }}>
+                    {day && (
+                      <>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: isToday ? "#f0c000" : isWeekend ? "#d63030" : "#e8eaf0", marginBottom: 4 }}>
+                          {day}{isToday && <span style={{ fontSize: 9, marginLeft: 4 }}>今日</span>}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          {events.slice(0, 3).map((ev, j) => (
+                            <div key={j} style={{ background: ev.color + "22", borderLeft: `3px solid ${ev.color}`, color: ev.color, fontSize: 10, padding: "2px 4px", borderRadius: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {ev.icon} {ev.label}
+                            </div>
+                          ))}
+                          {events.length > 3 && <div style={{ fontSize: 10, color: "#555d6e" }}>+{events.length - 3} 個其他</div>}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Side panel — selected day details */}
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">{selectedDay ? selectedDay : "選擇日期"}</div>
+            {selectedEvents.length > 0 && <span className="badge yellow"><span className="badge-dot" />{selectedEvents.length} 個事件</span>}
+          </div>
+          <div className="card-body" style={{ padding: 14 }}>
+            {!selectedDay && (
+              <div style={{ color: "#555d6e", fontSize: 13, textAlign: "center", padding: "40px 0" }}>
+                點擊任何一日<br/>查看當日事件
+              </div>
+            )}
+            {selectedDay && selectedEvents.length === 0 && (
+              <div style={{ color: "#555d6e", fontSize: 13, textAlign: "center", padding: "20px 0" }}>當日無事件</div>
+            )}
+            {selectedEvents.map((ev, i) => (
+              <div key={i} style={{ padding: "10px 12px", marginBottom: 8, background: ev.color + "11", border: `1px solid ${ev.color}55`, borderRadius: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: ev.color }}>{ev.icon} {ev.label}</div>
+                {ev.status && <div style={{ fontSize: 10, color: "#9aa0b4", marginTop: 2 }}>{ev.status === "approved" ? "✅ 已批准" : "🕒 待審批"}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LeaveApproval({ showToast, employees = [] }) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -4959,6 +5175,7 @@ export default function App() {
     profit: { icon: "📈", title: "報價利潤", sub: "試算工具" },
     tax: { icon: "🧾", title: "老闆稅務", sub: "計算器（香港有限公司）" },
     leave: { icon: "📝", title: "請假審批", sub: "員工請假申請 / 批核" },
+    calendar: { icon: "📅", title: "行事曆", sub: "請假 / 工程完工 / 進度節點" },
     settings: { icon: "⚙️", title: "系統設定", sub: "主題 / 通知 / 重設" },
   };
 
@@ -5050,6 +5267,7 @@ export default function App() {
             {active === "profit" && <ProfitCalc showToast={showToast} />}
             {active === "tax" && <TaxCalc showToast={showToast} />}
             {active === "leave" && <LeaveApproval showToast={showToast} employees={employees} />}
+            {active === "calendar" && <CalendarPage employees={employees} projects={projects} />}
             {active === "settings" && <Settings showToast={showToast} theme={theme} setTheme={setTheme} waConfig={waConfig} setWaConfig={setWaConfig} safetyRules={safetyRules} setSafetyRules={setSafetyRules} />}
           </div>
         </div>
