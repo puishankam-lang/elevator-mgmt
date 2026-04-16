@@ -719,6 +719,18 @@ function Safety({ showToast, employees = EMPLOYEES }) {
   }, [employees.length]);
 
   const [signingHistory, setSigningHistory] = useState([]);
+  const [mobileSigns, setMobileSigns] = useState([]);
+
+  useEffect(() => {
+    fetch(`${SUPABASE_URL}/rest/v1/safety_signs?order=submitted_at.desc.nullslast&limit=50`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setMobileSigns(d); })
+      .catch(() => {});
+  }, []);
+
+  const empName = (id) => employees.find(e => e.id === id)?.name || `員工 #${id}`;
 
   const handleSign = (i) => {
     const n = [...signed];
@@ -846,6 +858,41 @@ function Safety({ showToast, employees = EMPLOYEES }) {
           </table>
         </div>
       </div>
+
+      {mobileSigns.length > 0 && (
+        <div className="card" style={{ marginTop: 4 }}>
+          <div className="card-header">
+            <div className="card-title">📋 工地工作日誌（手機 App 提交）</div>
+            <span className="badge green"><span className="badge-dot" />{mobileSigns.length} 條記錄</span>
+          </div>
+          <div className="card-body" style={{ padding: 0 }}>
+            <table className="data-table">
+              <thead>
+                <tr><th>提交時間</th><th>工地 / 機號</th><th>RWL 負責人</th><th>工作類別</th><th>PPE</th><th>狀態</th></tr>
+              </thead>
+              <tbody>
+                {mobileSigns.map(s => (
+                  <tr key={s.id}>
+                    <td className="td-name">{s.submitted_at ? new Date(s.submitted_at).toLocaleString("zh-HK", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "–"}</td>
+                    <td>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{s.site || "–"}</div>
+                      {s.lift_no && <div style={{ fontSize: 10, color: "#555d6e" }}>機號：{s.lift_no}</div>}
+                    </td>
+                    <td>{s.rlw || empName(s.employee_id)}</td>
+                    <td style={{ fontSize: 11, color: "#9aa0b4" }}>{s.work_category || "–"}</td>
+                    <td style={{ fontSize: 10, color: "#555d6e", maxWidth: 160 }}>{s.safety_ppe || "–"}</td>
+                    <td>
+                      {s.abnormal
+                        ? <span className="badge red" title={s.abnormal_desc || ""}><span className="badge-dot" />⚠️ 異常</span>
+                        : <span className="badge green"><span className="badge-dot" />正常</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -867,6 +914,19 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
   const [empSite, setEmpSite] = useState(() => employees.map(() => null));
   const [checkedIn, setCheckedIn] = useState(() => employees.map(() => false));
   const [checkInTime, setCheckInTime] = useState(() => employees.map(() => null));
+  const [mobileAttendance, setMobileAttendance] = useState([]);
+
+  useEffect(() => {
+    const today = new Date().toISOString().split("T")[0];
+    fetch(`${SUPABASE_URL}/rest/v1/attendance?date=eq.${today}&order=check_in.desc.nullslast&limit=100`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setMobileAttendance(d); })
+      .catch(() => {});
+  }, []);
+
+  const empName = (id) => employees.find(e => e.id === id)?.name || `員工 #${id}`;
   const [selectedSiteView, setSelectedSiteView] = useState(null); // for site-focused map view
   const [viewMode, setViewMode] = useState("employee"); // "employee" | "site"
   const [empPage, setEmpPage] = useState(0);
@@ -1229,6 +1289,45 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
         </div>
       </div>
 
+      {mobileAttendance.length > 0 && (
+        <div className="card" style={{ marginTop: 4, marginBottom: 4 }}>
+          <div className="card-header">
+            <div className="card-title">📱 今日手機 App 簽到記錄</div>
+            <span className="badge green"><span className="badge-dot" />{mobileAttendance.length} 人已簽到</span>
+          </div>
+          <div className="card-body" style={{ padding: 0 }}>
+            <table className="data-table">
+              <thead>
+                <tr><th>員工</th><th>工地</th><th>簽到時間</th><th>GPS 座標</th><th>精準度</th><th>簽退時間</th><th>狀態</th></tr>
+              </thead>
+              <tbody>
+                {mobileAttendance.map(a => (
+                  <tr key={a.id}>
+                    <td className="td-name">{empName(a.employee_id)}</td>
+                    <td style={{ fontSize: 11 }}>{a.site || "–"}</td>
+                    <td>{a.check_in ? new Date(a.check_in).toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" }) : "–"}</td>
+                    <td style={{ fontSize: 10, color: "#60a5fa", fontFamily: "monospace" }}>
+                      {a.check_in_lat && a.check_in_lng
+                        ? `${Number(a.check_in_lat).toFixed(4)}, ${Number(a.check_in_lng).toFixed(4)}`
+                        : "–"}
+                    </td>
+                    <td style={{ fontSize: 11, color: a.check_in_accuracy > 50 ? "#f0c000" : "#22c55e" }}>
+                      {a.check_in_accuracy ? `±${a.check_in_accuracy}m` : "–"}
+                    </td>
+                    <td>{a.check_out ? new Date(a.check_out).toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" }) : <span style={{ color: "#555d6e" }}>—</span>}</td>
+                    <td>
+                      {a.check_out
+                        ? <span className="badge green"><span className="badge-dot" />已完成</span>
+                        : <span className="badge yellow"><span className="badge-dot" />工作中</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Monthly summary table */}
       <div className="card" style={{ marginTop: 4 }}>
         <div className="card-header">
@@ -1274,7 +1373,7 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
   );
 }
 
-function Progress({ showToast, projects = INITIAL_PROJECTS, onUpdateProgress }) {
+function Progress({ showToast, projects = INITIAL_PROJECTS, employees = [], onUpdateProgress }) {
   const [projectIdx, setProjectIdx] = useState(0);
   const [pct, setPct] = useState("15");
   const [note, setNote] = useState("");
@@ -1282,6 +1381,18 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, onUpdateProgress }) 
   const [milestoneStatus, setMilestoneStatus] = useState("done"); // "done" | "in_progress"
   const [editChartId, setEditChartId] = useState(null); // project name being edited
   const [editForm, setEditForm] = useState({ pct: 0, plan: 0 });
+  const [reports, setReports] = useState([]);
+
+  useEffect(() => {
+    fetch(`${SUPABASE_URL}/rest/v1/progress_reports?order=submitted_at.desc.nullslast&limit=30`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setReports(d); })
+      .catch(() => {});
+  }, []);
+
+  const empName = (id) => employees.find(e => e.id === id)?.name || `員工 #${id}`;
 
   const selectStage = (p, desc) => {
     setPct(p);
@@ -1510,11 +1621,44 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, onUpdateProgress }) 
           </div>
 
           <div className="card">
-            <div className="card-header"><div className="card-title">回報時間軸</div></div>
-            <div className="card-body">
-              <div style={{ color: '#9aa0b4', fontSize: 13, padding: '20px 0', textAlign: 'center' }}>
-                📋 進度回報從 Supabase 即時載入
-              </div>
+            <div className="card-header">
+              <div className="card-title">📋 回報時間軸</div>
+              <span className="badge green"><span className="badge-dot" />{reports.length} 條記錄</span>
+            </div>
+            <div className="card-body" style={{ padding: reports.length === 0 ? "20px" : "8px 0" }}>
+              {reports.length === 0 ? (
+                <div style={{ color: '#9aa0b4', fontSize: 13, textAlign: 'center', padding: '12px 0' }}>
+                  尚無進度回報，員工透過手機 App 提交後將顯示於此
+                </div>
+              ) : (
+                <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                  {reports.map(r => (
+                    <div key={r.id} style={{ padding: "10px 16px", borderBottom: "1px solid #1e2330", display: "flex", alignItems: "flex-start", gap: 12 }}>
+                      <div style={{ minWidth: 56, fontFamily: "'Barlow Condensed'", fontSize: 22, fontWeight: 800, color: r.progress_pct >= 95 ? "#22c55e" : r.progress_pct >= 50 ? "#f0c000" : "#60a5fa", lineHeight: 1.1 }}>
+                        {r.progress_pct}%
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2, gap: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#e8eaf0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {r.project || "–"}
+                          </div>
+                          <div style={{ fontSize: 10, color: "#555d6e", flexShrink: 0 }}>
+                            {r.submitted_at ? new Date(r.submitted_at).toLocaleString("zh-HK", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "–"}
+                          </div>
+                        </div>
+                        {r.note && (
+                          <div style={{ fontSize: 11, color: "#9aa0b4", lineHeight: 1.5, marginTop: 2 }}>
+                            {r.note}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 10, color: "#555d6e", marginTop: 4 }}>
+                          👤 {empName(r.employee_id)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -4227,7 +4371,7 @@ export default function App() {
             {active === "empdocs" && <EmployeeDocs showToast={showToast} employees={employees} />}
             {active === "safety" && <Safety showToast={showToast} employees={employees} />}
             {active === "attendance" && <Attendance showToast={showToast} employees={employees} projects={projects} />}
-            {active === "progress" && <Progress showToast={showToast} projects={projects} onUpdateProgress={(projName, newPct) => setProjectsState(prev => prev.map(p => p.name === projName ? { ...p, pct: newPct } : p))} />}
+            {active === "progress" && <Progress showToast={showToast} projects={projects} employees={employees} onUpdateProgress={(projName, newPct) => setProjectsState(prev => prev.map(p => p.name === projName ? { ...p, pct: newPct } : p))} />}
             {active === "invoice" && <Invoice showToast={showToast} />}
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
             {active === "profit" && <ProfitCalc showToast={showToast} />}
