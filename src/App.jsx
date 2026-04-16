@@ -264,6 +264,42 @@ const styles = `
   .alert-text { font-size: 13px; color: #e8a0a0; font-weight: 500; flex: 1; }
   .alert-time { font-size: 11px; color: #d63030; }
 
+  /* ── Light Mode ── */
+  body.light-mode { background: #f5f7fa !important; color: #1a2533 !important; }
+  body.light-mode #root { background: #f5f7fa !important; color: #1a2533 !important; }
+  body.light-mode .sidebar { background: #ffffff !important; border-right-color: #e0e6ed !important; }
+  body.light-mode .logo-area { border-bottom-color: #e0e6ed !important; }
+  body.light-mode .logo-text { color: #1a2533 !important; }
+  body.light-mode .logo-sub { color: #5a6478 !important; }
+  body.light-mode .nav-section-title { color: #5a6478 !important; }
+  body.light-mode .nav-item { color: #5a6478 !important; border-left-color: transparent !important; }
+  body.light-mode .nav-item:hover { background: #f0f3f8 !important; color: #1a2533 !important; }
+  body.light-mode .nav-item.active { background: #fff7d6 !important; color: #b8870a !important; }
+  body.light-mode .sidebar-footer { color: #5a6478 !important; border-top-color: #e0e6ed !important; }
+  body.light-mode .topbar { background: #ffffff !important; border-bottom-color: #e0e6ed !important; }
+  body.light-mode .page-title { color: #1a2533 !important; }
+  body.light-mode .date-badge { background: #f0f3f8 !important; color: #5a6478 !important; }
+  body.light-mode .avatar { background: #f0f3f8 !important; color: #1a2533 !important; }
+  body.light-mode .content { background: #f5f7fa !important; }
+  body.light-mode .card { background: #ffffff !important; border-color: #e0e6ed !important; }
+  body.light-mode .card-header { border-bottom-color: #e0e6ed !important; }
+  body.light-mode .card-title { color: #1a2533 !important; }
+  body.light-mode .kpi-card { background: #ffffff !important; border-color: #e0e6ed !important; }
+  body.light-mode .kpi-label { color: #5a6478 !important; }
+  body.light-mode .kpi-value { color: #1a2533 !important; }
+  body.light-mode .data-table { color: #1a2533 !important; }
+  body.light-mode .data-table th { background: #f0f3f8 !important; color: #1a2533 !important; }
+  body.light-mode .data-table td { border-bottom-color: #e0e6ed !important; color: #1a2533 !important; }
+  body.light-mode .td-name { color: #1a2533 !important; }
+  body.light-mode .sign-card { background: #ffffff !important; border-color: #e0e6ed !important; }
+  body.light-mode .sign-title { color: #1a2533 !important; }
+  body.light-mode .form-input, body.light-mode .form-select { background: #ffffff !important; border-color: #d4dae3 !important; color: #1a2533 !important; }
+  body.light-mode .form-label { color: #5a6478 !important; }
+  body.light-mode .btn-secondary { background: #f0f3f8 !important; color: #1a2533 !important; border-color: #d4dae3 !important; }
+  body.light-mode .progress-bar-bg { background: #e0e6ed !important; }
+  body.light-mode .safety-clause { background: #f9fafb !important; color: #1a2533 !important; }
+  body.light-mode .checkbox-label { color: #1a2533 !important; }
+
   /* Invoice card */
   .invoice-item {
     padding: 14px 0;
@@ -491,6 +527,7 @@ const NAV_ITEMS = [
   { id: "empdocs", icon: "📁", label: "員工文件" },
   { id: "profit", icon: "📈", label: "報價利潤試算" },
   { id: "tax", icon: "🧾", label: "老闆稅務計算" },
+  { id: "settings", icon: "⚙️", label: "系統設定" },
 ];
 
 const INITIAL_PROJECTS = [];
@@ -1686,6 +1723,86 @@ function ProfitCalc({ showToast }) {
     showToast("✅ 報價已儲存至記錄", "success");
   };
 
+  const handleExportExcel = () => {
+    const headers = ["報價名稱", "合約金額(HK$)", "人工成本(HK$)", "外判(HK$)", "管理費(HK$)", "總成本(HK$)", "毛利潤(HK$)", "利潤率(%)"];
+    const currentName = `當前報價 ${new Date().toLocaleDateString("zh-HK")}`;
+    const currentMargin = projectValue > 0 ? ((profit / projectValue) * 100).toFixed(1) : "0.0";
+    const currentRow = [currentName, projectValue, labourTotal, subcontract, overhead, totalCost, profit, currentMargin];
+    const savedRows = savedQuotes.map(q => {
+      const cost = q.labour + q.sub + q.over;
+      const margin = q.value > 0 ? ((q.profit / q.value) * 100).toFixed(1) : "0.0";
+      return [q.name, q.value, q.labour, q.sub, q.over, cost, q.profit, margin];
+    });
+    const csv = [headers, currentRow, ...savedRows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `報價利潤試算_${new Date().toLocaleDateString("zh-HK").replace(/\//g, "-")}.csv`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("📊 報價試算已匯出（CSV 可用 Excel 開啟）！", "success");
+  };
+
+  const handleExportPDF = () => {
+    const w = window.open("", "_blank");
+    const today = new Date().toLocaleDateString("zh-HK");
+    const currentMargin = projectValue > 0 ? ((profit / projectValue) * 100).toFixed(1) : "0.0";
+    const workerRows = workers.map(wk => `<tr><td>${wk.role}</td><td style="text-align:right">${wk.days} 天</td><td style="text-align:right">HK$${wk.rate}</td><td style="text-align:right">HK$${(wk.days * wk.rate).toLocaleString()}</td></tr>`).join("");
+    const savedRows = savedQuotes.map(q => {
+      const cost = q.labour + q.sub + q.over;
+      const margin = q.value > 0 ? ((q.profit / q.value) * 100).toFixed(1) : "0.0";
+      return `<tr><td>${q.name}</td><td style="text-align:right">HK$${q.value.toLocaleString()}</td><td style="text-align:right">HK$${cost.toLocaleString()}</td><td style="text-align:right;color:${q.profit >= 0 ? "#22c55e" : "#d63030"};font-weight:700">HK$${q.profit.toLocaleString()}</td><td style="text-align:right">${margin}%</td></tr>`;
+    }).join("");
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>報價利潤試算 - ${today}</title>
+<style>body{font-family:Arial,sans-serif;padding:30px;font-size:13px;max-width:880px;margin:0 auto;color:#1a1a1a}
+.header{display:flex;justify-content:space-between;align-items:center;padding-bottom:14px;border-bottom:3px solid #f0c000;margin-bottom:20px}
+.company{font-size:20px;font-weight:700}
+h3{margin:22px 0 12px;font-size:15px;color:#333;padding-bottom:6px;border-bottom:1px solid #eee}
+table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px}
+th{background:#1a1a1a;color:#fff;padding:9px 12px;text-align:left}
+td{padding:9px 12px;border-bottom:1px solid #eee}
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.kpi-box{padding:12px 14px;border-radius:8px;border:1px solid #ddd;background:#fafafa}
+.kpi-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.kpi-val{font-size:18px;font-weight:700}
+.profit-positive{color:#22c55e}.profit-negative{color:#d63030}
+@media print{.noprint{display:none}body{padding:18px}}</style></head><body>
+<div class="header"><div><div class="company">俊輝電梯工程有限公司</div><div style="font-size:12px;color:#666">報價利潤試算報表</div></div><div style="text-align:right;font-size:12px;color:#666">列印日期：${today}</div></div>
+
+<h3>📊 當前報價試算</h3>
+<div class="kpi">
+<div class="kpi-box"><div class="kpi-label">合約金額</div><div class="kpi-val" style="color:#f0c000">HK$${projectValue.toLocaleString()}</div></div>
+<div class="kpi-box"><div class="kpi-label">總成本</div><div class="kpi-val" style="color:#d63030">HK$${totalCost.toLocaleString()}</div></div>
+<div class="kpi-box"><div class="kpi-label">毛利潤</div><div class="kpi-val ${profit >= 0 ? "profit-positive" : "profit-negative"}">HK$${profit.toLocaleString()}</div></div>
+<div class="kpi-box"><div class="kpi-label">利潤率</div><div class="kpi-val ${actualMargin >= targetMargin ? "profit-positive" : "profit-negative"}">${currentMargin}%</div></div>
+</div>
+
+<h3>👷 人工成本明細</h3>
+<table><thead><tr><th>職位</th><th style="text-align:right">天數</th><th style="text-align:right">日薪</th><th style="text-align:right">小計</th></tr></thead>
+<tbody>${workerRows}<tr style="background:#f9f9f9;font-weight:700"><td>合計</td><td></td><td></td><td style="text-align:right">HK$${labourTotal.toLocaleString()}</td></tr></tbody></table>
+
+<h3>💰 成本拆分</h3>
+<table><thead><tr><th>項目</th><th style="text-align:right">金額</th><th style="text-align:right">佔比</th></tr></thead>
+<tbody>
+<tr><td>人工成本</td><td style="text-align:right">HK$${labourTotal.toLocaleString()}</td><td style="text-align:right">${totalCost > 0 ? (labourTotal / totalCost * 100).toFixed(1) : 0}%</td></tr>
+<tr><td>外判費用</td><td style="text-align:right">HK$${subcontract.toLocaleString()}</td><td style="text-align:right">${totalCost > 0 ? (subcontract / totalCost * 100).toFixed(1) : 0}%</td></tr>
+<tr><td>管理費 / 雜費</td><td style="text-align:right">HK$${overhead.toLocaleString()}</td><td style="text-align:right">${totalCost > 0 ? (overhead / totalCost * 100).toFixed(1) : 0}%</td></tr>
+<tr style="background:#f9f9f9;font-weight:700"><td>總成本</td><td style="text-align:right">HK$${totalCost.toLocaleString()}</td><td style="text-align:right">100.0%</td></tr>
+</tbody></table>
+
+${savedQuotes.length > 0 ? `<h3>📁 已儲存報價記錄 (${savedQuotes.length})</h3>
+<table><thead><tr><th>名稱</th><th style="text-align:right">合約金額</th><th style="text-align:right">總成本</th><th style="text-align:right">利潤</th><th style="text-align:right">利潤率</th></tr></thead>
+<tbody>${savedRows}</tbody></table>` : ""}
+
+<div class="noprint" style="margin-top:30px;text-align:center">
+<button onclick="window.print()" style="padding:10px 24px;background:#1a1a1a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨️ 列印 / 儲存為 PDF</button></div>
+<script>window.onload=()=>{setTimeout(()=>window.print(),300)}</script></body></html>`);
+    w.document.close();
+    showToast("📄 報價單 PDF 已生成！請在新視窗中列印或儲存", "success");
+  };
+
   const ROLE_PRESETS = [
     { role: "技術主管", rate: 1200 },
     { role: "電梯技工", rate: 850 },
@@ -1892,7 +2009,8 @@ function ProfitCalc({ showToast }) {
 
           <div className="btn-row">
             <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSave}>💾 儲存報價</button>
-            <button className="btn btn-secondary" onClick={() => showToast("📄 報價單 PDF 已生成", "success")}>匯出報價單</button>
+            <button className="btn btn-secondary" onClick={handleExportExcel}>📊 Excel</button>
+            <button className="btn btn-secondary" onClick={handleExportPDF}>📄 PDF</button>
           </div>
         </div>
       </div>
@@ -3563,6 +3681,128 @@ const mapEmployee = e => ({
   days: 22, signed: true, lat: "22.3193", lng: "114.1694",
 });
 
+// ── Settings Page ──────────────────────────────────────────────────────────────
+function Settings({ showToast, theme, setTheme, waConfig, setWaConfig, safetyRules, setSafetyRules }) {
+  const [rulesEdit, setRulesEdit] = useState(safetyRules);
+  const [waEdit, setWaEdit] = useState(waConfig);
+
+  const handleSaveRules = () => {
+    setSafetyRules(rulesEdit);
+    showToast("✅ 安全守則已更新！", "success");
+  };
+
+  const handleSaveWA = () => {
+    setWaConfig(waEdit);
+    showToast(waEdit.enabled ? "✅ WhatsApp 通知已啟用！" : "✅ WhatsApp 通知已停用", "success");
+  };
+
+  const handleResetRecords = () => {
+    const ok = window.confirm("⚠️ 確定要清除所有考勤、簽署及活動記錄？\n\n此操作無法復原。\n（工程管理及員工資料將會保留）");
+    if (!ok) return;
+    try {
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith("signing_") || k.startsWith("attendance_") || k === "signingHistory" || k === "attendanceLog") {
+          localStorage.removeItem(k);
+        }
+      });
+    } catch (e) {}
+    showToast("✅ 所有考勤/簽署記錄已清除！頁面即將重新載入...", "success");
+    setTimeout(() => window.location.reload(), 1500);
+  };
+
+  return (
+    <div>
+      {/* Theme + Reset row */}
+      <div className="grid-2" style={{ marginBottom: 20 }}>
+        <div className="sign-card" style={{ marginBottom: 0 }}>
+          <div className="sign-title">🎨 主題模式</div>
+          <div style={{ fontSize: 12, color: "#9aa0b4", marginBottom: 14 }}>切換深色 / 淺色顯示模式</div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={() => setTheme("dark")}
+              style={{ flex: 1, padding: "12px 16px", borderRadius: 8, border: theme === "dark" ? "2px solid #f0c000" : "1px solid #2a3045", background: theme === "dark" ? "#0d0f12" : "#13161c", color: theme === "dark" ? "#f0c000" : "#8891a4", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+              🌙 深色模式 {theme === "dark" && "✓"}
+            </button>
+            <button onClick={() => setTheme("light")}
+              style={{ flex: 1, padding: "12px 16px", borderRadius: 8, border: theme === "light" ? "2px solid #f0c000" : "1px solid #2a3045", background: theme === "light" ? "#fff7d6" : "#13161c", color: theme === "light" ? "#b8870a" : "#8891a4", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+              ☀️ 淺色模式 {theme === "light" && "✓"}
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: "#3a4255", marginTop: 12 }}>💡 主題偏好會自動儲存於瀏覽器</div>
+        </div>
+
+        <div className="sign-card" style={{ marginBottom: 0, borderTop: "3px solid #d63030" }}>
+          <div className="sign-title" style={{ color: "#d63030" }}>🗑️ 重設所有記錄</div>
+          <div style={{ fontSize: 12, color: "#9aa0b4", marginBottom: 14 }}>清除考勤簽到、安全簽署及其他活動記錄。<br/><strong style={{ color: "#22c55e" }}>工程管理及員工資料將會保留。</strong></div>
+          <button onClick={handleResetRecords}
+            style={{ width: "100%", padding: "12px 16px", borderRadius: 8, border: "1px solid #d63030", background: "rgba(214,48,48,0.08)", color: "#d63030", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+            🗑️ 清除所有考勤/簽署記錄
+          </button>
+          <div style={{ fontSize: 11, color: "#3a4255", marginTop: 12 }}>⚠️ 此操作無法復原，請謹慎使用</div>
+        </div>
+      </div>
+
+      {/* WhatsApp Bot config */}
+      <div className="sign-card" style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div className="sign-title" style={{ marginBottom: 0 }}>📱 WhatsApp Bot 通知設定</div>
+          <span className={`badge ${waConfig.enabled ? "green" : "red"}`}><span className="badge-dot" />{waConfig.enabled ? "已啟用" : "已停用"}</span>
+        </div>
+        <div style={{ fontSize: 12, color: "#9aa0b4", marginBottom: 16 }}>整合 Make.com webhook 自動發送工程完工期提醒至 WhatsApp。需先在 Make 建立 WhatsApp scenario 並取得 webhook URL。</div>
+
+        <div className="form-group">
+          <label className="form-label">啟用 WhatsApp 通知</label>
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button onClick={() => setWaEdit({ ...waEdit, enabled: true })}
+              style={{ flex: 1, padding: "8px 14px", borderRadius: 6, border: waEdit.enabled ? "2px solid #22c55e" : "1px solid #2a3045", background: waEdit.enabled ? "rgba(34,197,94,0.08)" : "#13161c", color: waEdit.enabled ? "#22c55e" : "#8891a4", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>✅ 啟用</button>
+            <button onClick={() => setWaEdit({ ...waEdit, enabled: false })}
+              style={{ flex: 1, padding: "8px 14px", borderRadius: 6, border: !waEdit.enabled ? "2px solid #d63030" : "1px solid #2a3045", background: !waEdit.enabled ? "rgba(214,48,48,0.08)" : "#13161c", color: !waEdit.enabled ? "#d63030" : "#8891a4", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>❌ 停用</button>
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Make.com Webhook URL</label>
+          <input className="form-input" type="text" value={waEdit.webhook || ""}
+            onChange={e => setWaEdit({ ...waEdit, webhook: e.target.value })}
+            placeholder="https://hook.eu2.make.com/xxxxxxxxxx" />
+          <div style={{ fontSize: 11, color: "#3a4255", marginTop: 4 }}>從 Make.com webhook trigger 模組複製 URL 貼上</div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">老闆 WhatsApp 號碼（香港格式 852XXXXXXXX）</label>
+          <input className="form-input" type="text" value={waEdit.phone || ""}
+            onChange={e => setWaEdit({ ...waEdit, phone: e.target.value })}
+            placeholder="85254442099" />
+        </div>
+
+        <button onClick={handleSaveWA} className="btn btn-primary" style={{ width: "100%" }}>💾 儲存 WhatsApp 設定</button>
+
+        <div style={{ marginTop: 14, padding: "10px 12px", background: "rgba(96,165,250,0.05)", border: "1px solid rgba(96,165,250,0.2)", borderRadius: 6, fontSize: 11, color: "#8891a4", lineHeight: 1.6 }}>
+          📋 <strong>觸發條件：</strong>當任何工程剩餘完工天數 ≤ 10 天，系統會自動透過 webhook 發送 WhatsApp 提醒。<br/>
+          ⚠️ <strong>注意：</strong>停用或未配置 webhook 時不會發送任何通知。
+        </div>
+      </div>
+
+      {/* Safety rules editor */}
+      <div className="sign-card">
+        <div className="sign-title">🛡️ 安全守則編輯</div>
+        <div style={{ fontSize: 12, color: "#9aa0b4", marginBottom: 14 }}>編輯安全簽署頁顯示的工地安全守則內容</div>
+        <textarea
+          value={rulesEdit}
+          onChange={e => setRulesEdit(e.target.value)}
+          className="form-input"
+          style={{ width: "100%", minHeight: 200, fontFamily: "inherit", lineHeight: 1.7, resize: "vertical" }}
+          placeholder="輸入安全守則內容..."
+        />
+        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+          <button onClick={handleSaveRules} className="btn btn-primary" style={{ flex: 1 }}>💾 儲存守則</button>
+          <button onClick={() => setRulesEdit(safetyRules)} className="btn btn-secondary">↺ 還原</button>
+        </div>
+        <div style={{ fontSize: 11, color: "#3a4255", marginTop: 10 }}>💡 守則會自動儲存於瀏覽器 localStorage</div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [active, setActive] = useState("dashboard");
   const [toast, setToast] = useState(null);
@@ -3571,10 +3811,42 @@ export default function App() {
   const [dbStatus, setDbStatus] = useState("loading");
   const [loadMsg, setLoadMsg] = useState("連接 Supabase...");
   const [deadlineAlerts, setDeadlineAlerts] = useState([]);
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem("theme") || "dark"; } catch { return "dark"; }
+  });
+  const [waConfig, setWaConfig] = useState(() => {
+    try {
+      const stored = localStorage.getItem("waConfig");
+      return stored ? JSON.parse(stored) : { enabled: false, webhook: "", phone: "85254442099" };
+    } catch { return { enabled: false, webhook: "", phone: "85254442099" }; }
+  });
+  const [safetyRules, setSafetyRules] = useState(() => {
+    try {
+      return localStorage.getItem("safetyRules") || "第一條 — 個人防護裝備：所有進入施工現場人員必須全程佩戴安全帽、安全鞋及反光背心。電梯槽內作業必須配備安全繩及防墜落裝置。\n\n第二條 — 電源管制：進行任何電氣工程前，必須確認主電源已切斷並上鎖（LOTO程序），並在配電箱貼上警告標示。\n\n第三條 — 高空作業：超過2米高度作業必須使用獲認可之升降台或搭棚架，不得單人作業，必須保持通話聯絡。\n\n第四條 — 危險品存放：潤滑油、清潔劑等危險品須存放於指定區域，遠離熱源，並確保通風良好。\n\n第五條 — 緊急應變：熟悉緊急撤離路線及急救箱位置。發生意外須即時通報主管並填寫事故報告表。";
+    } catch { return ""; }
+  });
 
-  // ── WhatsApp deadline notification via Make webhook ──
-  const MAKE_WEBHOOK = "https://hook.eu2.make.com/YOUR_WEBHOOK_ID"; // 換成你嘅 Make webhook
-  const BOSS_PHONE = "85254442099"; // 你的 WhatsApp 號碼（香港格式）
+  // Apply theme class to body
+  useEffect(() => {
+    try {
+      document.body.classList.toggle("light-mode", theme === "light");
+      localStorage.setItem("theme", theme);
+    } catch (e) {}
+  }, [theme]);
+
+  // Persist waConfig
+  useEffect(() => {
+    try { localStorage.setItem("waConfig", JSON.stringify(waConfig)); } catch (e) {}
+  }, [waConfig]);
+
+  // Persist safetyRules
+  useEffect(() => {
+    try { localStorage.setItem("safetyRules", safetyRules); } catch (e) {}
+  }, [safetyRules]);
+
+  // ── WhatsApp deadline notification via Make webhook (configured in Settings) ──
+  const MAKE_WEBHOOK = waConfig.webhook || "https://hook.eu2.make.com/YOUR_WEBHOOK_ID";
+  const BOSS_PHONE = waConfig.phone || "85254442099";
 
   const checkDeadlines = async (projList) => {
     const today = new Date();
@@ -3585,17 +3857,19 @@ export default function App() {
       const daysLeft = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
       if (daysLeft >= 0 && daysLeft <= 10) {
         alerts.push({ ...p, daysLeft });
-        // Send WhatsApp via Make
-        try {
-          await fetch(MAKE_WEBHOOK, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              phone: BOSS_PHONE,
-              message: `⚠️ 工程完工期提醒\n工程：${p.name}\n完工日期：${p.end}\n距離完工：${daysLeft} 日\n進度：${p.pct}%\n請跟進！`
-            })
-          });
-        } catch(e) {}
+        // Send WhatsApp via Make (only if bot enabled + webhook configured)
+        if (waConfig.enabled && waConfig.webhook && !waConfig.webhook.includes("YOUR_WEBHOOK_ID")) {
+          try {
+            await fetch(MAKE_WEBHOOK, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                phone: BOSS_PHONE,
+                message: `⚠️ 工程完工期提醒\n工程：${p.name}\n完工日期：${p.end}\n距離完工：${daysLeft} 日\n進度：${p.pct}%\n請跟進！`
+              })
+            });
+          } catch(e) {}
+        }
       }
     }
     setDeadlineAlerts(alerts);
@@ -3699,6 +3973,7 @@ export default function App() {
     empdocs: { icon: "📁", title: "員工文件", sub: "綠卡 / ID / 住址證明" },
     profit: { icon: "📈", title: "報價利潤", sub: "試算工具" },
     tax: { icon: "🧾", title: "老闆稅務", sub: "計算器（香港有限公司）" },
+    settings: { icon: "⚙️", title: "系統設定", sub: "主題 / 通知 / 重設" },
   };
 
   const pt = PAGE_TITLES[active] || { icon: "📋", title: active, sub: "" };
@@ -3788,6 +4063,7 @@ export default function App() {
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
             {active === "profit" && <ProfitCalc showToast={showToast} />}
             {active === "tax" && <TaxCalc showToast={showToast} />}
+            {active === "settings" && <Settings showToast={showToast} theme={theme} setTheme={setTheme} waConfig={waConfig} setWaConfig={setWaConfig} safetyRules={safetyRules} setSafetyRules={setSafetyRules} />}
           </div>
         </div>
       </div>
