@@ -4459,6 +4459,23 @@ async function sbFetch(table, options = {}) {
   return res.json();
 }
 
+// Pull the actual PostgREST error message out of the response body
+// (e.g. "column 'foo' does not exist") instead of just throwing the HTTP
+// status code — makes 400/409 bugs in the schema/payload diagnosable
+// without opening the browser network panel.
+async function readSbError(res, fallback) {
+  try {
+    const txt = await res.text();
+    try {
+      const j = JSON.parse(txt);
+      const detail = j.message || j.hint || j.details || j.error;
+      if (detail) return `${fallback} ${res.status} — ${detail}`;
+    } catch { /* not JSON, fall through */ }
+    if (txt) return `${fallback} ${res.status} — ${txt.slice(0, 200)}`;
+  } catch { /* can't read body */ }
+  return `${fallback} ${res.status}`;
+}
+
 async function sbInsert(table, data) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: "POST",
@@ -4470,7 +4487,7 @@ async function sbInsert(table, data) {
     },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(`Insert error: ${res.status}`);
+  if (!res.ok) throw new Error(await readSbError(res, "Insert error:"));
   return res.json();
 }
 
@@ -4485,7 +4502,7 @@ async function sbUpdate(table, id, data) {
     },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(`Update error: ${res.status}`);
+  if (!res.ok) throw new Error(await readSbError(res, "Update error:"));
   return res.json();
 }
 
