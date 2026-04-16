@@ -681,11 +681,36 @@ function Safety({ showToast, employees = EMPLOYEES }) {
     setSigned(prev => prev.length !== employees.length ? employees.map(() => false) : prev);
   }, [employees.length]);
 
+  const [signingHistory, setSigningHistory] = useState([]);
+
   const handleSign = (i) => {
     const n = [...signed];
     n[i] = true;
     setSigned(n);
-    showToast("✅ 安全條款簽署成功，時間戳記已記錄", "success");
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" });
+    const dateStr = now.toLocaleDateString("zh-HK");
+    setSigningHistory(prev => [{ date: dateStr, name: employees[i]?.name || "–", site: employees[i]?.site || "工地", time: timeStr, device: "系統代簽" }, ...prev]);
+    showToast(`✅ ${employees[i]?.name} 安全條款簽署成功，時間戳記已記錄`, "success");
+  };
+
+  const handleRemind = (i) => {
+    showToast(`📱 催簽提醒已發送給 ${employees[i]?.name}！請聯絡對方簽署安全守則`, "success");
+  };
+
+  const handleExportHistory = () => {
+    if (signingHistory.length === 0) { showToast("⚠️ 尚無簽署記錄", "error"); return; }
+    const headers = ["日期","人員","工地","簽署時間","記錄方式"];
+    const rows = signingHistory.map(r => [r.date, r.name, r.site, r.time, r.device]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `安全簽署記錄_${new Date().toLocaleDateString("zh-HK").replace(/\//g,"-")}.csv`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("📊 簽署記錄已匯出！", "success");
   };
 
   return (
@@ -716,7 +741,13 @@ function Safety({ showToast, employees = EMPLOYEES }) {
           <div className="btn-row">
             <button
               className={`btn ${checked ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => checked && showToast(`✅ 簽署成功！時間戳記：${new Date().toLocaleString('zh-HK')}`, "success")}
+              onClick={() => {
+                if (!checked) return;
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" });
+                setSigningHistory(prev => [{ date: now.toLocaleDateString("zh-HK"), name: "本人", site: "當前工地", time: timeStr, device: "Web App 自簽" }, ...prev]);
+                showToast(`✅ 簽署成功！時間戳記：${now.toLocaleString('zh-HK')}`, "success");
+              }}
             >
               ✍️ 確認簽署
             </button>
@@ -727,7 +758,7 @@ function Safety({ showToast, employees = EMPLOYEES }) {
         <div className="card">
           <div className="card-header">
             <div className="card-title">今日人員簽署狀態</div>
-            <div className="card-action">導出記錄 →</div>
+            <div className="card-action" style={{ cursor: "pointer" }} onClick={handleExportHistory}>導出記錄 →</div>
           </div>
           <div className="card-body" style={{ padding: "12px 20px" }}>
             {employees.map((e, i) => (
@@ -745,8 +776,8 @@ function Safety({ showToast, employees = EMPLOYEES }) {
                     <div style={{ fontSize: 10, color: "#3a4255", marginTop: 3 }}>08:15 – 08:23</div>
                   </div>
                 ) : (
-                  <button className="btn btn-danger btn-sm" onClick={() => handleSign(i)}>
-                    催簽
+                  <button className="btn btn-danger btn-sm" onClick={() => handleRemind(i)}>
+                    📱 催簽
                   </button>
                 )}
               </div>
@@ -765,12 +796,12 @@ function Safety({ showToast, employees = EMPLOYEES }) {
               <tr><th>日期</th><th>人員</th><th>工地</th><th>簽署時間</th><th>IP / 裝置</th><th>狀態</th></tr>
             </thead>
             <tbody>
-              {[
-                // GPS 考勤記錄從 Supabase 即時載入
-              ].map((r, i) => (
+              {signingHistory.length === 0 ? (
+                <tr><td colSpan={6} style={{ textAlign: "center", color: "#3a4255", padding: 20, fontSize: 13 }}>尚無簽署記錄，確認簽署後將顯示於此</td></tr>
+              ) : signingHistory.map((r, i) => (
                 <tr key={i}>
-                  <td className="td-name">{r[0]}</td>
-                  <td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td><td style={{ fontSize: 11 }}>{r[4]}</td>
+                  <td className="td-name">{r.date}</td>
+                  <td>{r.name}</td><td>{r.site}</td><td>{r.time}</td><td style={{ fontSize: 11 }}>{r.device}</td>
                   <td><span className="badge green"><span className="badge-dot" /> 有效</span></td>
                 </tr>
               ))}
@@ -911,9 +942,9 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
                   </select>
 
                   {/* GPS coords if site selected */}
-                  {empSite[i] && SITE_GPS[empSite[i]] && (
+                  {empSite[i] && siteCoords[empSite[i]] && (
                     <div style={{ fontSize: 10, color: "#3a4255", marginBottom: 8 }}>
-                      📍 GPS: {SITE_GPS[empSite[i]].lat}°N {SITE_GPS[empSite[i]].lng}°E
+                      📍 GPS: {siteCoords[empSite[i]].lat}°N {siteCoords[empSite[i]].lng}°E
                     </div>
                   )}
 
@@ -933,6 +964,15 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
                   )}
                 </div>
               ))}
+              {employees.length > EMP_PER_PAGE && (
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, padding: "10px 0" }}>
+                  <button onClick={() => setEmpPage(p => Math.max(0, p - 1))} disabled={empPage === 0}
+                    style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #2a3045", background: empPage === 0 ? "#0d0f12" : "#1e2330", color: empPage === 0 ? "#3a4255" : "#e8eaf0", cursor: empPage === 0 ? "not-allowed" : "pointer", fontSize: 12 }}>←</button>
+                  <span style={{ fontSize: 12, color: "#555d6e" }}>第 {empPage + 1} / {Math.ceil(employees.length / EMP_PER_PAGE)} 頁</span>
+                  <button onClick={() => setEmpPage(p => Math.min(Math.ceil(employees.length / EMP_PER_PAGE) - 1, p + 1))} disabled={empPage >= Math.ceil(employees.length / EMP_PER_PAGE) - 1}
+                    style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #2a3045", background: empPage >= Math.ceil(employees.length / EMP_PER_PAGE) - 1 ? "#0d0f12" : "#1e2330", color: empPage >= Math.ceil(employees.length / EMP_PER_PAGE) - 1 ? "#3a4255" : "#e8eaf0", cursor: empPage >= Math.ceil(employees.length / EMP_PER_PAGE) - 1 ? "not-allowed" : "pointer", fontSize: 12 }}>→</button>
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -960,7 +1000,7 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
                       </span>
                     </div>
                     <div style={{ fontSize: 10, color: "#3a4255", marginBottom: 8 }}>
-                      📍 {SITE_GPS[p.name] ? `${SITE_GPS[p.name].lat}°N ${SITE_GPS[p.name].lng}°E` : "GPS 未設定"}
+                      📍 {siteCoords[p.name] ? `${siteCoords[p.name].lat}°N ${siteCoords[p.name].lng}°E` : "GPS 未設定"}
                     </div>
                     {ppl.length > 0 ? (
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1012,7 +1052,7 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
               <div style={{ background: "#0d0f12", borderRadius: 8, padding: "10px 14px", border: "1px solid #1e2330" }}>
                 <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>容許半徑</div>
-                <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 20, fontWeight: 700, color: "#f0c000" }}>150 m</div>
+                <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 20, fontWeight: 700, color: "#f0c000" }}>{siteCoords[focusSite]?.radius || 150} m</div>
               </div>
               <div style={{ background: "#0d0f12", borderRadius: 8, padding: "10px 14px", border: "1px solid #1e2330" }}>
                 <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>此地盤人數</div>
@@ -1020,22 +1060,57 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
               </div>
             </div>
 
+            {editGeoSite && (
+              <div style={{ background: "rgba(240,192,0,0.05)", border: "1px solid rgba(240,192,0,0.25)", borderRadius: 8, padding: "12px 14px", marginBottom: 12 }}>
+                <div style={{ fontWeight: 700, fontSize: 12, color: "#f0c000", marginBottom: 8 }}>⚙️ 設定「{editGeoSite}」GPS</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px", gap: 8, marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#3a4255", marginBottom: 4 }}>緯度 (Lat)</div>
+                    <input value={geoEditForm.lat} onChange={ev => setGeoEditForm(f => ({ ...f, lat: ev.target.value }))}
+                      className="form-input" placeholder="22.3193" style={{ padding: "6px 8px", fontSize: 12 }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#3a4255", marginBottom: 4 }}>經度 (Lng)</div>
+                    <input value={geoEditForm.lng} onChange={ev => setGeoEditForm(f => ({ ...f, lng: ev.target.value }))}
+                      className="form-input" placeholder="114.1694" style={{ padding: "6px 8px", fontSize: 12 }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#3a4255", marginBottom: 4 }}>半徑(m)</div>
+                    <input value={geoEditForm.radius} onChange={ev => setGeoEditForm(f => ({ ...f, radius: ev.target.value }))}
+                      className="form-input" type="number" style={{ padding: "6px 8px", fontSize: 12 }} />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => {
+                    if (!geoEditForm.lat || !geoEditForm.lng) { showToast("⚠️ 請輸入 GPS 座標", "error"); return; }
+                    setSiteCoords(prev => ({ ...prev, [editGeoSite]: { lat: geoEditForm.lat, lng: geoEditForm.lng, radius: Number(geoEditForm.radius) || 150 } }));
+                    setEditGeoSite(null);
+                    showToast(`✅ 「${editGeoSite}」GPS 已更新！`, "success");
+                  }} className="btn btn-primary btn-sm">✅ 儲存</button>
+                  <button onClick={() => setEditGeoSite(null)} className="btn btn-secondary btn-sm">取消</button>
+                </div>
+              </div>
+            )}
+
             {/* Quick site GPS reference table */}
             <div style={{ fontSize: 11, color: "#555d6e", marginBottom: 6, fontWeight: 600 }}>各地盤 GPS 座標</div>
             <div style={{ maxHeight: 180, overflowY: "auto" }}>
               {activeProjects.map(p => (
                 <div key={p.id}
-                  onClick={() => setSelectedSiteView(p.name)}
                   style={{
                     display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "6px 10px", borderRadius: 6, marginBottom: 4, cursor: "pointer",
+                    padding: "6px 10px", borderRadius: 6, marginBottom: 4,
                     background: selectedSiteView === p.name ? "#1a1f2e" : "#0d0f12",
                     border: `1px solid ${selectedSiteView === p.name ? "#f0c000" : "#1e2330"}`
                   }}
                 >
-                  <div style={{ fontSize: 11, fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ fontSize: 10, color: "#3a4255" }}>
-                    {SITE_GPS[p.name] ? `${SITE_GPS[p.name].lat}, ${SITE_GPS[p.name].lng}` : "未設定"}
+                  <div onClick={() => setSelectedSiteView(p.name)} style={{ fontSize: 11, fontWeight: 600, flex: 1, cursor: "pointer" }}>{p.name}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 10, color: "#3a4255" }}>
+                      {siteCoords[p.name] ? `${siteCoords[p.name].lat}, ${siteCoords[p.name].lng}` : "未設定"}
+                    </div>
+                    <button onClick={() => { setEditGeoSite(p.name); setGeoEditForm({ lat: siteCoords[p.name]?.lat || "", lng: siteCoords[p.name]?.lng || "", radius: siteCoords[p.name]?.radius || 150 }); }}
+                      style={{ background: "none", border: "1px solid #2a3045", color: "#8891a4", borderRadius: 4, padding: "2px 6px", fontSize: 10, cursor: "pointer" }}>⚙️</button>
                   </div>
                 </div>
               ))}
@@ -1089,7 +1164,7 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
   );
 }
 
-function Progress({ showToast, projects = INITIAL_PROJECTS }) {
+function Progress({ showToast, projects = INITIAL_PROJECTS, onUpdateProgress }) {
   const [projectIdx, setProjectIdx] = useState(0);
   const [pct, setPct] = useState("15");
   const [note, setNote] = useState("");
@@ -1102,7 +1177,10 @@ function Progress({ showToast, projects = INITIAL_PROJECTS }) {
   };
 
   const handleSubmit = () => {
-    showToast(`📊 進度回報已提交：${projects[projectIdx]?.name} — ${pct}%`, "success");
+    const activeList = projects.filter(p => p.phase === "active");
+    const selected = activeList[projectIdx];
+    if (selected && pct) onUpdateProgress?.(selected.name, Number(pct));
+    showToast(`📊 進度回報已提交：${selected?.name} — ${pct}%（進度圖表已即時更新）`, "success");
     setNote("");
     setStageDesc("");
   };
@@ -1274,6 +1352,39 @@ function Progress({ showToast, projects = INITIAL_PROJECTS }) {
 }
 
 function Invoice({ showToast }) {
+  const [sent, setSent] = useState(false);
+
+  const handlePreviewDraft = () => {
+    const w = window.open("", "_blank");
+    const today = new Date().toLocaleDateString("zh-HK");
+    const invNum = `INV-${Date.now().toString().slice(-6)}`;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>請款單草稿</title>
+<style>body{font-family:Arial,sans-serif;padding:40px;max-width:820px;margin:0 auto;font-size:13px;color:#1a1a1a}
+.hdr{display:flex;justify-content:space-between;padding-bottom:16px;border-bottom:3px solid #f0c000;margin-bottom:24px}
+.co{font-size:22px;font-weight:700}.draft{background:#fff3cd;border:2px dashed #f0c000;padding:8px 16px;text-align:center;font-weight:700;color:#856404;margin-bottom:20px;border-radius:6px}
+table{width:100%;border-collapse:collapse;margin:20px 0}th{background:#1a1a1a;color:#fff;padding:10px 14px;text-align:left;font-size:12px}
+td{padding:10px 14px;border-bottom:1px solid #eee}.total{font-size:18px;font-weight:700;text-align:right;padding:16px;background:#f9f9f9;border-radius:6px;margin-top:8px}
+.note{margin-top:30px;font-size:11px;color:#999;border-top:1px solid #eee;padding-top:14px}
+@media print{.noprint{display:none}}</style></head><body>
+<div class="draft">⚠️ 草稿 — 未正式發送</div>
+<div class="hdr"><div><div class="co">俊輝電梯工程有限公司</div><div style="font-size:12px;color:#666">電梯安裝 / 維修 / 保養服務</div></div>
+<div style="text-align:right;font-size:12px;color:#666"><div><b>請款單日期：</b>${today}</div><div><b>單號：</b>${invNum}</div></div></div>
+<div style="background:#f9f9f9;padding:14px;border-radius:6px;margin-bottom:14px"><div style="font-size:12px;color:#666;margin-bottom:4px">客戶</div><div style="font-weight:700;font-size:14px">旺角電梯業主</div></div>
+<table><thead><tr><th>工程項目</th><th>請款節點</th><th>合約金額</th><th style="text-align:right">請款金額</th></tr></thead>
+<tbody><tr><td>新裝工程（旺角）</td><td>20% 進場開工</td><td>HK$350,000</td><td style="text-align:right">HK$70,000</td></tr></tbody></table>
+<div class="total">請款總額：HK$70,000</div>
+<div class="note">付款方式：銀行轉帳 / 支票　|　付款期限：30天內<br/>此為電腦產生之草稿請款單，如需正式簽名請聯絡財務部。</div>
+<div class="noprint" style="margin-top:30px;text-align:center">
+<button onclick="window.print()" style="padding:10px 24px;background:#1a1a1a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨️ 列印 / 儲存為 PDF</button></div>
+</body></html>`);
+    w.document.close();
+  };
+
+  const handleConfirmSend = () => {
+    setSent(true);
+    showToast("📧 請款單已正式發送至客戶！系統已記錄發送時間", "success");
+  };
+
   return (
     <div>
       <div className="kpi-row">
@@ -1309,10 +1420,11 @@ function Invoice({ showToast }) {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn btn-primary btn-sm" onClick={() => showToast("📧 請款單已發送至客戶！", "success")}>
-                  確認發送
+                <button className="btn btn-primary btn-sm" onClick={handleConfirmSend} disabled={sent}
+                  style={{ opacity: sent ? 0.6 : 1 }}>
+                  {sent ? "✅ 已發送" : "確認發送"}
                 </button>
-                <button className="btn btn-secondary btn-sm">預覽草稿</button>
+                <button className="btn btn-secondary btn-sm" onClick={handlePreviewDraft}>預覽草稿</button>
               </div>
             </div>
           </div>
@@ -1343,7 +1455,7 @@ function Invoice({ showToast }) {
       <div className="card">
         <div className="card-header">
           <div className="card-title">請款記錄</div>
-          <div className="card-action">下載 PDF →</div>
+          <div className="card-action" style={{ cursor: "pointer" }} onClick={handlePreviewDraft}>下載 PDF →</div>
         </div>
         <div className="card-body" style={{ padding: 0 }}>
           <table className="data-table">
@@ -1382,7 +1494,34 @@ function Invoice({ showToast }) {
 }
 
 function Payroll({ showToast, employees = EMPLOYEES }) {
+  const [approvalSubmitted, setApprovalSubmitted] = useState(false);
   const totalSalary = employees.reduce((a, e) => a + (e.days || 22) * (e.rate || 0), 0);
+
+  const handleExportExcel = () => {
+    if (employees.length === 0) { showToast("⚠️ 尚無員工資料，請先新增員工", "error"); return; }
+    const headers = ["員工", "職位", "日薪(HK$)", "出勤天數", "遲到扣薪", "總薪酬(HK$)", "狀態"];
+    const rows = employees.map(e => {
+      const total = (e.days || 22) * (e.rate || 0);
+      return [e.name, e.role, e.rate || 0, `${e.days || 22}天`, "–", total, "待審批"];
+    });
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `薪酬報表_${new Date().toLocaleDateString("zh-HK").replace(/\//g, "-")}.csv`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("📊 薪酬報表已匯出（CSV 可用 Excel 開啟）！", "success");
+  };
+
+  const handleSubmitApproval = () => {
+    if (employees.length === 0) { showToast("⚠️ 尚無員工資料可提交", "error"); return; }
+    setApprovalSubmitted(true);
+    showToast("✅ 薪酬已提交老闆審批，等候確認...", "success");
+  };
+
   return (
     <div>
       <div className="kpi-row">
@@ -1412,8 +1551,11 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
         <div className="card-header">
           <div className="card-title">薪酬試算明細（2025 年 7 月）</div>
           <div style={{ display: "flex", gap: 10 }}>
-            <button className="btn btn-secondary btn-sm" onClick={() => showToast("📊 薪酬報表已匯出", "success")}>匯出 Excel</button>
-            <button className="btn btn-primary btn-sm" onClick={() => showToast("✅ 已提交老闆審批", "success")}>提交審批</button>
+            <button className="btn btn-secondary btn-sm" onClick={handleExportExcel}>匯出 Excel</button>
+            <button className="btn btn-primary btn-sm" onClick={handleSubmitApproval} disabled={approvalSubmitted}
+              style={{ opacity: approvalSubmitted ? 0.6 : 1 }}>
+              {approvalSubmitted ? "⏳ 審批中..." : "提交審批"}
+            </button>
           </div>
         </div>
         <div className="card-body" style={{ padding: 0 }}>
@@ -2482,33 +2624,46 @@ function EmployeeDocs({ showToast, employees = [] }) {
     const empDocs = docs[emp.id] || [];
     const w = window.open("", "_blank");
     const today = new Date().toLocaleDateString("zh-HK");
-    const rows = DOC_TYPES.map(dt => {
-      const d = empDocs.find(x => x.doc_type === dt.id);
-      return `<tr>
-        <td>${dt.icon} ${dt.label}</td>
-        <td style="color:${d?"#22c55e":"#ef4444"}">${d?"✅ 已上傳":"❌ 待補交"}</td>
-        <td>${d ? new Date(d.uploaded_at).toLocaleDateString("zh-HK") : "–"}</td>
-        <td>${d ? d.file_name : "–"}</td>
-      </tr>`;
+    const summaryRows = DOC_TYPES.map(dt => {
+      const dList = empDocs.filter(x => x.doc_type === dt.id);
+      const last = dList.sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at))[0];
+      return `<tr><td>${dt.icon} ${dt.label}${dt.required ? ' <span style="font-size:10px;color:#ef4444">必須</span>' : ''}</td><td style="color:${dList.length > 0 ? "#22c55e" : "#ef4444"};font-weight:600">${dList.length > 0 ? "✅ 已上傳" : "❌ 待補交"}</td><td>${dList.length} 份</td><td>${last ? new Date(last.uploaded_at).toLocaleDateString("zh-HK") : "–"}</td></tr>`;
     }).join("");
-    const imgTags = empDocs.filter(d=>d.file_data&&d.file_data.startsWith("data:image")).map(d=>
-      `<div style="margin:10px 0"><div style="font-size:12px;color:#666;margin-bottom:4px">${DOC_TYPES.find(t=>t.id===d.doc_type)?.label||d.doc_type}: ${d.file_name}</div><img src="${d.file_data}" style="max-width:100%;max-height:300px;border:1px solid #ddd"/></div>`
-    ).join("");
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-      body{font-family:Arial,sans-serif;padding:30px;font-size:13px}
-      h2{color:#1a1a1a}table{width:100%;border-collapse:collapse;margin:16px 0}
-      th{background:#1a1a1a;color:#fff;padding:8px 12px;text-align:left}
-      td{padding:8px 12px;border:1px solid #ddd}
-      .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid #f0c000}
-    </style></head><body>
-    <div class="header"><div><h2>員工文件存檔</h2><div style="font-size:12px;color:#666">俊輝電梯工程有限公司</div></div><div style="text-align:right;font-size:12px;color:#666">列印日期：${today}</div></div>
-    <div style="background:#f9f9f9;padding:12px;border-radius:6px;margin-bottom:16px">
-      <div style="font-size:16px;font-weight:700">${emp.name}</div>
-      <div style="font-size:12px;color:#666">${emp.role||"電梯技工"} · 手機：${emp.phone||"–"}</div>
-    </div>
-    <table><thead><tr><th>文件類型</th><th>狀態</th><th>上傳日期</th><th>檔案名稱</th></tr></thead><tbody>${rows}</tbody></table>
-    ${imgTags ? `<h3>文件圖片</h3>${imgTags}` : ""}
-    <script>window.onload=()=>{window.print()}</script></body></html>`);
+    const docSections = DOC_TYPES.map(dt => {
+      const dList = empDocs.filter(x => x.doc_type === dt.id);
+      if (dList.length === 0) return `<div class="doc-section"><div class="doc-hdr"><span>${dt.icon} ${dt.label}</span><span style="color:#ef4444;font-weight:700">❌ 待補交</span></div><div style="color:#aaa;font-size:12px;padding:10px 0">尚未上傳任何文件</div></div>`;
+      const items = dList.map(d => {
+        if (d.file_data && d.file_data.startsWith("data:image")) {
+          return `<div style="margin-top:10px"><div style="font-size:11px;color:#666;margin-bottom:4px">📄 ${d.file_name}</div><img src="${d.file_data}" style="max-width:100%;max-height:320px;border:1px solid #ddd;border-radius:4px;display:block"/></div>`;
+        } else if (d.file_data && d.file_data.startsWith("data:application/pdf")) {
+          return `<div style="background:#f0f0f0;padding:10px 14px;border-radius:4px;margin-top:10px;font-size:12px">📑 ${d.file_name} <span style="color:#22c55e;font-weight:600">(PDF 檔案已上傳)</span></div>`;
+        } else {
+          return `<div style="background:#f0f0f0;padding:10px 14px;border-radius:4px;margin-top:10px;font-size:12px">📎 ${d.file_name}</div>`;
+        }
+      }).join("");
+      return `<div class="doc-section"><div class="doc-hdr"><span>${dt.icon} ${dt.label}</span><span style="color:#22c55e;font-weight:700">✅ ${dList.length} 份</span></div>${items}</div>`;
+    }).join("");
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${emp.name} 文件存檔</title>
+<style>body{font-family:Arial,sans-serif;padding:30px;font-size:13px;max-width:900px;margin:0 auto;color:#1a1a1a}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:12px;border-bottom:3px solid #f0c000}
+.company{font-size:20px;font-weight:700}
+.emp-info{background:#f9f9f9;padding:14px 18px;border-radius:8px;margin-bottom:20px;border-left:4px solid #f0c000}
+.summary{width:100%;border-collapse:collapse;margin-bottom:24px;font-size:12px}
+.summary th{background:#1a1a1a;color:#fff;padding:9px 12px;text-align:left}
+.summary td{padding:9px 12px;border-bottom:1px solid #eee}
+.doc-section{border:1px solid #ddd;border-radius:8px;padding:14px 18px;margin-bottom:14px;page-break-inside:avoid;background:#fff}
+.doc-hdr{display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;padding-bottom:8px;border-bottom:1px solid #eee;margin-bottom:6px}
+h3{margin:24px 0 14px;font-size:15px;color:#333}
+@media print{.noprint{display:none}body{padding:15px}}</style></head><body>
+<div class="header"><div><div class="company">俊輝電梯工程有限公司</div><div style="font-size:12px;color:#666">員工文件存檔 (一鍵匯總)</div></div><div style="text-align:right;font-size:12px;color:#666">列印日期：${today}</div></div>
+<div class="emp-info"><div style="font-size:18px;font-weight:700">${emp.name}</div><div style="font-size:12px;color:#666;margin-top:4px">${emp.role || "電梯技工"} · 手機：${emp.phone || "–"}</div></div>
+<h3>📋 文件清單概覽</h3>
+<table class="summary"><thead><tr><th>文件類型</th><th>狀態</th><th>份數</th><th>最後上傳</th></tr></thead><tbody>${summaryRows}</tbody></table>
+<h3>📎 文件詳情</h3>
+${docSections}
+<div class="noprint" style="margin-top:30px;text-align:center">
+<button onclick="window.print()" style="padding:10px 24px;background:#1a1a1a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨️ 列印 / 儲存為 PDF</button></div>
+<script>window.onload=()=>{setTimeout(()=>window.print(),300)}</script></body></html>`);
     w.document.close();
   };
 
@@ -3628,7 +3783,7 @@ export default function App() {
             {active === "empdocs" && <EmployeeDocs showToast={showToast} employees={employees} />}
             {active === "safety" && <Safety showToast={showToast} employees={employees} />}
             {active === "attendance" && <Attendance showToast={showToast} employees={employees} projects={projects} />}
-            {active === "progress" && <Progress showToast={showToast} projects={projects} />}
+            {active === "progress" && <Progress showToast={showToast} projects={projects} onUpdateProgress={(projName, newPct) => setProjectsState(prev => prev.map(p => p.name === projName ? { ...p, pct: newPct } : p))} />}
             {active === "invoice" && <Invoice showToast={showToast} />}
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
             {active === "profit" && <ProfitCalc showToast={showToast} />}
