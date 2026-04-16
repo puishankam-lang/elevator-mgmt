@@ -1711,31 +1711,10 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, employees = [], onUp
 function Invoice({ showToast }) {
   const [sent, setSent] = useState(false);
 
-  const handlePreviewDraft = () => {
-    const w = window.open("", "_blank");
-    const today = new Date().toLocaleDateString("zh-HK");
-    const invNum = `INV-${Date.now().toString().slice(-6)}`;
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>請款單草稿</title>
-<style>body{font-family:Arial,sans-serif;padding:40px;max-width:820px;margin:0 auto;font-size:13px;color:#1a1a1a}
-.hdr{display:flex;justify-content:space-between;padding-bottom:16px;border-bottom:3px solid #f0c000;margin-bottom:24px}
-.co{font-size:22px;font-weight:700}.draft{background:#fff3cd;border:2px dashed #f0c000;padding:8px 16px;text-align:center;font-weight:700;color:#856404;margin-bottom:20px;border-radius:6px}
-table{width:100%;border-collapse:collapse;margin:20px 0}th{background:#1a1a1a;color:#fff;padding:10px 14px;text-align:left;font-size:12px}
-td{padding:10px 14px;border-bottom:1px solid #eee}.total{font-size:18px;font-weight:700;text-align:right;padding:16px;background:#f9f9f9;border-radius:6px;margin-top:8px}
-.note{margin-top:30px;font-size:11px;color:#999;border-top:1px solid #eee;padding-top:14px}
-@media print{.noprint{display:none}}</style></head><body>
-<div class="draft">⚠️ 草稿 — 未正式發送</div>
-<div class="hdr"><div><div class="co">俊輝電梯工程有限公司</div><div style="font-size:12px;color:#666">電梯安裝 / 維修 / 保養服務</div></div>
-<div style="text-align:right;font-size:12px;color:#666"><div><b>請款單日期：</b>${today}</div><div><b>單號：</b>${invNum}</div></div></div>
-<div style="background:#f9f9f9;padding:14px;border-radius:6px;margin-bottom:14px"><div style="font-size:12px;color:#666;margin-bottom:4px">客戶</div><div style="font-weight:700;font-size:14px">旺角電梯業主</div></div>
-<table><thead><tr><th>工程項目</th><th>請款節點</th><th>合約金額</th><th style="text-align:right">請款金額</th></tr></thead>
-<tbody><tr><td>新裝工程（旺角）</td><td>20% 進場開工</td><td>HK$350,000</td><td style="text-align:right">HK$70,000</td></tr></tbody></table>
-<div class="total">請款總額：HK$70,000</div>
-<div class="note">付款方式：銀行轉帳 / 支票　|　付款期限：30天內<br/>此為電腦產生之草稿請款單，如需正式簽名請聯絡財務部。</div>
-<div class="noprint" style="margin-top:30px;text-align:center">
-<button onclick="window.print()" style="padding:10px 24px;background:#1a1a1a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨️ 列印 / 儲存為 PDF</button></div>
-</body></html>`);
-    w.document.close();
-  };
+  // Open the editable Chun Fai-format invoice template (matches the Excel
+  // template the user provided — auto today's date, Anlev as default Bill-To,
+  // unit price × pct = amount auto-calculated, all fields editable).
+  const handlePreviewDraft = () => generateInvoicePDF({});
 
   const handleConfirmSend = () => {
     setSent(true);
@@ -2394,71 +2373,169 @@ ${savedQuotes.length > 0 ? `<h3>📁 已儲存報價記錄 (${savedQuotes.length
 
 // ─── PROJECT MANAGER ────────────────────────────────────────────────────────
 // ── Invoice PDF Generator (俊輝格式) ─────────────────────────────────────────
+// Chun Fai invoice template — fully editable in the popup window. Mirrors
+// the Excel formulas: AMOUNT = unit_price × pct, auto subtitle "X 元的 Y%，
+// 共 Z 元", TOTAL = AMOUNT row(s). Date defaults to today, Bill-To defaults
+// to Anlev Elex Elevator Ltd, both editable. Inline JS recalculates as the
+// admin edits any field.
 function generateInvoicePDF(inv) {
   const w = window.open("", "_blank");
   if (!w) { alert("請允許彈出視窗以生成 PDF"); return; }
-  const dateStr = new Date().toLocaleDateString("zh-HK", { year: "numeric", month: "long", day: "numeric" });
-  const amt = Number(inv.amount || 0);
-  const amtFmt = amt.toLocaleString("en-HK", { minimumFractionDigits: 2 });
-  const ecName = inv.ecName || inv.projectName || "";
-  const desc = inv.description || "";
-  const pct = inv.pct ? `${inv.pct}%` : "";
-  const contractVal = inv.contractValue ? Number(inv.contractValue).toLocaleString() : "";
-  const pctLine = contractVal && pct ? `${contractVal}元的${pct}, 共$${amtFmt}元` : "";
+  const today = new Date().toISOString().split("T")[0]; // yyyy-mm-dd for <input type=date>
+  const invNo = inv?.cfNo || `INV-${Date.now().toString().slice(-6)}`;
+  const ecName = inv?.ecName || inv?.projectName || "";
+  const desc = inv?.description || "";
+  const unitPrice = Number(inv?.contractValue || inv?.amount || 0);
+  // Stored pct may be "20" (string), 20, or 0.2 — normalise to fraction
+  const rawPct = inv?.pct;
+  let pctFraction = 0;
+  if (rawPct !== undefined && rawPct !== null && rawPct !== "") {
+    const n = Number(rawPct);
+    pctFraction = n > 1 ? n / 100 : n;
+  } else if (unitPrice && inv?.amount) {
+    pctFraction = Number(inv.amount) / unitPrice;
+  }
+  const pctDisplay = pctFraction ? (pctFraction * 100).toFixed(pctFraction * 100 % 1 ? 1 : 0) : "";
 
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <style>
-    body{font-family:Arial,sans-serif;padding:40px;font-size:13px;color:#000}
-    .order-no{text-align:right;font-weight:bold;font-size:14px;margin-bottom:4px}
-    .date{text-align:right;color:#666;font-size:12px;margin-bottom:30px}
-    .bill-label{font-weight:bold;font-size:15px;margin-bottom:6px}
-    table{width:100%;border-collapse:collapse;margin:20px 0}
-    th{background:#1a1a1a;color:#fff;padding:10px 12px;text-align:left;font-size:13px}
-    th:nth-child(3),th:nth-child(4),th:nth-child(5){text-align:right}
-    td{padding:14px 12px;border:1px solid #ddd;vertical-align:top}
-    td:nth-child(3),td:nth-child(4),td:nth-child(5){text-align:right}
-    .total td{font-weight:bold;background:#f5f5f5;border:1px solid #ddd}
-    .total-amt{font-size:16px}
-    .footer{line-height:2;margin-top:20px}
-    .co{font-weight:bold}
-    @media print{body{padding:20px}}
-  </style></head><body>
-  <div class="order-no">INVOICE NO.: ${inv.cfNo}</div>
-  <div class="date">日期 Date: ${dateStr}</div>
-  <div class="bill-label">BILL TO</div>
-  <div>Anlev Elex Elevator Ltd</div>
-  <div>ATAL Tower, 45-51 Kwok Shui Road, Kwai Chung, New Territories, Hong Kong</div>
-  <div style="margin-bottom:20px">Phone: 2561 8278</div>
-  <table>
-    <thead><tr>
-      <th style="width:5%">Items</th>
-      <th style="width:56%">Details</th>
-      <th style="width:10%">Quantity</th>
-      <th style="width:14%">Unit Price</th>
-      <th style="width:15%">AMOUNT</th>
-    </tr></thead>
-    <tbody>
-      <tr>
-        <td style="text-align:center">1</td>
-        <td><strong>${ecName}</strong><br/>${desc ? desc + "<br/><br/>" : ""}${pctLine}</td>
-        <td style="text-align:center">1</td>
-        <td style="text-align:right">$${amtFmt}</td>
-        <td style="text-align:right">$${amtFmt}</td>
-      </tr>
-      <tr class="total">
-        <td colspan="4" style="text-align:right">TOTAL:</td>
-        <td class="total-amt">HKD$${amtFmt}</td>
-      </tr>
-    </tbody>
-  </table>
-  <div class="footer">
-    <div>Make all checks payable to <span class="co">Chun Fai Lifts Engineering Company Ltd.</span></div>
-    <div class="co">俊輝電梯工程有限公司</div><br/>
-    <div>If you have any questions concerning this invoice, contact Mr. Kam at 5444 2099.</div>
-    <br/><div style="font-weight:bold">THANK YOU FOR YOUR BUSINESS!</div>
+  // Escape any user-supplied strings before injecting into HTML
+  const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Invoice ${esc(invNo)}</title>
+<style>
+  body{font-family:Arial,'Microsoft JhengHei',sans-serif;padding:40px;font-size:13px;color:#000;max-width:820px;margin:0 auto;background:#fff}
+  .header{margin-bottom:20px}
+  .co-en{font-size:18px;font-weight:700}
+  .co-cn{font-size:15px;font-weight:700}
+  .co-addr{font-size:11px;color:#444;line-height:1.6;margin-top:4px}
+  .invoice-bar{display:flex;justify-content:space-between;align-items:center;margin:24px 0 10px;padding-bottom:8px;border-bottom:2px solid #000}
+  .invoice-title{font-size:20px;font-weight:700;letter-spacing:2px}
+  .invoice-meta{display:flex;gap:18px;font-size:12px}
+  .invoice-meta label{color:#666;margin-right:4px}
+  .bill-label{font-weight:bold;font-size:14px;margin:14px 0 6px;letter-spacing:1px}
+  table{width:100%;border-collapse:collapse;margin:14px 0}
+  th{background:#1a1a1a;color:#fff;padding:9px 10px;text-align:left;font-size:12px;font-weight:700}
+  th:nth-child(3),th:nth-child(4),th:nth-child(5),th:nth-child(6){text-align:right}
+  td{padding:10px;border:1px solid #ddd;vertical-align:top}
+  td.r{text-align:right} td.c{text-align:center}
+  .total-row td{font-weight:bold;background:#f5f5f5;font-size:15px}
+  .footer{line-height:1.9;margin-top:24px;font-size:12px;border-top:1px solid #eee;padding-top:14px}
+  .co{font-weight:bold}
+  /* Editable inputs — look like plain text on screen, hide borders on print */
+  input.e, textarea.e {
+    font:inherit;color:inherit;background:transparent;border:1px dashed #cdd5e0;
+    border-radius:3px;padding:2px 4px;width:100%;box-sizing:border-box;outline:none;
+  }
+  input.e:focus, textarea.e:focus { border-color:#FF6B1A;background:#fff8f0 }
+  textarea.e { resize:vertical;min-height:38px;font-family:inherit }
+  input.num { text-align:right }
+  .controls { position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:100 }
+  .btn { padding:9px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit }
+  .btn-print { background:#1a1a1a;color:#fff }
+  .btn-reset { background:#fff;color:#666;border:1px solid #ccc }
+  @media print {
+    .controls { display:none !important }
+    input.e, textarea.e { border:none !important;background:transparent !important;padding:0 !important }
+    body { padding:18px;max-width:none }
+  }
+</style></head><body>
+
+<div class="controls">
+  <button class="btn btn-reset" onclick="if(confirm('清空所有欄位？')) location.reload()">↺ 重設</button>
+  <button class="btn btn-print" onclick="window.print()">🖨️ 列印 / 儲存為 PDF</button>
+</div>
+
+<div class="header">
+  <div class="co-en">Chun Fai Lifts Engineering Company Ltd.</div>
+  <div class="co-cn">俊輝電梯工程有限公司</div>
+  <div class="co-addr">
+    Room 901, International Trade Centre,<br/>
+    11-19 Sha Tsui Road, Tsuen Wan, N.T., Hong Kong<br/>
+    Phone: 5444 2099 &nbsp;&nbsp; EMAIL: bigspreadltd@gmail.com
   </div>
-  <script>window.onload=()=>{window.print()}</script>
-  </body></html>`);
+</div>
+
+<div class="invoice-bar">
+  <div class="invoice-title">INVOICE 發票</div>
+  <div class="invoice-meta">
+    <div><label>NO.:</label><input class="e" id="invNo" value="${esc(invNo)}" style="width:140px"/></div>
+    <div><label>DATE:</label><input class="e" type="date" id="invDate" value="${today}" style="width:140px"/></div>
+  </div>
+</div>
+
+<div class="bill-label">BILL TO</div>
+<input class="e" id="billName" value="Anlev Elex Elevator Ltd" />
+<textarea class="e" id="billAddr" rows="2">ATAL Tower, 45-51 Kwok Shui Road, Kwai Chung, New Territories, Hong Kong</textarea>
+<input class="e" id="billPhone" value="Phone: 2561 8278" />
+
+<table>
+  <thead><tr>
+    <th style="width:5%">Items</th>
+    <th style="width:25%">Project Code</th>
+    <th style="width:30%">Details</th>
+    <th style="width:8%">Quantity</th>
+    <th style="width:16%">Unit Price (HK$)</th>
+    <th style="width:16%">AMOUNT (HK$)</th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td class="c">1</td>
+      <td><textarea class="e" id="proj1" rows="2">${esc(ecName)}</textarea></td>
+      <td><textarea class="e" id="det1" rows="2">${esc(desc || "日更代工")}</textarea></td>
+      <td class="c"><input class="e num" id="qty1" value="1" style="width:40px;text-align:center"/></td>
+      <td class="r"><input class="e num" id="price1" type="number" min="0" step="any" value="${unitPrice || ""}"/></td>
+      <td class="r"><input class="e num" id="amt1" type="number" min="0" step="any" readonly style="background:#f9f9f9"/></td>
+    </tr>
+    <tr>
+      <td></td>
+      <td colspan="4" style="font-size:12px;color:#444">
+        <textarea class="e" id="subtitle1" rows="2" style="width:100%"></textarea>
+      </td>
+      <td class="r" style="font-size:11px;color:#666">% =
+        <input class="e num" id="pct1" type="number" min="0" max="100" step="any" value="${pctDisplay}" style="width:60px;text-align:right"/>%
+      </td>
+    </tr>
+    <tr class="total-row">
+      <td colspan="5" class="r">TOTAL:</td>
+      <td class="r" id="totalCell">HK$0</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="footer">
+  <div>Make all checks payable to <span class="co">Chun Fai Lifts Engineering Company Ltd.</span></div>
+  <div class="co">俊輝電梯工程有限公司</div>
+  <div style="margin-top:8px">If you have any questions concerning this invoice, contact Mr. Kam at 5444 2099.</div>
+  <div style="margin-top:14px;font-weight:bold;letter-spacing:1px">THANK YOU FOR YOUR BUSINESS!</div>
+</div>
+
+<script>
+  // Mirror the Excel formulas:
+  //   F19 (AMOUNT)  = E19 * H19         (unit_price * pct_fraction)
+  //   C20 (subtitle) = TEXT(E,"#,##0") & " 元的 " & TEXT(H,"0%") & "，共 " & TEXT(F,"#,##0") & " 元"
+  //   F21 (TOTAL)   = sum of AMOUNT rows
+  function fmt(n) { return Number(n||0).toLocaleString("en-HK", { maximumFractionDigits: 2 }); }
+  function recalc() {
+    const price = parseFloat(document.getElementById("price1").value) || 0;
+    const pct = (parseFloat(document.getElementById("pct1").value) || 0) / 100;
+    const amt = price * pct;
+    document.getElementById("amt1").value = amt.toFixed(2);
+    document.getElementById("subtitle1").value = price && pct
+      ? \`\${fmt(price)} 元的 \${(pct*100).toFixed(pct*100 % 1 ? 1 : 0)}%，共 \${fmt(amt)} 元\`
+      : "";
+    document.getElementById("totalCell").innerText = "HK$" + fmt(amt);
+  }
+  document.getElementById("price1").addEventListener("input", recalc);
+  document.getElementById("pct1").addEventListener("input", recalc);
+  // Manual override: if admin edits AMOUNT directly, stop auto-recalc on next keystroke
+  document.getElementById("amt1").addEventListener("input", () => {
+    const v = parseFloat(document.getElementById("amt1").value) || 0;
+    document.getElementById("totalCell").innerText = "HK$" + fmt(v);
+  });
+  document.getElementById("amt1").removeAttribute("readonly");
+  document.getElementById("amt1").style.background = "transparent";
+  recalc();
+</script>
+</body></html>`);
   w.document.close();
 }
 
