@@ -2558,11 +2558,14 @@ function generateInvoicePDF(inv, opts = {}) {
         </datalist>
       </td>
       <td>
-        <select id="milestonePreset" class="e" style="margin-bottom:4px;font-size:11px">
-          <option value="">-- 套用完工節點描述 (可選) --</option>
-          ${MILESTONE_PRESETS.map((m, idx) => `<option value="${idx}">${esc(m.group)} ${m.pct}%</option>`).join("")}
-        </select>
-        <textarea class="e" id="det1" rows="3">${esc(desc || "日更代工")}</textarea>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <label style="font-size:10px;color:#FF6B1A;font-weight:700;white-space:nowrap">📋 完工節點：</label>
+          <select id="milestonePreset" class="e" style="flex:1;font-size:11px;border-color:#FF6B1A;cursor:pointer">
+            <option value="">-- 點擊選擇 --</option>
+            ${MILESTONE_PRESETS.map((m, idx) => `<option value="${idx}">${esc(m.group)} ${m.pct}% — ${esc(m.text.slice(0, 24))}${m.text.length > 24 ? "..." : ""}</option>`).join("")}
+          </select>
+        </div>
+        <textarea class="e" id="det1" rows="3" placeholder="工序描述（可從上方節點選單套用，或自行輸入）...">${esc(desc || "日更代工")}</textarea>
       </td>
       <td class="c"><input class="e num" id="qty1" value="1" style="width:40px;text-align:center"/></td>
       <td class="r"><input class="e num" id="price1" type="number" min="0" step="any" value="${unitPrice || ""}"/></td>
@@ -2655,6 +2658,153 @@ function generateInvoicePDF(inv, opts = {}) {
   });
 
   recalc();
+</script>
+</body></html>`);
+  w.document.close();
+}
+
+// ── Employment Contract Generator ─────────────────────────────────────────────
+// Opens an editable Traditional-Chinese 僱傭合約 in a new window, prefilled
+// from the employee record. Mirrors the format of 僱傭合約-韓小錦.docx the
+// user supplied. All fields editable; print to PDF via the browser dialog.
+function generateEmploymentContract(emp) {
+  const w = window.open("", "_blank");
+  if (!w) { alert("請允許彈出視窗以生成合約"); return; }
+  const today = new Date();
+  const todayISO = today.toISOString().split("T")[0];
+  // Default contract: today + 11 months (matches the example: 2026-01-21 → 2026-12-20)
+  const endDefault = new Date(today.getFullYear(), today.getMonth() + 11, today.getDate() - 1)
+    .toISOString().split("T")[0];
+  const fmtDate = iso => {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    return `${y}年${parseInt(m, 10)}月${parseInt(d, 10)}日`;
+  };
+  const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  const empName = emp?.name || "";
+  const empRole = emp?.role || "電梯技工";
+  const empRate = Number(emp?.rate || 0);
+  const empHkid = emp?.hkid || ""; // HKID not stored in DB by default — admin types it
+
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>僱傭合約 ${esc(empName)}</title>
+<style>
+  body{font-family:'Microsoft JhengHei','PingFang TC','Noto Sans TC',Arial,sans-serif;padding:48px 56px;font-size:13px;color:#000;max-width:820px;margin:0 auto;background:#fff;line-height:1.85}
+  h1{text-align:center;font-size:22px;letter-spacing:6px;margin:0 0 28px;font-weight:800}
+  h2{font-size:14px;font-weight:800;margin:18px 0 6px;border-left:4px solid #000;padding-left:8px}
+  p{margin:6px 0}
+  ol,ul{margin:6px 0 8px 28px;padding:0}
+  ol li,ul li{margin:3px 0}
+  .meta-row{margin:8px 0}
+  input.e, textarea.e {
+    font:inherit;color:inherit;background:transparent;border:1px dashed #cdd5e0;
+    border-radius:3px;padding:1px 6px;outline:none;box-sizing:border-box;
+  }
+  input.e:focus, textarea.e:focus { border-color:#FF6B1A;background:#fff8f0 }
+  textarea.e { resize:vertical;font-family:inherit;width:100%;min-height:38px }
+  input.inline { display:inline-block;font-weight:700 }
+  .sig-block{margin-top:48px;display:grid;grid-template-columns:1fr 1fr;gap:40px}
+  .sig-line{border-top:1px solid #000;padding-top:6px;margin-top:42px;font-size:12px}
+  .controls { position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:100 }
+  .btn { padding:9px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit }
+  .btn-print { background:#1a1a1a;color:#fff }
+  .btn-reset { background:#fff;color:#666;border:1px solid #ccc }
+  @media print {
+    .controls { display:none !important }
+    input.e, textarea.e { border:none !important;background:transparent !important;padding:0 !important }
+    body { padding:24px;max-width:none }
+  }
+</style></head><body>
+
+<div class="controls">
+  <button class="btn btn-reset" onclick="if(confirm('清空所有欄位？')) location.reload()">↺ 重設</button>
+  <button class="btn btn-print" onclick="window.print()">🖨️ 列印 / 儲存為 PDF</button>
+</div>
+
+<h1>僱傭合約</h1>
+
+<p>本僱傭合約由 <input class="e inline" id="employer" value="巨揚有限公司" style="width:180px"/>（以下簡稱「僱主」）與 <input class="e inline" id="empName" value="${esc(empName)}" style="width:160px"/>，閣下之僱傭期擔任本公司 — <input class="e inline" id="empRole" value="${esc(empRole)}" style="width:140px"/> 一職，條款及細則如下：</p>
+
+<h2>受僱日期</h2>
+<p class="meta-row">
+  閣下之上任日期為
+  <input class="e inline" type="date" id="startDate" value="${todayISO}" style="width:140px"/>
+  至
+  <input class="e inline" type="date" id="endDate" value="${endDefault}" style="width:140px"/>。
+</p>
+
+<h2>基本薪金</h2>
+<p>閣下之基本薪金為每日港幣 $<input class="e inline" id="dailyRate" type="number" min="0" step="any" value="${empRate || ""}" style="width:90px;text-align:right"/> 元正。</p>
+
+<h2>工資期</h2>
+<p>工資期為每月首天至當月最後一天，工資按月支付，轉賬至銀行戶口。</p>
+
+<h2>工作時間及地點</h2>
+<p>基本工作時間為每星期六天工作，每天工作九小時（包括午飯時間一小時）。</p>
+<p>閣下之主管會按工作需求作安排及知會閣下的工作日期、時間、地點。</p>
+<p>（因應工作的需要，公司有權更改閣下的工作時間及地點，而工作時間將由公司或直屬上司決定及安排。）</p>
+
+<h2>試用期</h2>
+<p>閣下將不會有試用期。</p>
+
+<h2>終止僱傭合約</h2>
+<p><strong>終止僱傭合約通知期</strong>：如合約期內任何一方想終止僱傭合約都必須給予七日通知期或七日代通知金。</p>
+<p><strong>即時終止僱傭合約</strong>：若僱員犯有嚴重錯誤，公司可即時終止僱傭合約而無需作出任何通知期或支付代通知金。</p>
+<p>下列七種行為可導致即時解僱：</p>
+<ol>
+  <li>拒不服從合法合理的指示；</li>
+  <li>與應有的忠誠履行職責背道而馳的錯誤行為；</li>
+  <li>欺騙或不誠實；</li>
+  <li>經常性的疏忽職責；</li>
+  <li>未經許可泄露公司機密資料或商業機密；</li>
+  <li>嚴重違反僱傭合約所規定的條款；</li>
+  <li>根據普通法其他有可能引致終止合同的理由。</li>
+</ol>
+
+<h2>強積金</h2>
+<p>根據《強制性公積金計劃條例》的規定，閣下已加入公司的強積金計劃。就《強制性公積金計劃條例》而言，僱員不屬臨時僱員。</p>
+
+<h2>安全健康工作安排</h2>
+<p>見附件。</p>
+
+<h2>資料保密</h2>
+<p>僱員在受僱期間或本僱傭合約終止後任何時候，在未經僱主授權或按法例要求情況下不得挪用或向任何人士、機構或公司披露所有關於僱主的業務、知識產權或其他商業保密資料，並需要盡最大努力防止以上資料外洩。</p>
+
+<h2>其他條款</h2>
+<ul>
+  <li>閣下不會享有酌情年終獎金、酌情工作表現獎金、醫療保險計劃及其他全職員工之員工福利；</li>
+  <li>在僱用期間，閣下必須遵守所有適用之公司政策、規則和監管；</li>
+  <li>在僱用期間，僱員不能為其他公司服務，亦不能經營私人業務；</li>
+  <li>由於本集團正積極開拓中國內地、澳門及海外市場，視乎業務上的需要，閣下有可能被委派往來或長駐中國內地、澳門或海外工作。</li>
+</ul>
+
+<h2>適用法例</h2>
+<p>如對本合約有任何爭議，雙方同意依據香港特別行政區法律所約束及處理。</p>
+
+<p style="margin-top:18px">此合約建基於閣下前僱主真實及完整之諮詢資料，如資料有任何歪曲或不正確，可能會導致即時解僱。如閣下願意接受本公司之聘用條款，請在此聘用書之正、副本上簽署，並將副本交回本公司。</p>
+
+<p style="margin-top:14px"><strong>本人已閱讀此聘用合約內容，並明白及同意此聘用書內之條款。</strong></p>
+
+<div class="sig-block">
+  <div>
+    <div class="sig-line">僱員簽署</div>
+    <p style="margin-top:14px"><strong id="sigName">${esc(empName)}</strong></p>
+    <p>香港身份證號碼：<input class="e inline" id="hkid" value="${esc(empHkid)}" placeholder="例：M812938(5)" style="width:140px"/></p>
+    <p>日期：<input class="e inline" type="date" id="sigDate" value="${todayISO}" style="width:140px"/></p>
+  </div>
+  <div>
+    <div class="sig-line">僱主代表簽署</div>
+    <p style="margin-top:14px"><input class="e inline" id="employerRep" placeholder="姓名 / 職位" style="width:200px"/></p>
+    <p>公司印鑑</p>
+    <p>日期：<input class="e inline" type="date" id="sigDate2" value="${todayISO}" style="width:140px"/></p>
+  </div>
+</div>
+
+<script>
+  // Sync the signature-block name with the intro empName field as admin types
+  document.getElementById("empName").addEventListener("input", e => {
+    document.getElementById("sigName").innerText = e.target.value || "";
+  });
 </script>
 </body></html>`);
   w.document.close();
@@ -3603,11 +3753,14 @@ function StaffManagement({ employees, setEmployees, showToast }) {
                   </button>
                 </td>
                 <td style={{ padding:"10px 14px" }}>
-                  <div style={{ display:"flex", gap:6 }}>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                     <button onClick={() => { setForm({name:emp.name,role:emp.role||"電梯技工",phone:emp.phone||"",pin:emp.pin||"",rate:emp.rate||850,color:emp.color||"#f0c000"}); setEditId(emp.id); setShowAdd(true); }}
                       style={{ background:"#1e2330", border:"none", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>✏️</button>
                     <button onClick={() => handleResetPin(emp)}
                       style={{ background:"#1e2330", border:"none", color:"#f0c000", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>🔐 PIN</button>
+                    <button onClick={() => generateEmploymentContract(emp)}
+                      title="生成僱傭合約 PDF"
+                      style={{ background:"#1e2330", border:"none", color:"#22c55e", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>📄 合約</button>
                     <button onClick={() => handleDelete(emp.id, emp.name)}
                       style={{ background:"rgba(214,48,48,0.1)", border:"none", color:"#d63030", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>🗑️</button>
                   </div>
