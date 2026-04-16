@@ -4577,12 +4577,14 @@ function CalendarPage({ employees = [], projects = [] }) {
   });
   const [leaves, setLeaves] = useState([]);
   const [docs, setDocs] = useState([]);
+  const [invoices, setInvoices] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
-  // Realtime polling — 15 seconds. Refreshes both leave_requests and the
-  // employee_docs that carry an expiry_date so the calendar surfaces newly-
-  // submitted leaves + freshly-uploaded docs without a manual refresh.
+  // Realtime polling — 15 seconds. Refetches leave_requests, employee_docs
+  // with expiry, and CF invoices with start_date or end_date. So a worker
+  // uploading a green card or a CF being added/edited reflects on the
+  // calendar within 15 seconds.
   useEffect(() => {
     const fetchAll = () => {
       Promise.all([
@@ -4592,9 +4594,13 @@ function CalendarPage({ employees = [], projects = [] }) {
         fetch(`${SUPABASE_URL}/rest/v1/employee_docs?select=id,employee_id,doc_type,file_name,expiry_date,uploaded_at&expiry_date=not.is.null&order=expiry_date.asc&limit=500`, {
           headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
         }).then(r => r.json()).catch(() => []),
-      ]).then(([l, d]) => {
+        fetch(`${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=end_date.asc.nullslast&limit=500`, {
+          headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+        }).then(r => r.json()).catch(() => []),
+      ]).then(([l, d, inv]) => {
         if (Array.isArray(l)) setLeaves(l);
         if (Array.isArray(d)) setDocs(d);
+        if (Array.isArray(inv)) setInvoices(inv);
         setLastRefresh(new Date());
       });
     };
@@ -4658,6 +4664,33 @@ function CalendarPage({ employees = [], projects = [] }) {
       icon: "📄",
       label: `${emp?.name || "員工"} ${DOC_LABELS[d.doc_type] || d.doc_type} 到期`,
     });
+  });
+  // CF invoices — show on their end_date (request payment due) and on
+  // start_date (covering-period start) if different. Unpaid get gold,
+  // paid get muted green.
+  invoices.forEach(inv => {
+    const cfNo = inv.cf_num ? `CF${String(inv.cf_num).padStart(5, "0")}` : (inv.stage || "CF");
+    const projName = inv.projects?.name || "";
+    const amt = Number(inv.amount || 0);
+    const isPaid = inv.status === "paid";
+    const baseLabel = `${cfNo} ${projName} HK$${amt.toLocaleString()}`;
+    if (inv.end_date) {
+      addEvent(inv.end_date, {
+        kind: "invoice",
+        color: isPaid ? "#22c55e" : "#f0c000",
+        icon: isPaid ? "✅" : "💰",
+        label: `${baseLabel}${isPaid ? " (已收)" : " 到期"}`,
+      });
+    }
+    // Also surface start_date if it's different, to mark the covering period start
+    if (inv.start_date && inv.start_date !== inv.end_date) {
+      addEvent(inv.start_date, {
+        kind: "invoice_start",
+        color: "#60a5fa",
+        icon: "📋",
+        label: `${cfNo} ${projName} 開始`,
+      });
+    }
   });
 
   // Compute the "expiring soon" warning list (within 60 days, including past)
@@ -4773,6 +4806,12 @@ function CalendarPage({ employees = [], projects = [] }) {
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <span style={{ width: 8, height: 8, borderRadius: 2, background: "#A78BFA" }} />📄 文件到期
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#f0c000" }} />💰 CF 請款到期
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#60a5fa" }} />📋 CF 開始
         </span>
       </div>
 
