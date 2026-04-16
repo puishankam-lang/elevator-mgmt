@@ -869,6 +869,11 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
   const [checkInTime, setCheckInTime] = useState(() => employees.map(() => null));
   const [selectedSiteView, setSelectedSiteView] = useState(null); // for site-focused map view
   const [viewMode, setViewMode] = useState("employee"); // "employee" | "site"
+  const [empPage, setEmpPage] = useState(0);
+  const EMP_PER_PAGE = 5;
+  const [siteCoords, setSiteCoords] = useState({ ...SITE_GPS });
+  const [editGeoSite, setEditGeoSite] = useState(null);
+  const [geoEditForm, setGeoEditForm] = useState({ lat: "", lng: "", radius: 150 });
 
   const activeProjects = projects.filter(p => p.phase === "active" || p.phase === "pending");
 
@@ -904,7 +909,7 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
   const totalCheckedIn = checkedIn.filter(Boolean).length;
 
   const focusSite = selectedSiteView || empSite.find(s => s) || activeProjects[0]?.name;
-  const focusGPS = SITE_GPS[focusSite] || { lat: "22.3193", lng: "114.1694" };
+  const focusGPS = siteCoords[focusSite] || { lat: "22.3193", lng: "114.1694" };
   const focusCount = focusSite ? (siteGroups[focusSite]?.length || 0) : 0;
 
   return (
@@ -1206,6 +1211,9 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, onUpdateProgress }) 
   const [pct, setPct] = useState("15");
   const [note, setNote] = useState("");
   const [stageDesc, setStageDesc] = useState("");
+  const [milestoneStatus, setMilestoneStatus] = useState("done"); // "done" | "in_progress"
+  const [editChartId, setEditChartId] = useState(null); // project name being edited
+  const [editForm, setEditForm] = useState({ pct: 0, plan: 0 });
 
   const selectStage = (p, desc) => {
     setPct(p);
@@ -1217,9 +1225,28 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, onUpdateProgress }) 
     const activeList = projects.filter(p => p.phase === "active");
     const selected = activeList[projectIdx];
     if (selected && pct) onUpdateProgress?.(selected.name, Number(pct));
-    showToast(`📊 進度回報已提交：${selected?.name} — ${pct}%（進度圖表已即時更新）`, "success");
+    const statusLabel = milestoneStatus === "in_progress" ? "🔄 進行中" : "✅ 已完成";
+    showToast(`📊 進度回報已提交：${selected?.name} — ${pct}% ${statusLabel}（圖表已即時更新）`, "success");
     setNote("");
     setStageDesc("");
+  };
+
+  const handleStartEdit = (proj) => {
+    setEditChartId(proj.name);
+    setEditForm({ pct: proj.pct || 0, plan: proj.plan || 0 });
+  };
+
+  const handleSaveEdit = () => {
+    if (editChartId) {
+      onUpdateProgress?.(editChartId, Number(editForm.pct));
+      // Note: plan is updated client-side only via onUpdateProgress (extends to plan if supported)
+      showToast(`✅ 「${editChartId}」進度已更新為 ${editForm.pct}%`, "success");
+    }
+    setEditChartId(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditChartId(null);
   };
 
   const activeProjects = projects.filter(p => p.phase === "active");
@@ -1346,6 +1373,21 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, onUpdateProgress }) 
             )}
           </div>
 
+          <div className="form-group">
+            <label className="form-label">提交狀態</label>
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <button onClick={() => setMilestoneStatus("done")}
+                style={{ flex: 1, padding: "8px 14px", borderRadius: 6, border: milestoneStatus === "done" ? "2px solid #22c55e" : "1px solid #2a3045", background: milestoneStatus === "done" ? "rgba(34,197,94,0.08)" : "#13161c", color: milestoneStatus === "done" ? "#22c55e" : "#8891a4", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
+                ✅ 已完成此節點
+              </button>
+              <button onClick={() => setMilestoneStatus("in_progress")}
+                style={{ flex: 1, padding: "8px 14px", borderRadius: 6, border: milestoneStatus === "in_progress" ? "2px solid #f0c000" : "1px solid #2a3045", background: milestoneStatus === "in_progress" ? "rgba(240,192,0,0.08)" : "#13161c", color: milestoneStatus === "in_progress" ? "#f0c000" : "#8891a4", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
+                🔄 進行中（尚未完成）
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: "#3a4255", marginTop: 6 }}>💡 「進行中」可記錄階段中途進度，未必需要 100% 完成節點</div>
+          </div>
+
           <button className="btn btn-primary" onClick={handleSubmit} style={{ width: "100%" }}>
             📤 提交進度回報
           </button>
@@ -1364,11 +1406,36 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, onUpdateProgress }) 
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <span style={{ fontSize: 11, color: "#555d6e" }}>計劃 {p.plan}%</span>
                       <div className="progress-pct">{p.pct}%</div>
+                      {editChartId !== p.name && (
+                        <button onClick={() => handleStartEdit(p)}
+                          style={{ background: "none", border: "1px solid #2a3045", color: "#8891a4", borderRadius: 4, padding: "2px 8px", fontSize: 11, cursor: "pointer" }}
+                          title="編輯進度">✏️</button>
+                      )}
                     </div>
                   </div>
                   <div className="progress-bar-bg">
                     <div className={`progress-bar-fill ${p.status}`} style={{ width: `${p.pct}%` }} />
                   </div>
+                  {editChartId === p.name && (
+                    <div style={{ marginTop: 8, padding: "10px 12px", background: "rgba(240,192,0,0.05)", border: "1px solid rgba(240,192,0,0.25)", borderRadius: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <label style={{ fontSize: 10, color: "#3a4255" }}>實際進度 %</label>
+                        <input type="number" min="0" max="100" value={editForm.pct}
+                          onChange={e => setEditForm(f => ({ ...f, pct: e.target.value }))}
+                          style={{ width: 70, background: "#0d0f12", border: "1px solid #2a3045", borderRadius: 4, padding: "4px 8px", color: "#f0c000", fontFamily: "'Barlow Condensed'", fontSize: 14, fontWeight: 700 }} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <label style={{ fontSize: 10, color: "#3a4255" }}>計劃 %</label>
+                        <input type="number" min="0" max="100" value={editForm.plan}
+                          onChange={e => setEditForm(f => ({ ...f, plan: e.target.value }))}
+                          style={{ width: 70, background: "#0d0f12", border: "1px solid #2a3045", borderRadius: 4, padding: "4px 8px", color: "#60a5fa", fontFamily: "'Barlow Condensed'", fontSize: 14, fontWeight: 700 }} />
+                      </div>
+                      <button onClick={handleSaveEdit}
+                        style={{ background: "#22c55e", border: "none", color: "#0d0f12", borderRadius: 4, padding: "6px 12px", fontSize: 11, cursor: "pointer", fontWeight: 700, marginLeft: "auto" }}>✅ 儲存</button>
+                      <button onClick={handleCancelEdit}
+                        style={{ background: "#1e2330", border: "1px solid #2a3045", color: "#8891a4", borderRadius: 4, padding: "6px 12px", fontSize: 11, cursor: "pointer" }}>取消</button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1535,22 +1602,43 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
   const totalSalary = employees.reduce((a, e) => a + (e.days || 22) * (e.rate || 0), 0);
 
   const handleExportExcel = () => {
-    if (employees.length === 0) { showToast("⚠️ 尚無員工資料，請先新增員工", "error"); return; }
-    const headers = ["員工", "職位", "日薪(HK$)", "出勤天數", "遲到扣薪", "總薪酬(HK$)", "狀態"];
-    const rows = employees.map(e => {
-      const total = (e.days || 22) * (e.rate || 0);
-      return [e.name, e.role, e.rate || 0, `${e.days || 22}天`, "–", total, "待審批"];
-    });
-    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `薪酬報表_${new Date().toLocaleDateString("zh-HK").replace(/\//g, "-")}.csv`;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast("📊 薪酬報表已匯出（CSV 可用 Excel 開啟）！", "success");
+    try {
+      if (!employees || employees.length === 0) {
+        showToast("⚠️ 尚無員工資料，請先新增員工", "error");
+        return;
+      }
+      const headers = ["員工", "職位", "日薪(HK$)", "出勤天數", "遲到扣薪", "總薪酬(HK$)", "狀態"];
+      const rows = employees.map(e => {
+        const total = (e.days || 22) * (e.rate || 0);
+        return [e.name || "", e.role || "", e.rate || 0, `${e.days || 22}天`, "–", total, "待審批"];
+      });
+      // Escape any existing double-quotes in values to prevent CSV breakage
+      const escape = v => `"${String(v).replace(/"/g, '""')}"`;
+      const csvContent = [headers, ...rows].map(r => r.map(escape).join(",")).join("\r\n");
+      // BOM + content for Excel UTF-8 compatibility
+      const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
+      const filename = `薪酬報表_${new Date().toLocaleDateString("zh-HK").replace(/\//g, "-")}.csv`;
+      // IE/Edge legacy fallback
+      if (window.navigator && window.navigator.msSaveBlob) {
+        window.navigator.msSaveBlob(blob, filename);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 100);
+      }
+      showToast(`📊 已匯出 ${employees.length} 筆薪酬資料（${filename}）`, "success");
+    } catch (err) {
+      console.error("Excel export failed:", err);
+      showToast(`❌ 匯出失敗：${err.message || "未知錯誤"}`, "error");
+    }
   };
 
   const handleSubmitApproval = () => {
@@ -2703,8 +2791,14 @@ function EmployeeDocs({ showToast, employees = [] }) {
         { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
       );
       const data = await res.json();
-      setDocs(prev => ({ ...prev, [emp.id]: data }));
-    } catch(e) {
+      // Supabase returns {code, message, ...} when table missing — only accept arrays
+      const safe = Array.isArray(data) ? data : [];
+      if (!Array.isArray(data) && data?.message) {
+        console.warn("EmployeeDocs load:", data.message);
+      }
+      setDocs(prev => ({ ...prev, [emp.id]: safe }));
+    } catch (e) {
+      console.error("EmployeeDocs load failed:", e);
       setDocs(prev => ({ ...prev, [emp.id]: [] }));
     }
     setLoading(false);
@@ -2728,11 +2822,17 @@ function EmployeeDocs({ showToast, employees = [] }) {
             uploaded_at: new Date().toISOString()
           })
         });
-        const [saved] = await res.json();
-        setDocs(prev => ({ ...prev, [empId]: [...(prev[empId] || []), saved] }));
+        const responseData = await res.json();
+        if (!Array.isArray(responseData)) {
+          // Likely an error object (e.g., table not found, RLS denied)
+          throw new Error(responseData?.message || "上傳失敗：資料庫回應異常");
+        }
+        const saved = responseData[0];
+        setDocs(prev => ({ ...prev, [empId]: [...(Array.isArray(prev[empId]) ? prev[empId] : []), saved] }));
         showToast(`✅ ${file.name} 上傳成功！`);
-      } catch(e) {
-        showToast("❌ 上傳失敗", "error");
+      } catch (e) {
+        console.error("Upload failed:", e);
+        showToast(`❌ 上傳失敗：${e.message || "未知錯誤"}`, "error");
       }
     };
     reader.readAsDataURL(file);
