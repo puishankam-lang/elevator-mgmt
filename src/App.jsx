@@ -1713,8 +1713,30 @@ function Invoice({ showToast }) {
 
   // Open the editable Chun Fai-format invoice template (matches the Excel
   // template the user provided — auto today's date, Anlev as default Bill-To,
-  // unit price × pct = amount auto-calculated, all fields editable).
-  const handlePreviewDraft = () => generateInvoicePDF({});
+  // unit price × pct = amount auto-calculated, all fields editable). Loads
+  // the latest project list from Supabase so the Project Code field has
+  // autocomplete suggestions seeded with real CFs.
+  const handlePreviewDraft = async () => {
+    let projectOptions = [];
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/invoices?select=stage,label,amount,cf_num,projects(name)&order=cf_num.desc.nullslast&limit=100`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      });
+      const rows = await res.json();
+      if (Array.isArray(rows)) {
+        // Dedupe by ecName
+        const seen = new Set();
+        projectOptions = rows
+          .map(r => ({
+            ecName: r.projects?.name || "",
+            description: r.label || "",
+            contractValue: r.amount || 0,
+          }))
+          .filter(r => r.ecName && !seen.has(r.ecName) && seen.add(r.ecName));
+      }
+    } catch (e) { /* fall through with empty options */ }
+    generateInvoicePDF({}, { projectOptions });
+  };
 
   const handleConfirmSend = () => {
     setSent(true);
@@ -2378,7 +2400,17 @@ ${savedQuotes.length > 0 ? `<h3>📁 已儲存報價記錄 (${savedQuotes.length
 // 共 Z 元", TOTAL = AMOUNT row(s). Date defaults to today, Bill-To defaults
 // to Anlev Elex Elevator Ltd, both editable. Inline JS recalculates as the
 // admin edits any field.
-function generateInvoicePDF(inv) {
+// Default Bill-To client list — common HK elevator clients. Admin can still
+// type any new name; <datalist> is just autocomplete suggestions.
+const DEFAULT_INVOICE_CLIENTS = [
+  { name: "Anlev Elex Elevator Ltd", addr: "ATAL Tower, 45-51 Kwok Shui Road, Kwai Chung, New Territories, Hong Kong", phone: "Phone: 2561 8278" },
+  { name: "Schindler Lifts (Hong Kong) Ltd", addr: "Schindler House, 17 Sun Yip Street, Chai Wan, Hong Kong", phone: "Phone: 2516 8000" },
+  { name: "Otis Elevator Company (HK) Ltd", addr: "20/F, Otis Building, 11 Hoi Shing Road, Tsuen Wan, N.T., Hong Kong", phone: "Phone: 2516 1668" },
+  { name: "Mitsubishi Electric (Hong Kong) Ltd", addr: "10/F, Manulife Tower, 169 Electric Road, North Point, Hong Kong", phone: "Phone: 2510 0555" },
+  { name: "Hitachi Elevator Engineering (HK) Co. Ltd", addr: "16/F, Hitachi Tower, 10 Harcourt Road, Central, Hong Kong", phone: "Phone: 2735 9218" },
+];
+
+function generateInvoicePDF(inv, opts = {}) {
   const w = window.open("", "_blank");
   if (!w) { alert("請允許彈出視窗以生成 PDF"); return; }
   const today = new Date().toISOString().split("T")[0]; // yyyy-mm-dd for <input type=date>
@@ -2386,6 +2418,12 @@ function generateInvoicePDF(inv) {
   const ecName = inv?.ecName || inv?.projectName || "";
   const desc = inv?.description || "";
   const unitPrice = Number(inv?.contractValue || inv?.amount || 0);
+  // Project autocomplete — comes from caller (ProjectManager passes its CF list,
+  // Invoice page can pass a Supabase query). Each item: {ecName, contractValue, description?}
+  const projectOptions = Array.isArray(opts.projectOptions) ? opts.projectOptions : [];
+  const clientOptions = Array.isArray(opts.clientOptions) && opts.clientOptions.length
+    ? opts.clientOptions
+    : DEFAULT_INVOICE_CLIENTS;
   // Stored pct may be "20" (string), 20, or 0.2 — normalise to fraction
   const rawPct = inv?.pct;
   let pctFraction = 0;
@@ -2462,8 +2500,11 @@ function generateInvoicePDF(inv) {
   </div>
 </div>
 
-<div class="bill-label">BILL TO</div>
-<input class="e" id="billName" value="Anlev Elex Elevator Ltd" />
+<div class="bill-label">BILL TO <span style="font-weight:400;color:#888;font-size:11px">（可從清單選擇或自行輸入）</span></div>
+<input class="e" id="billName" list="clientList" value="Anlev Elex Elevator Ltd" placeholder="輸入或選擇客戶名稱..." />
+<datalist id="clientList">
+  ${clientOptions.map(c => `<option value="${esc(c.name)}"></option>`).join("")}
+</datalist>
 <textarea class="e" id="billAddr" rows="2">ATAL Tower, 45-51 Kwok Shui Road, Kwai Chung, New Territories, Hong Kong</textarea>
 <input class="e" id="billPhone" value="Phone: 2561 8278" />
 
@@ -2479,7 +2520,12 @@ function generateInvoicePDF(inv) {
   <tbody>
     <tr>
       <td class="c">1</td>
-      <td><textarea class="e" id="proj1" rows="2">${esc(ecName)}</textarea></td>
+      <td>
+        <input class="e" id="proj1" list="projectList" value="${esc(ecName)}" placeholder="輸入或選擇工程..." style="margin-bottom:4px"/>
+        <datalist id="projectList">
+          ${projectOptions.map(p => `<option value="${esc(p.ecName || p.name || "")}"></option>`).join("")}
+        </datalist>
+      </td>
       <td><textarea class="e" id="det1" rows="2">${esc(desc || "日更代工")}</textarea></td>
       <td class="c"><input class="e num" id="qty1" value="1" style="width:40px;text-align:center"/></td>
       <td class="r"><input class="e num" id="price1" type="number" min="0" step="any" value="${unitPrice || ""}"/></td>
@@ -2533,6 +2579,32 @@ function generateInvoicePDF(inv) {
   });
   document.getElementById("amt1").removeAttribute("readonly");
   document.getElementById("amt1").style.background = "transparent";
+
+  // Datalist autofill — when a known client/project is picked, fill related fields.
+  const CLIENT_DB = ${JSON.stringify(clientOptions)};
+  const PROJECT_DB = ${JSON.stringify(projectOptions)};
+  document.getElementById("billName").addEventListener("change", e => {
+    const c = CLIENT_DB.find(x => x.name === e.target.value);
+    if (c) {
+      if (c.addr)  document.getElementById("billAddr").value  = c.addr;
+      if (c.phone) document.getElementById("billPhone").value = c.phone;
+    }
+  });
+  document.getElementById("proj1").addEventListener("change", e => {
+    const p = PROJECT_DB.find(x => (x.ecName || x.name) === e.target.value);
+    if (p) {
+      if (p.contractValue) {
+        document.getElementById("price1").value = p.contractValue;
+      }
+      if (p.description) document.getElementById("det1").value = p.description;
+      if (p.pct) {
+        const n = Number(p.pct);
+        document.getElementById("pct1").value = n > 1 ? n : n * 100;
+      }
+      recalc();
+    }
+  });
+
   recalc();
 </script>
 </body></html>`);
@@ -3046,7 +3118,17 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                           style={{ background:"none", border:"1px solid #f0c000", color:"#f0c000", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
                           ✏️
                         </button>
-                        <button onClick={() => generateInvoicePDF(item)}
+                        <button onClick={() => generateInvoicePDF(item, {
+                          // Seed the Project autocomplete with every other CF row
+                          projectOptions: cfList
+                            .filter(c => c.ecName && c.id !== item.id)
+                            .map(c => ({
+                              ecName: c.ecName,
+                              description: c.description || "",
+                              contractValue: c.contractValue || c.amount || 0,
+                              pct: c.pct || "",
+                            })),
+                        })}
                           style={{ background:"none", border:"1px solid #2a3045", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
                           🖨️ PDF
                         </button>
