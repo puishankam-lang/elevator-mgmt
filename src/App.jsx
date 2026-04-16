@@ -530,6 +530,7 @@ const NAV_ITEMS = [
   { id: "invoice", icon: "💰", label: "自動化請款" },
   { id: "payroll", icon: "💼", label: "薪酬核算" },
   { id: "empdocs", icon: "📁", label: "員工文件" },
+  { id: "leave", icon: "📝", label: "請假審批" },
   { id: "profit", icon: "📈", label: "報價利潤試算" },
   { id: "tax", icon: "🧾", label: "老闆稅務計算" },
   { id: "settings", icon: "⚙️", label: "系統設定" },
@@ -751,8 +752,14 @@ function Safety({ showToast, employees = EMPLOYEES }) {
     showToast(`✅ ${employees[i]?.name} 安全條款簽署成功，時間戳記已記錄`, "success");
   };
 
-  const handleRemind = (i) => {
-    showToast(`📱 催簽提醒已發送給 ${employees[i]?.name}！請聯絡對方簽署安全守則`, "success");
+  const handleRemind = async (i) => {
+    const emp = employees[i];
+    if (!emp) return;
+    if (!emp.phone) { showToast(`⚠️ ${emp.name} 未設定電話號碼`, "error"); return; }
+    const msg = `${emp.name} 您好，\n請盡快到今日工地簽署安全守則，並拍照存檔。\n\n— 俊輝電梯工程 管理系統`;
+    const r = await sendWhatsApp(emp.phone, msg);
+    if (r.ok) showToast(`📱 催簽 WhatsApp 已發送給 ${emp.name}`, "success");
+    else showToast(`⚠️ ${r.reason}`, "error");
   };
 
   const handleExportHistory = () => {
@@ -3133,6 +3140,22 @@ ${docSections}
     w.document.close();
   };
 
+  // Compute missing required doc labels for a given employee, send WhatsApp
+  const handleRemindDocs = async (emp, e) => {
+    e.stopPropagation(); // don't also trigger loadDocs
+    if (!emp.phone) { showToast(`⚠️ ${emp.name} 未設定電話號碼`, "error"); return; }
+    const empDocsList = docs[emp.id] || [];
+    const missing = DOC_TYPES
+      .filter(dt => dt.required && !empDocsList.some(d => d.doc_type === dt.id))
+      .map(dt => dt.label);
+    if (missing.length === 0) { showToast(`✅ ${emp.name} 所有必要文件已齊備`, "success"); return; }
+    const list = missing.map((m, i) => `  ${i + 1}. ${m}`).join("\n");
+    const msg = `${emp.name} 您好，\n您尚有以下必要文件未補交，請於 3 日內透過員工 App 上傳：\n${list}\n\n— 俊輝電梯工程 管理系統`;
+    const r = await sendWhatsApp(emp.phone, msg);
+    if (r.ok) showToast(`📱 催交 WhatsApp 已發送給 ${emp.name}（${missing.length} 份文件）`, "success");
+    else showToast(`⚠️ ${r.reason}`, "error");
+  };
+
   return (
     <div>
       {allEmps.length === 0 && (
@@ -3145,14 +3168,19 @@ ${docSections}
       <div style={{ display:"flex", gap:12, marginBottom:16, flexWrap:"wrap" }}>
         {allEmps.map(emp => (
           <div key={emp.id} onClick={() => loadDocs(emp)}
-            style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 16px", borderRadius:10, border:`1.5px solid ${selEmp?.id===emp.id?"#f0c000":"#1e2330"}`, background:selEmp?.id===emp.id?"#1a1f2e":"#13161c", cursor:"pointer", minWidth:160 }}>
+            style={{ display:"flex", alignItems:"center", gap:10, padding:"12px 14px", borderRadius:10, border:`1.5px solid ${selEmp?.id===emp.id?"#f0c000":"#1e2330"}`, background:selEmp?.id===emp.id?"#1a1f2e":"#13161c", cursor:"pointer", minWidth:180 }}>
             <div style={{ width:34, height:34, borderRadius:"50%", background:emp.color||"#f0c000", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#0d0f12", fontSize:14 }}>{emp.name[0]}</div>
-            <div>
-              <div style={{ fontWeight:700, fontSize:14 }}>{emp.name}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight:700, fontSize:14, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{emp.name}</div>
               <div style={{ fontSize:11, color:"#555d6e" }}>
                 {docs[emp.id] ? `${docs[emp.id].length}/${DOC_TYPES.length} 份` : "點擊查看"}
               </div>
             </div>
+            <button onClick={(e) => handleRemindDocs(emp, e)}
+              title="催交文件 WhatsApp"
+              style={{ background:"rgba(255,107,26,0.12)", border:"1px solid rgba(255,107,26,0.3)", color:"#f0c000", borderRadius:6, padding:"4px 8px", fontSize:11, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
+              📱 催交
+            </button>
           </div>
         ))}
       </div>
@@ -3957,6 +3985,37 @@ function TaxCalc({ showToast }) {
 const SUPABASE_URL = "https://fyxvejnvzflxppqrhlzt.supabase.co";
 const SUPABASE_KEY = "sb_publishable_k9GEEEmqiYnuBPFqsQuvIQ_YGjweOSh";
 
+// ── WhatsApp Bot helper ──────────────────────────────────────────────────
+// Reads the waConfig saved by the Settings page (webhook URL + enabled flag
+// + boss phone) and POSTs {phone, message} to the Make.com webhook. Returns
+// { ok, reason } so callers can surface a toast on failure.
+async function sendWhatsApp(phone, message) {
+  try {
+    const wa = JSON.parse(localStorage.getItem("waConfig") || "{}");
+    if (!wa.enabled) {
+      return { ok: false, reason: "WhatsApp 通知未啟用（前往系統設定頁面啟用）" };
+    }
+    if (!wa.webhook || wa.webhook.includes("YOUR_WEBHOOK")) {
+      return { ok: false, reason: "請先於系統設定頁面填入 Make.com webhook URL" };
+    }
+    if (!phone) {
+      return { ok: false, reason: "收件人電話未設定" };
+    }
+    // Normalise phone to 852XXXXXXXX (HK): strip non-digits, prepend 852 if missing
+    const digits = String(phone).replace(/\D/g, "");
+    const e164 = digits.startsWith("852") ? digits : ("852" + digits);
+    const res = await fetch(wa.webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: e164, message }),
+    });
+    if (!res.ok) return { ok: false, reason: `Webhook HTTP ${res.status}` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: e.message || "未知錯誤" };
+  }
+}
+
 async function sbFetch(table, options = {}) {
   const { select = "*", filter, order, limit } = options;
   let url = `${SUPABASE_URL}/rest/v1/${table}?select=${select}`;
@@ -4028,6 +4087,219 @@ const mapEmployee = e => ({
   rate: e.daily_rate, site: e.site, color: e.color || "#f0c000",
   days: 22, signed: true, lat: "22.3193", lng: "114.1694",
 });
+
+// ── Leave Approval Inbox ──────────────────────────────────────────────────────
+const LEAVE_TYPE_META = {
+  personal:     { label: "事假",   icon: "🗓️",  color: "#60A5FA" },
+  sick:         { label: "病假",   icon: "🤒",  color: "#EF4444" },
+  annual:       { label: "年假",   icon: "🏖️",  color: "#22C55E" },
+  compensatory: { label: "補假",   icon: "⏱️",  color: "#A78BFA" },
+  unpaid:       { label: "無薪假", icon: "💸",  color: "#F0C000" },
+  other:        { label: "其他",   icon: "📝",  color: "#9CA3AF" },
+};
+
+function LeaveApproval({ showToast, employees = [] }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("pending"); // pending | approved | rejected | all
+  const [noteFor, setNoteFor] = useState(null); // request id currently showing note input
+  const [noteText, setNoteText] = useState("");
+
+  const empById = (id) => employees.find(e => e.id === id);
+
+  const fetchRequests = () => {
+    setLoading(true);
+    fetch(`${SUPABASE_URL}/rest/v1/leave_requests?order=created_at.desc&limit=200`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setRequests(d); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchRequests();
+    const id = setInterval(fetchRequests, 15000); // poll like the other live sections
+    return () => clearInterval(id);
+  }, []);
+
+  const handleDecision = async (req, newStatus) => {
+    try {
+      const emp = empById(req.employee_id);
+      const patch = {
+        status: newStatus,
+        admin_note: noteFor === req.id ? noteText : null,
+        approved_at: new Date().toISOString(),
+      };
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/leave_requests?id=eq.${req.id}`, {
+        method: "PATCH",
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const [updated] = await res.json();
+      setRequests(prev => prev.map(r => r.id === req.id ? updated : r));
+      setNoteFor(null);
+      setNoteText("");
+
+      // WhatsApp notify the employee of the decision
+      if (emp?.phone) {
+        const t = LEAVE_TYPE_META[req.leave_type] || { label: req.leave_type };
+        const verdict = newStatus === "approved" ? "✅ 已批准" : "❌ 已拒絕";
+        const noteLine = patch.admin_note ? `\n管理員備注：${patch.admin_note}` : "";
+        const msg = `${emp.name} 您好，\n您的請假申請 ${verdict}\n類型：${t.label}\n日期：${req.start_date} 至 ${req.end_date}（${req.days} 日）${noteLine}\n\n— 俊輝電梯工程 管理系統`;
+        sendWhatsApp(emp.phone, msg); // fire and forget
+      }
+
+      showToast(`${newStatus === "approved" ? "✅ 已批准" : "❌ 已拒絕"}${emp?.name ? ` ${emp.name}` : ""} 的請假`, "success");
+    } catch (e) {
+      showToast(`❌ 操作失敗：${e.message}`, "error");
+    }
+  };
+
+  const filtered = requests.filter(r => filter === "all" ? true : r.status === filter);
+  const pendingCount = requests.filter(r => r.status === "pending").length;
+
+  return (
+    <div>
+      {/* KPI strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+        {[
+          { label: "待審批", value: pendingCount, color: "#f0c000" },
+          { label: "已批准", value: requests.filter(r => r.status === "approved").length, color: "#22c55e" },
+          { label: "已拒絕", value: requests.filter(r => r.status === "rejected").length, color: "#d63030" },
+          { label: "總申請", value: requests.length, color: "#60a5fa" },
+        ].map((k, i) => (
+          <div key={i} style={{ background: "#13161c", border: "1px solid #1e2330", borderRadius: 10, padding: "12px 16px" }}>
+            <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{k.label}</div>
+            <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 24, fontWeight: 800, color: k.color }}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter tabs */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {[
+          { id: "pending",  label: `🕒 待審批 (${pendingCount})` },
+          { id: "approved", label: "✅ 已批准" },
+          { id: "rejected", label: "❌ 已拒絕" },
+          { id: "all",      label: "📋 全部" },
+        ].map(f => (
+          <button key={f.id} onClick={() => setFilter(f.id)}
+            style={{ padding: "7px 16px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13, background: filter === f.id ? "#f0c000" : "#1e2330", color: filter === f.id ? "#0d0f12" : "#8891a4" }}>
+            {f.label}
+          </button>
+        ))}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#22c55e" }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", animation: "pulse 2s infinite" }} />
+          即時更新
+        </div>
+      </div>
+
+      {loading && requests.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 40, color: "#555d6e" }}>載入中...</div>
+      ) : filtered.length === 0 ? (
+        <div className="card">
+          <div className="card-body" style={{ textAlign: "center", padding: 40, color: "#555d6e" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
+            <div style={{ fontSize: 14 }}>{filter === "pending" ? "尚無待審批的請假申請" : "沒有符合條件的記錄"}</div>
+          </div>
+        </div>
+      ) : (
+        filtered.map(r => {
+          const t = LEAVE_TYPE_META[r.leave_type] || { label: r.leave_type, icon: "📝", color: "#9CA3AF" };
+          const emp = empById(r.employee_id);
+          const isEditing = noteFor === r.id;
+          return (
+            <div key={r.id} className="card" style={{ marginBottom: 12 }}>
+              <div className="card-body" style={{ padding: "16px 20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: emp?.color || "#f0c000", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#0d0f12", fontSize: 16 }}>
+                      {emp?.name?.[0] || "?"}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: "#e8eaf0" }}>{emp?.name || `員工 #${r.employee_id}`}</div>
+                      <div style={{ fontSize: 11, color: "#555d6e", marginTop: 2 }}>
+                        提交於 {r.created_at ? new Date(r.created_at).toLocaleString("zh-HK") : "—"}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontFamily: "'Barlow Condensed'", fontSize: 22, fontWeight: 800, color: t.color }}>
+                      {t.icon} {t.label}
+                    </span>
+                    <span className={`badge ${r.status === "pending" ? "yellow" : r.status === "approved" ? "green" : "red"}`}>
+                      <span className="badge-dot" />
+                      {r.status === "pending" ? "待審批" : r.status === "approved" ? "已批准" : "已拒絕"}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: r.reason ? 10 : 0 }}>
+                  <div style={{ background: "#0d0f12", borderRadius: 8, padding: "8px 12px" }}>
+                    <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1 }}>開始</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#e8eaf0", marginTop: 2 }}>{r.start_date}</div>
+                  </div>
+                  <div style={{ background: "#0d0f12", borderRadius: 8, padding: "8px 12px" }}>
+                    <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1 }}>結束</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#e8eaf0", marginTop: 2 }}>{r.end_date}</div>
+                  </div>
+                  <div style={{ background: "rgba(240,192,0,0.06)", borderRadius: 8, padding: "8px 12px", border: "1px solid rgba(240,192,0,0.2)" }}>
+                    <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1 }}>日數</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#f0c000", marginTop: 2 }}>{r.days} 日</div>
+                  </div>
+                </div>
+
+                {r.reason && (
+                  <div style={{ background: "#0d0f12", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: "#9aa0b4", lineHeight: 1.6 }}>
+                    💬 {r.reason}
+                  </div>
+                )}
+
+                {r.admin_note && (
+                  <div style={{ background: "rgba(96,165,250,0.06)", border: "1px solid rgba(96,165,250,0.2)", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#60a5fa", marginTop: 8 }}>
+                    管理員備注：{r.admin_note}
+                  </div>
+                )}
+
+                {r.status === "pending" && (
+                  <>
+                    {isEditing && (
+                      <textarea value={noteText} onChange={e => setNoteText(e.target.value)}
+                        placeholder="備注（可選，會一併發送到員工 WhatsApp）..."
+                        style={{ width: "100%", marginTop: 10, background: "#0d0f12", border: "1px solid #2a3045", color: "#e8eaf0", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontFamily: "inherit", minHeight: 60, resize: "vertical" }} />
+                    )}
+                    <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                      {!isEditing && (
+                        <button onClick={() => { setNoteFor(r.id); setNoteText(""); }}
+                          className="btn btn-secondary btn-sm">✏️ 添加備注</button>
+                      )}
+                      {isEditing && (
+                        <button onClick={() => { setNoteFor(null); setNoteText(""); }}
+                          className="btn btn-secondary btn-sm">取消備注</button>
+                      )}
+                      <div style={{ flex: 1 }} />
+                      <button onClick={() => handleDecision(r, "rejected")}
+                        style={{ background: "rgba(214,48,48,0.12)", border: "1px solid #d63030", color: "#d63030", borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                        ❌ 拒絕
+                      </button>
+                      <button onClick={() => handleDecision(r, "approved")}
+                        style={{ background: "#22c55e", border: "none", color: "#0d0f12", borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                        ✅ 批准
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
 
 // ── Settings Page ──────────────────────────────────────────────────────────────
 function Settings({ showToast, theme, setTheme, waConfig, setWaConfig, safetyRules, setSafetyRules }) {
@@ -4321,6 +4593,7 @@ export default function App() {
     empdocs: { icon: "📁", title: "員工文件", sub: "綠卡 / ID / 住址證明" },
     profit: { icon: "📈", title: "報價利潤", sub: "試算工具" },
     tax: { icon: "🧾", title: "老闆稅務", sub: "計算器（香港有限公司）" },
+    leave: { icon: "📝", title: "請假審批", sub: "員工請假申請 / 批核" },
     settings: { icon: "⚙️", title: "系統設定", sub: "主題 / 通知 / 重設" },
   };
 
@@ -4411,6 +4684,7 @@ export default function App() {
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
             {active === "profit" && <ProfitCalc showToast={showToast} />}
             {active === "tax" && <TaxCalc showToast={showToast} />}
+            {active === "leave" && <LeaveApproval showToast={showToast} employees={employees} />}
             {active === "settings" && <Settings showToast={showToast} theme={theme} setTheme={setTheme} waConfig={waConfig} setWaConfig={setWaConfig} safetyRules={safetyRules} setSafetyRules={setSafetyRules} />}
           </div>
         </div>
