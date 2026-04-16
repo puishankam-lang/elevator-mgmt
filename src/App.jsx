@@ -2400,21 +2400,49 @@ ${savedQuotes.length > 0 ? `<h3>📁 已儲存報價記錄 (${savedQuotes.length
 // 共 Z 元", TOTAL = AMOUNT row(s). Date defaults to today, Bill-To defaults
 // to Anlev Elex Elevator Ltd, both editable. Inline JS recalculates as the
 // admin edits any field.
-// Default Bill-To client list — common HK elevator clients. Admin can still
-// type any new name; <datalist> is just autocomplete suggestions.
+// Default Bill-To client list — verified against real CF000364 invoice.
+// Admin can still type any new name; <datalist> is just autocomplete suggestions.
 const DEFAULT_INVOICE_CLIENTS = [
-  { name: "Anlev Elex Elevator Ltd", addr: "ATAL Tower, 45-51 Kwok Shui Road, Kwai Chung, New Territories, Hong Kong", phone: "Phone: 2561 8278" },
+  { name: "Anlev Elex Elevator Ltd", addr: "13/F, Island Place Tower, 510 King's Road, North Point, Hong Kong", phone: "Phone: 2561 8278" },
   { name: "Schindler Lifts (Hong Kong) Ltd", addr: "Schindler House, 17 Sun Yip Street, Chai Wan, Hong Kong", phone: "Phone: 2516 8000" },
   { name: "Otis Elevator Company (HK) Ltd", addr: "20/F, Otis Building, 11 Hoi Shing Road, Tsuen Wan, N.T., Hong Kong", phone: "Phone: 2516 1668" },
   { name: "Mitsubishi Electric (Hong Kong) Ltd", addr: "10/F, Manulife Tower, 169 Electric Road, North Point, Hong Kong", phone: "Phone: 2510 0555" },
   { name: "Hitachi Elevator Engineering (HK) Co. Ltd", addr: "16/F, Hitachi Tower, 10 Harcourt Road, Central, Hong Kong", phone: "Phone: 2735 9218" },
 ];
 
+// Milestone presets — sourced from "INVO flow.pdf" (the user's official
+// completion-stage definitions). Picking one in the invoice template
+// fills Details + sets pct% in one click.
+const MILESTONE_PRESETS = [
+  { group: "新裝完工紙", pct: 20,  text: "已進場開工及提交秤線表" },
+  { group: "新裝完工紙", pct: 50,  text: "已完成外門框, 門頭, 地砵, 已完成主副路軌安裝及調校" },
+  { group: "新裝完工紙", pct: 80,  text: "已完成機房及井道全面安裝, 已拆棚交較車行慢車" },
+  { group: "新裝完工紙", pct: 95,  text: "已完成 EMSD 驗機, 已完成保養部驗收手尾" },
+  { group: "新裝完工紙", pct: 100, text: "已完成客戶交機時安裝手尾" },
+  { group: "舊裝完工紙", pct: 30,  text: "已完成拆除機房物料, 已完成拆除井道物料 (不包括外門、外門框及外門地砵), 已提供已簽到工地的「升降機/自動梯工作日誌」, 已提供有效的廢料回收紙回條/載貨入帳票回條" },
+  { group: "舊裝完工紙", pct: 65,  text: "已提交秤線表, 已完成機房及井道全面安裝, 已完成外門框, 門頭, 地砵, 外門, 已完成主副路軌安裝及調校, 已交較車行快車, 已提供已簽到工地的「升降機/自動梯工作日誌」, 已提供有效的廢料回收紙回條/載貨入帳票回條" },
+  { group: "舊裝完工紙", pct: 100, text: "已完成 EMSD 驗機, 已完成保養部驗收手尾, 已完成客戶交機時安裝手尾, EMSD 發出准用証六個月內" },
+  { group: "特殊多期",   pct: 20,  text: "進場開工, 提交秤線表, 完成初期外門框, 門頭, 地砵, 完成初期主副路軌安裝及調校" },
+  { group: "特殊多期",   pct: 45,  text: "完成機房及井道全面安裝, 協助快車慢車調試, 完成 EMSD 驗機" },
+  { group: "特殊多期",   pct: 70,  text: "完成第二期安裝及升機, 協助快車慢車調試, 完成 EMSD 驗機" },
+  { group: "特殊多期",   pct: 95,  text: "完成第三期安裝及升機, 協助快車慢車調試, 完成 EMSD 驗機" },
+  { group: "特殊多期",   pct: 100, text: "完成拆卸及清理" },
+];
+
 function generateInvoicePDF(inv, opts = {}) {
   const w = window.open("", "_blank");
   if (!w) { alert("請允許彈出視窗以生成 PDF"); return; }
   const today = new Date().toISOString().split("T")[0]; // yyyy-mm-dd for <input type=date>
-  const invNo = inv?.cfNo || `INV-${Date.now().toString().slice(-6)}`;
+  // Invoice number: format as CF##### (5-digit zero-padded) when cf_num
+  // is available. Falls back to inv.cfNo if it's already in the right form,
+  // or a timestamp-based default.
+  const cfNumDigits = inv?.cf_num
+    ? String(inv.cf_num).padStart(5, "0")
+    : (inv?.cfNo ? String(inv.cfNo).replace(/[^0-9]/g, "").padStart(5, "0") : "");
+  const invNo = cfNumDigits
+    ? `CF${cfNumDigits}`
+    : (inv?.cfNo || `INV-${Date.now().toString().slice(-6)}`);
+  const orderNo = inv?.orderNo || ""; // Anlev's WO number (optional, editable)
   const ecName = inv?.ecName || inv?.projectName || "";
   const desc = inv?.description || "";
   const unitPrice = Number(inv?.contractValue || inv?.amount || 0);
@@ -2488,15 +2516,18 @@ function generateInvoicePDF(inv, opts = {}) {
   <div class="co-addr">
     Room 901, International Trade Centre,<br/>
     11-19 Sha Tsui Road, Tsuen Wan, N.T., Hong Kong<br/>
-    Phone: 5444 2099 &nbsp;&nbsp; EMAIL: bigspreadltd@gmail.com
+    Phone: 5444 2099 &nbsp;&nbsp; EMAIL: chunfailifts@gmail.com
   </div>
 </div>
 
 <div class="invoice-bar">
   <div class="invoice-title">INVOICE 發票</div>
-  <div class="invoice-meta">
-    <div><label>NO.:</label><input class="e" id="invNo" value="${esc(invNo)}" style="width:140px"/></div>
-    <div><label>DATE:</label><input class="e" type="date" id="invDate" value="${today}" style="width:140px"/></div>
+  <div class="invoice-meta" style="flex-direction:column;align-items:flex-end;gap:4px">
+    <div style="display:flex;gap:18px">
+      <div><label>NO.:</label><input class="e" id="invNo" value="${esc(invNo)}" style="width:120px"/></div>
+      <div><label>DATE:</label><input class="e" type="date" id="invDate" value="${today}" style="width:140px"/></div>
+    </div>
+    <div><label>Order No.:</label><input class="e" id="orderNo" value="${esc(orderNo)}" placeholder="例：WO102AC003249" style="width:200px"/></div>
   </div>
 </div>
 
@@ -2526,7 +2557,13 @@ function generateInvoicePDF(inv, opts = {}) {
           ${projectOptions.map(p => `<option value="${esc(p.ecName || p.name || "")}"></option>`).join("")}
         </datalist>
       </td>
-      <td><textarea class="e" id="det1" rows="2">${esc(desc || "日更代工")}</textarea></td>
+      <td>
+        <select id="milestonePreset" class="e" style="margin-bottom:4px;font-size:11px">
+          <option value="">-- 套用完工節點描述 (可選) --</option>
+          ${MILESTONE_PRESETS.map((m, idx) => `<option value="${idx}">${esc(m.group)} ${m.pct}%</option>`).join("")}
+        </select>
+        <textarea class="e" id="det1" rows="3">${esc(desc || "日更代工")}</textarea>
+      </td>
       <td class="c"><input class="e num" id="qty1" value="1" style="width:40px;text-align:center"/></td>
       <td class="r"><input class="e num" id="price1" type="number" min="0" step="any" value="${unitPrice || ""}"/></td>
       <td class="r"><input class="e num" id="amt1" type="number" min="0" step="any" readonly style="background:#f9f9f9"/></td>
@@ -2583,6 +2620,18 @@ function generateInvoicePDF(inv, opts = {}) {
   // Datalist autofill — when a known client/project is picked, fill related fields.
   const CLIENT_DB = ${JSON.stringify(clientOptions)};
   const PROJECT_DB = ${JSON.stringify(projectOptions)};
+  const MILESTONE_DB = ${JSON.stringify(MILESTONE_PRESETS)};
+
+  // Milestone preset → fills Details + pct + recalcs
+  document.getElementById("milestonePreset").addEventListener("change", e => {
+    const idx = e.target.value;
+    if (idx === "") return;
+    const m = MILESTONE_DB[Number(idx)];
+    if (!m) return;
+    document.getElementById("det1").value = m.text;
+    document.getElementById("pct1").value = m.pct;
+    recalc();
+  });
   document.getElementById("billName").addEventListener("change", e => {
     const c = CLIENT_DB.find(x => x.name === e.target.value);
     if (c) {
