@@ -2562,8 +2562,9 @@ function generateInvoicePDF(inv, opts = {}) {
   .btn-print { background:#1a1a1a;color:#fff }
   .btn-reset { background:#fff;color:#666;border:1px solid #ccc }
   @media print {
-    .controls, .company-picker { display:none !important }
-    input.e, textarea.e { border:none !important;background:transparent !important;padding:0 !important }
+    .controls, .company-picker, .no-print { display:none !important }
+    input.e, textarea.e, select.e { border:none !important;background:transparent !important;padding:0 !important;-webkit-appearance:none;appearance:none }
+    select.e { background-image:none !important }
     body { padding:18px;max-width:none }
   }
 </style></head><body>
@@ -2610,30 +2611,37 @@ function generateInvoicePDF(inv, opts = {}) {
 <table>
   <thead><tr>
     <th style="width:5%">Items</th>
-    <th style="width:25%">Project Code</th>
-    <th style="width:30%">Details</th>
-    <th style="width:8%">Quantity</th>
-    <th style="width:16%">Unit Price (HK$)</th>
-    <th style="width:16%">AMOUNT (HK$)</th>
+    <th style="width:32%">Project Code</th>
+    <th style="width:27%">Details</th>
+    <th style="width:7%">Quantity</th>
+    <th style="width:14%">Unit Price (HK$)</th>
+    <th style="width:15%">AMOUNT (HK$)</th>
   </tr></thead>
   <tbody>
     <tr>
       <td class="c">1</td>
       <td>
-        <input class="e" id="proj1" list="projectList" value="${esc(ecName)}" placeholder="輸入或選擇工程..." style="margin-bottom:4px"/>
+        <textarea class="e" id="proj1" rows="2" placeholder="工程編號（例：EC-561 柴灣物流倉）" style="width:100%">${esc(ecName)}</textarea>
         <datalist id="projectList">
           ${projectOptions.map(p => `<option value="${esc(p.ecName || p.name || "")}"></option>`).join("")}
         </datalist>
+        <div class="no-print" style="display:flex;align-items:center;gap:6px;margin-top:6px">
+          <label style="font-size:10px;color:#888;white-space:nowrap">選擇：</label>
+          <select id="projPicker" class="e" style="flex:1;font-size:10px;cursor:pointer">
+            <option value="">-- 從工程清單選擇 --</option>
+            ${projectOptions.map((p, i) => `<option value="${i}">${esc(p.ecName || p.name || "")}</option>`).join("")}
+          </select>
+        </div>
       </td>
       <td>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        <textarea class="e" id="det1" rows="3" placeholder="工序描述（可從下方節點選單套用，或自行輸入）...">${esc(desc || "日更代工")}</textarea>
+        <div class="no-print" style="display:flex;align-items:center;gap:6px;margin-top:6px">
           <label style="font-size:10px;color:#FF6B1A;font-weight:700;white-space:nowrap">📋 完工節點：</label>
-          <select id="milestonePreset" class="e" style="flex:1;font-size:11px;border-color:#FF6B1A;cursor:pointer">
+          <select id="milestonePreset" class="e" style="flex:1;font-size:10px;border-color:#FF6B1A;cursor:pointer">
             <option value="">-- 點擊選擇 --</option>
             ${MILESTONE_PRESETS.map((m, idx) => `<option value="${idx}">${esc(m.group)} ${m.pct}% — ${esc(m.text.slice(0, 24))}${m.text.length > 24 ? "..." : ""}</option>`).join("")}
           </select>
         </div>
-        <textarea class="e" id="det1" rows="3" placeholder="工序描述（可從上方節點選單套用，或自行輸入）...">${esc(desc || "日更代工")}</textarea>
       </td>
       <td class="c"><input class="e num" id="qty1" value="1" style="width:40px;text-align:center"/></td>
       <td class="r"><input class="e num" id="price1" type="number" min="0" step="any" value="${unitPrice || ""}"/></td>
@@ -2641,11 +2649,14 @@ function generateInvoicePDF(inv, opts = {}) {
     </tr>
     <tr>
       <td></td>
+      <td></td>
       <td colspan="4" style="font-size:12px;color:#444">
         <textarea class="e" id="subtitle1" rows="2" style="width:100%"></textarea>
-      </td>
-      <td class="r" style="font-size:11px;color:#666">% =
-        <input class="e num" id="pct1" type="number" min="0" max="100" step="any" value="${pctDisplay}" style="width:60px;text-align:right"/>%
+        <div class="no-print" style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:10px;color:#888">
+          請款 %：
+          <input class="e num" id="pct1" type="number" min="0" max="100" step="any" value="${pctDisplay}" style="width:60px;text-align:right;font-size:11px"/>%
+          <span style="color:#aaa">（自動換算 AMOUNT 及上方副標題）</span>
+        </div>
       </td>
     </tr>
     <tr class="total-row">
@@ -2722,19 +2733,21 @@ function generateInvoicePDF(inv, opts = {}) {
       if (c.phone) document.getElementById("billPhone").value = c.phone;
     }
   });
-  document.getElementById("proj1").addEventListener("change", e => {
-    const p = PROJECT_DB.find(x => (x.ecName || x.name) === e.target.value);
-    if (p) {
-      if (p.contractValue) {
-        document.getElementById("price1").value = p.contractValue;
-      }
-      if (p.description) document.getElementById("det1").value = p.description;
-      if (p.pct) {
-        const n = Number(p.pct);
-        document.getElementById("pct1").value = n > 1 ? n : n * 100;
-      }
-      recalc();
+  // Picking from the project dropdown autofills the project textarea +
+  // price + pct + details, then recalcs.
+  document.getElementById("projPicker").addEventListener("change", e => {
+    const idx = e.target.value;
+    if (idx === "") return;
+    const p = PROJECT_DB[Number(idx)];
+    if (!p) return;
+    document.getElementById("proj1").value = p.ecName || p.name || "";
+    if (p.contractValue) document.getElementById("price1").value = p.contractValue;
+    if (p.description) document.getElementById("det1").value = p.description;
+    if (p.pct) {
+      const n = Number(p.pct);
+      document.getElementById("pct1").value = n > 1 ? n : n * 100;
     }
+    recalc();
   });
 
   recalc();
