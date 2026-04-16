@@ -2580,33 +2580,45 @@ function generateInvoicePDF(inv, opts = {}) {
       ${INVOICE_COMPANIES.map(c => `<option value="${c.id}">出單公司：${esc(c.cn)}</option>`).join("")}
     </select>
   </div>
-  <input class="e" id="coEN" value="${esc(INVOICE_COMPANIES[0].en)}" style="font-size:18px;font-weight:700;width:100%;border:none;padding:0"/>
-  <input class="e" id="coCN" value="${esc(INVOICE_COMPANIES[0].cn)}" style="font-size:15px;font-weight:700;width:100%;border:none;padding:0;margin-top:2px"/>
-  <textarea class="e" id="coAddr" rows="2" style="font-size:11px;color:#444;width:100%;border:none;padding:0;margin-top:4px;resize:none">${esc(INVOICE_COMPANIES[0].addr)}</textarea>
-  <div style="font-size:11px;color:#444;margin-top:2px">
-    Phone: <input class="e" id="coPhone" value="${esc(INVOICE_COMPANIES[0].phone)}" style="width:90px;border:none;padding:0"/> &nbsp;&nbsp;
-    EMAIL: <input class="e" id="coEmail" value="${esc(INVOICE_COMPANIES[0].email)}" style="width:200px;border:none;padding:0"/>
+  <input class="e" id="coEN" value="${esc(INVOICE_COMPANIES[0].en)}" style="font-size:20px;font-weight:700;width:100%;border:none;padding:0"/>
+  <input class="e" id="coCN" value="${esc(INVOICE_COMPANIES[0].cn)}" style="font-size:16px;font-weight:700;width:100%;border:none;padding:0;margin-top:4px"/>
+  <textarea class="e" id="coAddr" rows="2" style="font-size:12px;color:#222;width:100%;border:none;padding:0;margin-top:8px;resize:none">${esc(INVOICE_COMPANIES[0].addr)}</textarea>
+  <div style="font-size:12px;color:#222;margin-top:2px">
+    Phone: <input class="e" id="coPhone" value="${esc(INVOICE_COMPANIES[0].phone)}" style="width:90px;border:none;padding:0"/>
+  </div>
+  <div style="font-size:12px;color:#222">
+    EMAIL: <input class="e" id="coEmail" value="${esc(INVOICE_COMPANIES[0].email)}" style="width:240px;border:none;padding:0"/>
   </div>
 </div>
 
-<div class="invoice-bar">
-  <div class="invoice-title">INVOICE 發票</div>
-  <div class="invoice-meta" style="flex-direction:column;align-items:flex-end;gap:4px">
-    <div style="display:flex;gap:18px">
-      <div><label>NO.:</label><input class="e" id="invNo" value="${esc(invNo)}" style="width:120px"/></div>
-      <div><label>DATE:</label><input class="e" type="date" id="invDate" value="${today}" style="width:140px"/></div>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:30px;margin:24px 0 14px">
+  <!-- LEFT column: BILL TO -->
+  <div style="flex:1;min-width:0">
+    <div style="font-weight:bold;font-size:14px;letter-spacing:1px;margin-bottom:6px">BILL TO</div>
+    <input class="e" id="billName" list="clientList" value="Anlev Elex Elevator Ltd" placeholder="輸入或選擇客戶名稱..." style="font-weight:600"/>
+    <datalist id="clientList">
+      ${clientOptions.map(c => `<option value="${esc(c.name)}"></option>`).join("")}
+    </datalist>
+    <textarea class="e" id="billAddr" rows="2" style="margin-top:4px">13/F, Island Place Tower, 510 King's Road, North Point, Hong Kong</textarea>
+    <input class="e" id="billPhone" value="Phone: 2561 8278" style="margin-top:4px"/>
+  </div>
+
+  <!-- RIGHT column: invoice meta -->
+  <div style="text-align:right;font-size:13px;min-width:240px">
+    <div style="font-size:18px;font-weight:700;letter-spacing:2px;margin-bottom:6px">INVOICE 發票</div>
+    <div style="margin-bottom:4px">
+      #<input class="e" id="invNo" value="${esc(invNo)}" style="width:130px;text-align:right;font-weight:700"/>
     </div>
-    <div><label>Order No.:</label><input class="e" id="orderNo" value="${esc(orderNo)}" placeholder="例：WO102AC003249" style="width:200px"/></div>
+    <div style="margin-bottom:4px">
+      <span style="color:#666">DATE: </span>
+      <input class="e" type="date" id="invDate" value="${today}" style="width:140px;text-align:right"/>
+    </div>
+    <div>
+      <span style="color:#666">Order No.: </span>
+      <input class="e" id="orderNo" value="${esc(orderNo)}" placeholder="例：WO102AC003249" style="width:170px;text-align:right;font-weight:700"/>
+    </div>
   </div>
 </div>
-
-<div class="bill-label">BILL TO <span style="font-weight:400;color:#888;font-size:11px">（可從清單選擇或自行輸入）</span></div>
-<input class="e" id="billName" list="clientList" value="Anlev Elex Elevator Ltd" placeholder="輸入或選擇客戶名稱..." />
-<datalist id="clientList">
-  ${clientOptions.map(c => `<option value="${esc(c.name)}"></option>`).join("")}
-</datalist>
-<textarea class="e" id="billAddr" rows="2">ATAL Tower, 45-51 Kwok Shui Road, Kwai Chung, New Territories, Hong Kong</textarea>
-<input class="e" id="billPhone" value="Phone: 2561 8278" />
 
 <table>
   <thead><tr>
