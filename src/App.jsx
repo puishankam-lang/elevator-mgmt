@@ -2400,6 +2400,28 @@ ${savedQuotes.length > 0 ? `<h3>📁 已儲存報價記錄 (${savedQuotes.length
 // 共 Z 元", TOTAL = AMOUNT row(s). Date defaults to today, Bill-To defaults
 // to Anlev Elex Elevator Ltd, both editable. Inline JS recalculates as the
 // admin edits any field.
+// Issuing companies — admin can switch between Chun Fai (俊輝電梯) and
+// Bigspread (巨揚有限公司) at the top of the invoice template. All fields
+// stay editable so any one-off override is fine.
+const INVOICE_COMPANIES = [
+  {
+    id: "chunfai",
+    cn: "俊輝電梯工程有限公司",
+    en: "Chun Fai Lifts Engineering Company Ltd.",
+    addr: "Room 901, International Trade Centre,\n11-19 Sha Tsui Road, Tsuen Wan, N.T., Hong Kong",
+    phone: "5444 2099",
+    email: "chunfailifts@gmail.com",
+  },
+  {
+    id: "bigspread",
+    cn: "巨揚有限公司",
+    en: "Bigspread Ltd.",
+    addr: "Room 901, International Trade Centre,\n11-19 Sha Tsui Road, Tsuen Wan, N.T., Hong Kong",
+    phone: "5444 2099",
+    email: "bigspreadltd@gmail.com",
+  },
+];
+
 // Default Bill-To client list — verified against real CF000364 invoice.
 // Admin can still type any new name; <datalist> is just autocomplete suggestions.
 const DEFAULT_INVOICE_CLIENTS = [
@@ -2499,7 +2521,7 @@ function generateInvoicePDF(inv, opts = {}) {
   .btn-print { background:#1a1a1a;color:#fff }
   .btn-reset { background:#fff;color:#666;border:1px solid #ccc }
   @media print {
-    .controls { display:none !important }
+    .controls, .company-picker { display:none !important }
     input.e, textarea.e { border:none !important;background:transparent !important;padding:0 !important }
     body { padding:18px;max-width:none }
   }
@@ -2511,12 +2533,17 @@ function generateInvoicePDF(inv, opts = {}) {
 </div>
 
 <div class="header">
-  <div class="co-en">Chun Fai Lifts Engineering Company Ltd.</div>
-  <div class="co-cn">俊輝電梯工程有限公司</div>
-  <div class="co-addr">
-    Room 901, International Trade Centre,<br/>
-    11-19 Sha Tsui Road, Tsuen Wan, N.T., Hong Kong<br/>
-    Phone: 5444 2099 &nbsp;&nbsp; EMAIL: chunfailifts@gmail.com
+  <div style="display:flex;justify-content:flex-end;margin-bottom:6px" class="company-picker">
+    <select id="companyPicker" class="e" style="font-size:11px;width:200px">
+      ${INVOICE_COMPANIES.map(c => `<option value="${c.id}">出單公司：${esc(c.cn)}</option>`).join("")}
+    </select>
+  </div>
+  <input class="e" id="coEN" value="${esc(INVOICE_COMPANIES[0].en)}" style="font-size:18px;font-weight:700;width:100%;border:none;padding:0"/>
+  <input class="e" id="coCN" value="${esc(INVOICE_COMPANIES[0].cn)}" style="font-size:15px;font-weight:700;width:100%;border:none;padding:0;margin-top:2px"/>
+  <textarea class="e" id="coAddr" rows="2" style="font-size:11px;color:#444;width:100%;border:none;padding:0;margin-top:4px;resize:none">${esc(INVOICE_COMPANIES[0].addr)}</textarea>
+  <div style="font-size:11px;color:#444;margin-top:2px">
+    Phone: <input class="e" id="coPhone" value="${esc(INVOICE_COMPANIES[0].phone)}" style="width:90px;border:none;padding:0"/> &nbsp;&nbsp;
+    EMAIL: <input class="e" id="coEmail" value="${esc(INVOICE_COMPANIES[0].email)}" style="width:200px;border:none;padding:0"/>
   </div>
 </div>
 
@@ -2624,6 +2651,18 @@ function generateInvoicePDF(inv, opts = {}) {
   const CLIENT_DB = ${JSON.stringify(clientOptions)};
   const PROJECT_DB = ${JSON.stringify(projectOptions)};
   const MILESTONE_DB = ${JSON.stringify(MILESTONE_PRESETS)};
+  const COMPANY_DB = ${JSON.stringify(INVOICE_COMPANIES)};
+
+  // Company picker → swaps issuing company info (俊輝 ↔ 巨揚)
+  document.getElementById("companyPicker").addEventListener("change", e => {
+    const c = COMPANY_DB.find(x => x.id === e.target.value);
+    if (!c) return;
+    document.getElementById("coEN").value    = c.en;
+    document.getElementById("coCN").value    = c.cn;
+    document.getElementById("coAddr").value  = c.addr;
+    document.getElementById("coPhone").value = c.phone;
+    document.getElementById("coEmail").value = c.email;
+  });
 
   // Milestone preset → fills Details + pct + recalcs
   document.getElementById("milestonePreset").addEventListener("change", e => {
