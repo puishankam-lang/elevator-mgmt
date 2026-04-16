@@ -4564,15 +4564,31 @@ function CalendarPage({ employees = [], projects = [] }) {
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
   const [leaves, setLeaves] = useState([]);
+  const [docs, setDocs] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
 
+  // Realtime polling — 15 seconds. Refreshes both leave_requests and the
+  // employee_docs that carry an expiry_date so the calendar surfaces newly-
+  // submitted leaves + freshly-uploaded docs without a manual refresh.
   useEffect(() => {
-    fetch(`${SUPABASE_URL}/rest/v1/leave_requests?status=in.(pending,approved)&order=start_date.asc&limit=500`, {
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-    })
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setLeaves(d); })
-      .catch(() => {});
+    const fetchAll = () => {
+      Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/leave_requests?status=in.(pending,approved)&order=start_date.asc&limit=500`, {
+          headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+        }).then(r => r.json()).catch(() => []),
+        fetch(`${SUPABASE_URL}/rest/v1/employee_docs?select=id,employee_id,doc_type,file_name,expiry_date,uploaded_at&expiry_date=not.is.null&order=expiry_date.asc&limit=500`, {
+          headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+        }).then(r => r.json()).catch(() => []),
+      ]).then(([l, d]) => {
+        if (Array.isArray(l)) setLeaves(l);
+        if (Array.isArray(d)) setDocs(d);
+        setLastRefresh(new Date());
+      });
+    };
+    fetchAll();
+    const id = setInterval(fetchAll, 15000);
+    return () => clearInterval(id);
   }, []);
 
   const empById = id => employees.find(e => e.id === id);
@@ -4616,6 +4632,46 @@ function CalendarPage({ employees = [], projects = [] }) {
       label: `${p.name} 完工`,
     });
   });
+  // Document expiry dates — green card / EMSD licence renewal reminders
+  const DOC_LABELS = {
+    greencard: "綠卡", id: "身份證", address: "住址證明",
+    license: "技工牌照", other_cert: "其他證明",
+  };
+  docs.forEach(d => {
+    if (!d.expiry_date) return;
+    const emp = empById(d.employee_id);
+    addEvent(d.expiry_date, {
+      kind: "doc_expiry",
+      color: "#A78BFA",
+      icon: "📄",
+      label: `${emp?.name || "員工"} ${DOC_LABELS[d.doc_type] || d.doc_type} 到期`,
+    });
+  });
+
+  // Compute the "expiring soon" warning list (within 60 days, including past)
+  const now = new Date();
+  const sixtyDaysOut = new Date(now.getTime() + 60 * 86400000);
+  const expiringSoon = docs
+    .map(d => {
+      if (!d.expiry_date) return null;
+      const exp = new Date(d.expiry_date);
+      const daysLeft = Math.ceil((exp - now) / 86400000);
+      if (exp > sixtyDaysOut) return null;
+      return { ...d, daysLeft, emp: empById(d.employee_id) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.daysLeft - b.daysLeft);
+  // Same idea for project deadlines within 30 days
+  const upcomingDeadlines = projects
+    .map(p => {
+      if (!p.end) return null;
+      const end = new Date(p.end);
+      const daysLeft = Math.ceil((end - now) / 86400000);
+      if (daysLeft < 0 || daysLeft > 30) return null;
+      return { ...p, daysLeft };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.daysLeft - b.daysLeft);
 
   // Build the grid: 6 weeks × 7 days
   const cells = [];
@@ -4629,11 +4685,65 @@ function CalendarPage({ employees = [], projects = [] }) {
 
   return (
     <div>
+      {/* ─── Live alert banners ─── */}
+      {(expiringSoon.length > 0 || upcomingDeadlines.length > 0) && (
+        <div style={{ display: "grid", gridTemplateColumns: expiringSoon.length > 0 && upcomingDeadlines.length > 0 ? "1fr 1fr" : "1fr", gap: 12, marginBottom: 14 }}>
+          {expiringSoon.length > 0 && (
+            <div style={{ background: "rgba(167,139,250,0.06)", border: "1.5px solid rgba(167,139,250,0.4)", borderLeft: "4px solid #A78BFA", borderRadius: 10, padding: "12px 16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 18 }}>📄</span>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#A78BFA" }}>{expiringSoon.length} 份文件即將到期 / 已到期</div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 120, overflowY: "auto" }}>
+                {expiringSoon.slice(0, 6).map(d => {
+                  const isOver = d.daysLeft < 0;
+                  const urgent = d.daysLeft <= 14;
+                  return (
+                    <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, padding: "3px 0" }}>
+                      <span style={{ color: "#c8d0e0" }}>
+                        {d.emp?.name || `員工 #${d.employee_id}`} · {DOC_LABELS[d.doc_type] || d.doc_type}
+                      </span>
+                      <span style={{ color: isOver ? "#d63030" : urgent ? "#f0c000" : "#A78BFA", fontWeight: 700, fontSize: 11 }}>
+                        {isOver ? `已過期 ${-d.daysLeft} 日` : `${d.daysLeft} 日後到期`}
+                      </span>
+                    </div>
+                  );
+                })}
+                {expiringSoon.length > 6 && <div style={{ fontSize: 11, color: "#555d6e", paddingTop: 2 }}>+ {expiringSoon.length - 6} 份其他</div>}
+              </div>
+            </div>
+          )}
+          {upcomingDeadlines.length > 0 && (
+            <div style={{ background: "rgba(239,68,68,0.06)", border: "1.5px solid rgba(239,68,68,0.4)", borderLeft: "4px solid #EF4444", borderRadius: 10, padding: "12px 16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 18 }}>⏰</span>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#EF4444" }}>{upcomingDeadlines.length} 個工程 30 日內完工</div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 120, overflowY: "auto" }}>
+                {upcomingDeadlines.slice(0, 6).map(p => (
+                  <div key={p.id || p.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, padding: "3px 0" }}>
+                    <span style={{ color: "#c8d0e0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 8 }}>{p.name}</span>
+                    <span style={{ color: p.daysLeft <= 7 ? "#d63030" : "#f0c000", fontWeight: 700, fontSize: 11, flexShrink: 0 }}>{p.daysLeft} 日後</span>
+                  </div>
+                ))}
+                {upcomingDeadlines.length > 6 && <div style={{ fontSize: 11, color: "#555d6e", paddingTop: 2 }}>+ {upcomingDeadlines.length - 6} 個其他</div>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Month nav */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <button onClick={() => setCursor(new Date(year, month - 1, 1))}
           style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid #2a3045", background: "#1e2330", color: "#e8eaf0", cursor: "pointer", fontWeight: 600 }}>← 上月</button>
-        <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 24, fontWeight: 800, color: "#f0c000" }}>{monthLabel}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 24, fontWeight: 800, color: "#f0c000" }}>{monthLabel}</div>
+          <span style={{ fontSize: 11, color: "#22c55e", display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", animation: "pulse 2s infinite" }} />
+            即時更新 · {lastRefresh.toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+          </span>
+        </div>
         <button onClick={() => setCursor(new Date(year, month + 1, 1))}
           style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid #2a3045", background: "#1e2330", color: "#e8eaf0", cursor: "pointer", fontWeight: 600 }}>下月 →</button>
       </div>
@@ -4647,7 +4757,10 @@ function CalendarPage({ employees = [], projects = [] }) {
           </span>
         ))}
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#EF4444" }} />⏰ 工程完工日
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#EF4444" }} />⏰ 工程完工
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#A78BFA" }} />📄 文件到期
         </span>
       </div>
 
