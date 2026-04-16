@@ -3020,10 +3020,11 @@ function EmployeeDocs({ showToast, employees = [] }) {
   // Doc type keys aligned with employee mobile app (employee_mobile_app_2.jsx)
   // so docs uploaded from the mobile app render correctly here.
   const DOC_TYPES = [
-    { id: "greencard", label: "綠卡（建造業工人安全卡）", icon: "🟢", required: true,  emsd: true },
-    { id: "id",        label: "香港身份證",               icon: "🪪", required: true,  emsd: false },
-    { id: "address",   label: "住址證明",                 icon: "🏠", required: true,  emsd: false },
-    { id: "license",   label: "升降機技工註冊牌照",       icon: "📋", required: false, emsd: true },
+    { id: "greencard",  label: "綠卡（建造業工人安全卡）", icon: "🟢", required: true,  emsd: true,  hasExpiry: true  },
+    { id: "id",         label: "香港身份證",               icon: "🪪", required: true,  emsd: false, hasExpiry: false },
+    { id: "address",    label: "住址證明",                 icon: "🏠", required: true,  emsd: false, hasExpiry: false },
+    { id: "license",    label: "升降機技工註冊牌照",       icon: "📋", required: false, emsd: true,  hasExpiry: true  },
+    { id: "other_cert", label: "其他證明",                 icon: "📄", required: false, emsd: false, hasExpiry: true  },
   ];
 
   const allEmps = employees;
