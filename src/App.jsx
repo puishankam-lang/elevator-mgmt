@@ -752,13 +752,13 @@ function Safety({ showToast, employees = EMPLOYEES }) {
     showToast(`✅ ${employees[i]?.name} 安全條款簽署成功，時間戳記已記錄`, "success");
   };
 
-  const handleRemind = async (i) => {
+  const handleRemind = (i) => {
     const emp = employees[i];
     if (!emp) return;
     if (!emp.phone) { showToast(`⚠️ ${emp.name} 未設定電話號碼`, "error"); return; }
     const msg = `${emp.name} 您好，\n請盡快到今日工地簽署安全守則，並拍照存檔。\n\n— 俊輝電梯工程 管理系統`;
-    const r = await sendWhatsApp(emp.phone, msg);
-    if (r.ok) showToast(`📱 催簽 WhatsApp 已發送給 ${emp.name}`, "success");
+    const r = sendWhatsApp(emp.phone, msg);
+    if (r.ok) showToast(`📱 WhatsApp 已開啟 — 請按發送鍵寄給 ${emp.name}`, "success");
     else showToast(`⚠️ ${r.reason}`, "error");
   };
 
@@ -3141,7 +3141,7 @@ ${docSections}
   };
 
   // Compute missing required doc labels for a given employee, send WhatsApp
-  const handleRemindDocs = async (emp, e) => {
+  const handleRemindDocs = (emp, e) => {
     e.stopPropagation(); // don't also trigger loadDocs
     if (!emp.phone) { showToast(`⚠️ ${emp.name} 未設定電話號碼`, "error"); return; }
     const empDocsList = docs[emp.id] || [];
@@ -3151,8 +3151,8 @@ ${docSections}
     if (missing.length === 0) { showToast(`✅ ${emp.name} 所有必要文件已齊備`, "success"); return; }
     const list = missing.map((m, i) => `  ${i + 1}. ${m}`).join("\n");
     const msg = `${emp.name} 您好，\n您尚有以下必要文件未補交，請於 3 日內透過員工 App 上傳：\n${list}\n\n— 俊輝電梯工程 管理系統`;
-    const r = await sendWhatsApp(emp.phone, msg);
-    if (r.ok) showToast(`📱 催交 WhatsApp 已發送給 ${emp.name}（${missing.length} 份文件）`, "success");
+    const r = sendWhatsApp(emp.phone, msg);
+    if (r.ok) showToast(`📱 WhatsApp 已開啟 — 請按發送鍵寄給 ${emp.name}（${missing.length} 份文件）`, "success");
     else showToast(`⚠️ ${r.reason}`, "error");
   };
 
@@ -3985,35 +3985,20 @@ function TaxCalc({ showToast }) {
 const SUPABASE_URL = "https://fyxvejnvzflxppqrhlzt.supabase.co";
 const SUPABASE_KEY = "sb_publishable_k9GEEEmqiYnuBPFqsQuvIQ_YGjweOSh";
 
-// ── WhatsApp Bot helper ──────────────────────────────────────────────────
-// Reads the waConfig saved by the Settings page (webhook URL + enabled flag
-// + boss phone) and POSTs {phone, message} to the Make.com webhook. Returns
-// { ok, reason } so callers can surface a toast on failure.
-async function sendWhatsApp(phone, message) {
-  try {
-    const wa = JSON.parse(localStorage.getItem("waConfig") || "{}");
-    if (!wa.enabled) {
-      return { ok: false, reason: "WhatsApp 通知未啟用（前往系統設定頁面啟用）" };
-    }
-    if (!wa.webhook || wa.webhook.includes("YOUR_WEBHOOK")) {
-      return { ok: false, reason: "請先於系統設定頁面填入 Make.com webhook URL" };
-    }
-    if (!phone) {
-      return { ok: false, reason: "收件人電話未設定" };
-    }
-    // Normalise phone to 852XXXXXXXX (HK): strip non-digits, prepend 852 if missing
-    const digits = String(phone).replace(/\D/g, "");
-    const e164 = digits.startsWith("852") ? digits : ("852" + digits);
-    const res = await fetch(wa.webhook, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: e164, message }),
-    });
-    if (!res.ok) return { ok: false, reason: `Webhook HTTP ${res.status}` };
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, reason: e.message || "未知錯誤" };
-  }
+// ── WhatsApp helper (wa.me click-to-chat) ─────────────────────────────────
+// Opens a new tab at https://wa.me/{phone}?text={encoded message} so the
+// admin can review + press Send. Zero setup (no Meta account, no Make.com
+// webhook, no API key, no bans). Keeps the same `sendWhatsApp` signature
+// as the prior async webhook implementation so callers don't change.
+function sendWhatsApp(phone, message) {
+  if (!phone) return { ok: false, reason: "收件人電話未設定" };
+  const digits = String(phone).replace(/\D/g, "");
+  if (digits.length < 8) return { ok: false, reason: "電話格式不正確" };
+  const e164 = digits.startsWith("852") ? digits : ("852" + digits);
+  const url = `https://wa.me/${e164}?text=${encodeURIComponent(message)}`;
+  const win = window.open(url, "_blank", "noopener,noreferrer");
+  if (!win) return { ok: false, reason: "彈出視窗被阻擋，請允許彈出視窗" };
+  return { ok: true };
 }
 
 async function sbFetch(table, options = {}) {
@@ -4143,16 +4128,16 @@ function LeaveApproval({ showToast, employees = [] }) {
       setNoteFor(null);
       setNoteText("");
 
-      // WhatsApp notify the employee of the decision
+      // Open WhatsApp so admin can notify the employee of the decision
       if (emp?.phone) {
         const t = LEAVE_TYPE_META[req.leave_type] || { label: req.leave_type };
         const verdict = newStatus === "approved" ? "✅ 已批准" : "❌ 已拒絕";
         const noteLine = patch.admin_note ? `\n管理員備注：${patch.admin_note}` : "";
         const msg = `${emp.name} 您好，\n您的請假申請 ${verdict}\n類型：${t.label}\n日期：${req.start_date} 至 ${req.end_date}（${req.days} 日）${noteLine}\n\n— 俊輝電梯工程 管理系統`;
-        sendWhatsApp(emp.phone, msg); // fire and forget
+        sendWhatsApp(emp.phone, msg); // opens wa.me — admin hits Send
       }
 
-      showToast(`${newStatus === "approved" ? "✅ 已批准" : "❌ 已拒絕"}${emp?.name ? ` ${emp.name}` : ""} 的請假`, "success");
+      showToast(`${newStatus === "approved" ? "✅ 已批准" : "❌ 已拒絕"}${emp?.name ? ` ${emp.name}` : ""} 的請假 — WhatsApp 已開啟`, "success");
     } catch (e) {
       showToast(`❌ 操作失敗：${e.message}`, "error");
     }
@@ -4361,44 +4346,24 @@ function Settings({ showToast, theme, setTheme, waConfig, setWaConfig, safetyRul
         </div>
       </div>
 
-      {/* WhatsApp Bot config */}
+      {/* WhatsApp Click-to-Chat info */}
       <div className="sign-card" style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div className="sign-title" style={{ marginBottom: 0 }}>📱 WhatsApp Bot 通知設定</div>
-          <span className={`badge ${waConfig.enabled ? "green" : "red"}`}><span className="badge-dot" />{waConfig.enabled ? "已啟用" : "已停用"}</span>
+          <div className="sign-title" style={{ marginBottom: 0 }}>📱 WhatsApp 通知</div>
+          <span className="badge green"><span className="badge-dot" />免費方式</span>
         </div>
-        <div style={{ fontSize: 12, color: "#9aa0b4", marginBottom: 16 }}>整合 Make.com webhook 自動發送工程完工期提醒至 WhatsApp。需先在 Make 建立 WhatsApp scenario 並取得 webhook URL。</div>
-
-        <div className="form-group">
-          <label className="form-label">啟用 WhatsApp 通知</label>
-          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-            <button onClick={() => setWaEdit({ ...waEdit, enabled: true })}
-              style={{ flex: 1, padding: "8px 14px", borderRadius: 6, border: waEdit.enabled ? "2px solid #22c55e" : "1px solid #2a3045", background: waEdit.enabled ? "rgba(34,197,94,0.08)" : "#13161c", color: waEdit.enabled ? "#22c55e" : "#8891a4", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>✅ 啟用</button>
-            <button onClick={() => setWaEdit({ ...waEdit, enabled: false })}
-              style={{ flex: 1, padding: "8px 14px", borderRadius: 6, border: !waEdit.enabled ? "2px solid #d63030" : "1px solid #2a3045", background: !waEdit.enabled ? "rgba(214,48,48,0.08)" : "#13161c", color: !waEdit.enabled ? "#d63030" : "#8891a4", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>❌ 停用</button>
-          </div>
+        <div style={{ fontSize: 13, color: "#c8d0e0", marginBottom: 10, lineHeight: 1.7 }}>
+          所有 WhatsApp 通知（催簽、催交文件、請假批核）會透過 <strong style={{ color: "#22c55e" }}>wa.me 點擊對話</strong> 方式寄送：
         </div>
-
-        <div className="form-group">
-          <label className="form-label">Make.com Webhook URL</label>
-          <input className="form-input" type="text" value={waEdit.webhook || ""}
-            onChange={e => setWaEdit({ ...waEdit, webhook: e.target.value })}
-            placeholder="https://hook.eu2.make.com/xxxxxxxxxx" />
-          <div style={{ fontSize: 11, color: "#3a4255", marginTop: 4 }}>從 Make.com webhook trigger 模組複製 URL 貼上</div>
-        </div>
-
-        <div className="form-group">
-          <label className="form-label">老闆 WhatsApp 號碼（香港格式 852XXXXXXXX）</label>
-          <input className="form-input" type="text" value={waEdit.phone || ""}
-            onChange={e => setWaEdit({ ...waEdit, phone: e.target.value })}
-            placeholder="85254442099" />
-        </div>
-
-        <button onClick={handleSaveWA} className="btn btn-primary" style={{ width: "100%" }}>💾 儲存 WhatsApp 設定</button>
-
-        <div style={{ marginTop: 14, padding: "10px 12px", background: "rgba(96,165,250,0.05)", border: "1px solid rgba(96,165,250,0.2)", borderRadius: 6, fontSize: 11, color: "#8891a4", lineHeight: 1.6 }}>
-          📋 <strong>觸發條件：</strong>當任何工程剩餘完工天數 ≤ 10 天，系統會自動透過 webhook 發送 WhatsApp 提醒。<br/>
-          ⚠️ <strong>注意：</strong>停用或未配置 webhook 時不會發送任何通知。
+        <ol style={{ fontSize: 12, color: "#9aa0b4", paddingLeft: 20, marginBottom: 12, lineHeight: 1.8 }}>
+          <li>按下 📱 催簽 / 催交 / 批核按鈕</li>
+          <li>系統自動開啟一個 WhatsApp 對話視窗（訊息已預先填好）</li>
+          <li>閣下只需確認無誤後按 <strong style={{ color: "#22c55e" }}>發送</strong></li>
+        </ol>
+        <div style={{ padding: "10px 12px", background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: 6, fontSize: 11, color: "#c8d0e0", lineHeight: 1.7 }}>
+          ✅ <strong>優點：</strong>完全免費、無需 API 設定、無封號風險、訊息從你個人帳戶寄出。<br/>
+          ℹ️ <strong>建議：</strong>電腦上可安裝 <span style={{ color: "#22c55e" }}>WhatsApp Desktop</span> 或使用 WhatsApp Web，方便連續發送。<br/>
+          ⚠️ <strong>注意：</strong>請確保員工電話已於「員工管理」正確輸入（香港 8 位數字，系統自動加 852）。
         </div>
       </div>
 
