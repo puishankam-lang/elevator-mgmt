@@ -264,6 +264,11 @@ const styles = `
   .alert-text { font-size: 13px; color: #e8a0a0; font-weight: 500; flex: 1; }
   .alert-time { font-size: 11px; color: #d63030; }
 
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.4); }
+  }
+
   /* ── Light Mode ── */
   body.light-mode { background: #f5f7fa !important; color: #1a2533 !important; }
   body.light-mode #root { background: #f5f7fa !important; color: #1a2533 !important; }
@@ -722,12 +727,15 @@ function Safety({ showToast, employees = EMPLOYEES }) {
   const [mobileSigns, setMobileSigns] = useState([]);
 
   useEffect(() => {
-    fetch(`${SUPABASE_URL}/rest/v1/safety_signs?order=submitted_at.desc.nullslast&limit=50`, {
+    const fetchSigns = () => fetch(`${SUPABASE_URL}/rest/v1/safety_signs?order=submitted_at.desc.nullslast&limit=50`, {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
     })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setMobileSigns(d); })
       .catch(() => {});
+    fetchSigns();
+    const id = setInterval(fetchSigns, 15000);
+    return () => clearInterval(id);
   }, []);
 
   const empName = (id) => employees.find(e => e.id === id)?.name || `員工 #${id}`;
@@ -863,7 +871,13 @@ function Safety({ showToast, employees = EMPLOYEES }) {
         <div className="card" style={{ marginTop: 4 }}>
           <div className="card-header">
             <div className="card-title">📋 工地工作日誌（手機 App 提交）</div>
-            <span className="badge green"><span className="badge-dot" />{mobileSigns.length} 條記錄</span>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 10, color: "#22c55e", display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", animation: "pulse 2s infinite" }} />
+                即時更新
+              </span>
+              <span className="badge green"><span className="badge-dot" />{mobileSigns.length} 條記錄</span>
+            </div>
           </div>
           <div className="card-body" style={{ padding: 0 }}>
             <table className="data-table">
@@ -917,13 +931,18 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
   const [mobileAttendance, setMobileAttendance] = useState([]);
 
   useEffect(() => {
-    const today = new Date().toISOString().split("T")[0];
-    fetch(`${SUPABASE_URL}/rest/v1/attendance?date=eq.${today}&order=check_in.desc.nullslast&limit=100`, {
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-    })
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setMobileAttendance(d); })
-      .catch(() => {});
+    const fetchToday = () => {
+      const today = new Date().toISOString().split("T")[0];
+      fetch(`${SUPABASE_URL}/rest/v1/attendance?date=eq.${today}&order=check_in.desc.nullslast&limit=100`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      })
+        .then(r => r.json())
+        .then(d => { if (Array.isArray(d)) setMobileAttendance(d); })
+        .catch(() => {});
+    };
+    fetchToday();
+    const id = setInterval(fetchToday, 15000);
+    return () => clearInterval(id);
   }, []);
 
   const empName = (id) => employees.find(e => e.id === id)?.name || `員工 #${id}`;
@@ -1293,7 +1312,13 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
         <div className="card" style={{ marginTop: 4, marginBottom: 4 }}>
           <div className="card-header">
             <div className="card-title">📱 今日手機 App 簽到記錄</div>
-            <span className="badge green"><span className="badge-dot" />{mobileAttendance.length} 人已簽到</span>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 10, color: "#22c55e", display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", animation: "pulse 2s infinite" }} />
+                即時更新
+              </span>
+              <span className="badge green"><span className="badge-dot" />{mobileAttendance.length} 人已簽到</span>
+            </div>
           </div>
           <div className="card-body" style={{ padding: 0 }}>
             <table className="data-table">
@@ -1384,12 +1409,15 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, employees = [], onUp
   const [reports, setReports] = useState([]);
 
   useEffect(() => {
-    fetch(`${SUPABASE_URL}/rest/v1/progress_reports?order=submitted_at.desc.nullslast&limit=30`, {
+    const fetchReports = () => fetch(`${SUPABASE_URL}/rest/v1/progress_reports?order=submitted_at.desc.nullslast&limit=30`, {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
     })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setReports(d); })
       .catch(() => {});
+    fetchReports();
+    const id = setInterval(fetchReports, 15000);
+    return () => clearInterval(id);
   }, []);
 
   const empName = (id) => employees.find(e => e.id === id)?.name || `員工 #${id}`;
@@ -1623,7 +1651,13 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, employees = [], onUp
           <div className="card">
             <div className="card-header">
               <div className="card-title">📋 回報時間軸</div>
-              <span className="badge green"><span className="badge-dot" />{reports.length} 條記錄</span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ fontSize: 10, color: "#22c55e", display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", animation: "pulse 2s infinite" }} />
+                  即時更新
+                </span>
+                <span className="badge green"><span className="badge-dot" />{reports.length} 條記錄</span>
+              </div>
             </div>
             <div className="card-body" style={{ padding: reports.length === 0 ? "20px" : "8px 0" }}>
               {reports.length === 0 ? (
