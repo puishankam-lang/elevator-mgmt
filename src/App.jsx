@@ -2597,41 +2597,90 @@ function generateInvoicePDF(inv, opts = {}) {
 
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Invoice ${esc(invNo)}</title>
 <style>
-  body{font-family:Arial,'Microsoft JhengHei',sans-serif;padding:40px;font-size:13px;color:#000;max-width:820px;margin:0 auto;background:#fff}
-  .header{margin-bottom:20px}
-  .co-en{font-size:18px;font-weight:700}
-  .co-cn{font-size:15px;font-weight:700}
-  .co-addr{font-size:11px;color:#444;line-height:1.6;margin-top:4px}
-  .invoice-bar{display:flex;justify-content:space-between;align-items:center;margin:24px 0 10px;padding-bottom:8px;border-bottom:2px solid #000}
-  .invoice-title{font-size:20px;font-weight:700;letter-spacing:2px}
-  .invoice-meta{display:flex;gap:18px;font-size:12px}
-  .invoice-meta label{color:#666;margin-right:4px}
-  .bill-label{font-weight:bold;font-size:14px;margin:14px 0 6px;letter-spacing:1px}
-  table{width:100%;border-collapse:collapse;margin:14px 0}
-  th{background:#1a1a1a;color:#fff;padding:9px 10px;text-align:left;font-size:12px;font-weight:700}
-  th:nth-child(3),th:nth-child(4),th:nth-child(5),th:nth-child(6){text-align:right}
-  td{padding:10px;border:1px solid #ddd;vertical-align:top}
-  td.r{text-align:right} td.c{text-align:center}
-  .total-row td{font-weight:bold;background:#f5f5f5;font-size:15px}
-  .footer{line-height:1.9;margin-top:24px;font-size:12px;border-top:1px solid #eee;padding-top:14px}
-  .co{font-weight:bold}
-  /* Editable inputs — look like plain text on screen, hide borders on print */
-  input.e, textarea.e {
-    font:inherit;color:inherit;background:transparent;border:1px dashed #cdd5e0;
-    border-radius:3px;padding:2px 4px;width:100%;box-sizing:border-box;outline:none;
+  /* ── Professional Invoice/Quotation Stylesheet ── */
+  @page { margin: 0; } /* Remove browser headers/footers (date, URL, page#) */
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Arial, Helvetica, 'Microsoft JhengHei', sans-serif;
+    padding: 48px 56px;
+    font-size: 12px;
+    color: #1a1a1a;
+    max-width: 820px;
+    margin: 0 auto;
+    background: #fff;
+    line-height: 1.5;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
-  input.e:focus, textarea.e:focus { border-color:#FF6B1A;background:#fff8f0 }
-  textarea.e { resize:vertical;min-height:38px;font-family:inherit }
-  input.num { text-align:right }
-  .controls { position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:100 }
-  .btn { padding:9px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit }
-  .btn-print { background:#1a1a1a;color:#fff }
-  .btn-reset { background:#fff;color:#666;border:1px solid #ccc }
+
+  /* ── Company header ── */
+  .header { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 2px solid #333; }
+  .co-en { font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
+  .co-cn { font-size: 15px; font-weight: 700; margin-top: 2px; }
+  .co-addr { font-size: 11px; color: #555; line-height: 1.7; margin-top: 6px; }
+
+  /* ── Bill-To + Invoice-Meta two-column ── */
+  .bill-section { display: flex; justify-content: space-between; align-items: flex-start; gap: 30px; margin: 18px 0 14px; }
+  .bill-left { flex: 1; min-width: 0; }
+  .bill-label { font-weight: 700; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; color: #333; margin-bottom: 6px; }
+  .bill-right { text-align: right; font-size: 12px; min-width: 240px; }
+  .invoice-title { font-size: 22px; font-weight: 700; letter-spacing: 3px; margin-bottom: 8px; }
+
+  /* ── Items table ── */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0 8px; }
+  th {
+    background: #f0f0f0; color: #333; padding: 10px 12px;
+    text-align: left; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    border-bottom: 2px solid #333; border-top: 2px solid #333;
+  }
+  th.r { text-align: right; }
+  td { padding: 10px 12px; border-bottom: 1px solid #ddd; vertical-align: top; font-size: 12px; }
+  td.r { text-align: right; } td.c { text-align: center; }
+  .total-row td {
+    font-weight: 700; background: #f8f8f8; font-size: 16px;
+    border-top: 2px solid #333; border-bottom: 2px solid #333;
+    padding: 12px;
+  }
+
+  /* ── Footer ── */
+  .footer { line-height: 2; margin-top: 28px; font-size: 11px; border-top: 1px solid #ccc; padding-top: 16px; color: #444; }
+  .co { font-weight: 700; color: #1a1a1a; }
+
+  /* ── Editable inputs (screen only) ── */
+  input.e, textarea.e {
+    font: inherit; color: inherit; background: transparent;
+    border: 1px dashed #cdd5e0; border-radius: 2px;
+    padding: 2px 4px; width: 100%; box-sizing: border-box; outline: none;
+  }
+  input.e:focus, textarea.e:focus { border-color: #FF6B1A; background: #fff8f0; }
+  textarea.e { resize: none; min-height: 32px; font-family: inherit; }
+  input.num { text-align: right; }
+
+  /* ── Controls (screen only) ── */
+  .controls { position: fixed; top: 14px; right: 14px; display: flex; gap: 8px; z-index: 100; }
+  .btn { padding: 9px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 700; font-family: inherit; }
+  .btn-print { background: #1a1a1a; color: #fff; }
+  .btn-reset { background: #fff; color: #666; border: 1px solid #ccc; }
+
+  /* ── Print: clean document, no form artifacts ── */
   @media print {
-    .controls, .company-picker, .no-print { display:none !important }
-    input.e, textarea.e, select.e { border:none !important;background:transparent !important;padding:0 !important;-webkit-appearance:none;appearance:none }
-    select.e { background-image:none !important }
-    body { padding:18px;max-width:none }
+    @page { margin: 10mm 12mm; }
+    body { padding: 0; max-width: none; }
+    .controls, .company-picker, .no-print { display: none !important; }
+    input.e, textarea.e, select.e {
+      border: none !important; background: transparent !important;
+      padding: 0 !important; margin: 0 !important;
+      -webkit-appearance: none; appearance: none;
+      resize: none !important; overflow: visible !important;
+      min-height: auto !important;
+    }
+    select.e { background-image: none !important; }
+    /* Ensure table backgrounds print */
+    th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .total-row td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style></head><body>
 
@@ -2657,10 +2706,10 @@ function generateInvoicePDF(inv, opts = {}) {
   </div>
 </div>
 
-<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:30px;margin:24px 0 14px">
+<div class="bill-section">
   <!-- LEFT column: BILL TO -->
-  <div style="flex:1;min-width:0">
-    <div style="font-weight:bold;font-size:14px;letter-spacing:1px;margin-bottom:6px">BILL TO</div>
+  <div class="bill-left">
+    <div class="bill-label">BILL TO</div>
     <input class="e" id="billName" list="clientList" value="Anlev Elex Elevator Ltd" placeholder="輸入或選擇客戶名稱..." style="font-weight:600"/>
     <datalist id="clientList">
       ${clientOptions.map(c => `<option value="${esc(c.name)}"></option>`).join("")}
@@ -2670,8 +2719,8 @@ function generateInvoicePDF(inv, opts = {}) {
   </div>
 
   <!-- RIGHT column: invoice meta -->
-  <div style="text-align:right;font-size:13px;min-width:240px">
-    <div style="font-size:18px;font-weight:700;letter-spacing:2px;margin-bottom:6px">INVOICE 發票</div>
+  <div class="bill-right">
+    <div class="invoice-title">${isQuotation ? "QUOTATION 報價單" : "INVOICE 發票"}</div>
     <div style="margin-bottom:4px">
       #<input class="e" id="invNo" value="${esc(invNo)}" style="width:130px;text-align:right;font-weight:700"/>
     </div>
@@ -2692,8 +2741,8 @@ function generateInvoicePDF(inv, opts = {}) {
     <th style="width:32%">Project Code</th>
     <th style="width:27%">Details</th>
     <th style="width:7%">Quantity</th>
-    <th style="width:14%">Unit Price (HK$)</th>
-    <th style="width:15%">AMOUNT (HK$)</th>
+    <th class="r" style="width:14%">Unit Price (HK$)</th>
+    <th class="r" style="width:15%">AMOUNT (HK$)</th>
   </tr></thead>
   <tbody>
     <tr>
