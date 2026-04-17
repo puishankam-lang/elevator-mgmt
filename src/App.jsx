@@ -2941,7 +2941,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
       let offset = 0;
       while (true) {
         const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=cf_num.asc.nullslast&limit=1000&offset=${offset}`,
+          `${SUPABASE_URL}/rest/v1/invoices?select=*,ec_name,projects(name)&order=cf_num.asc.nullslast&limit=1000&offset=${offset}`,
           { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
         );
         const page = await res.json();
@@ -2953,7 +2953,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
       const flat = allData.map(inv => ({
         id: inv.id,
         cfNo: inv.stage || "",
-        ecName: inv.projects?.name || "",
+        ecName: inv.ec_name || inv.projects?.name || "",
         amount: inv.amount || 0,
         status: inv.status || "pending",
         pct: inv.pct || "",
