@@ -532,6 +532,7 @@ const NAV_ITEMS = [
   { id: "empdocs", icon: "📁", label: "員工文件" },
   { id: "leave", icon: "📝", label: "請假審批" },
   { id: "calendar", icon: "📅", label: "行事曆" },
+  { id: "subcontract", icon: "📋", label: "判頭合約" },
   { id: "profit", icon: "📈", label: "報價利潤試算" },
   { id: "tax", icon: "🧾", label: "老闆稅務計算" },
   { id: "settings", icon: "⚙️", label: "系統設定" },
@@ -4658,6 +4659,340 @@ const LEAVE_TYPE_META = {
   other:        { label: "其他",   icon: "📝",  color: "#9CA3AF" },
 };
 
+// ── Subcontractor Agreement Page ──────────────────────────────────────────────
+function SubcontractPage({ showToast, projects = [] }) {
+  const empty = {
+    contractorName: "", contractorAddress: "", contractorPhone: "", contractorIdNo: "",
+    projectName: "", projectLocation: "",
+    startDate: "", endDate: "",
+    workersRequired: "2", contractSum: "",
+    stage1Pct: "20", stage1Desc: "動工按金",
+    stage2Pct: "70", stage2Desc: "按工程進度支付",
+    stage3Pct: "10", stage3Desc: "保留金（保養期後發放）",
+    defectsMonths: "6",
+    insuranceRequired: true,
+    notes: "",
+  };
+  const [form, setForm] = useState(empty);
+  const [saved, setSaved] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const f = (key, val) => setForm({ ...form, [key]: val });
+  const contractSum = Number(form.contractSum) || 0;
+  const s1 = Math.round(contractSum * (Number(form.stage1Pct) || 0) / 100);
+  const s2 = Math.round(contractSum * (Number(form.stage2Pct) || 0) / 100);
+  const s3 = Math.round(contractSum * (Number(form.stage3Pct) || 0) / 100);
+
+  useEffect(() => {
+    fetch(`${SUPABASE_URL}/rest/v1/subcontractor_contracts?order=created_at.desc&limit=50`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    }).then(r => r.json()).then(d => { if (Array.isArray(d)) setSaved(d); })
+      .catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    if (!form.contractorName || !form.projectName) {
+      showToast("⚠️ 請填寫判頭名稱及工程名稱", "error"); return;
+    }
+    setSaving(true);
+    try {
+      const row = {
+        contractor_name: form.contractorName, contractor_address: form.contractorAddress,
+        contractor_phone: form.contractorPhone, contractor_id_no: form.contractorIdNo,
+        project_name: form.projectName, project_location: form.projectLocation,
+        start_date: form.startDate || null, end_date: form.endDate || null,
+        workers_required: Number(form.workersRequired) || 2,
+        contract_sum: contractSum,
+        stage1_pct: Number(form.stage1Pct), stage1_desc: form.stage1Desc,
+        stage2_pct: Number(form.stage2Pct), stage2_desc: form.stage2Desc,
+        stage3_pct: Number(form.stage3Pct), stage3_desc: form.stage3Desc,
+        defects_period_months: Number(form.defectsMonths) || 6,
+        insurance_required: form.insuranceRequired,
+        notes: form.notes, status: "draft",
+      };
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/subcontractor_contracts`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(row),
+      });
+      const [s] = await res.json();
+      setSaved(prev => [s, ...prev]);
+      showToast("✅ 合約已儲存！");
+    } catch (e) { showToast("❌ 儲存失敗：" + e.message, "error"); }
+    setSaving(false);
+  };
+
+  const handlePrint = () => {
+    const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    const today = new Date().toLocaleDateString("zh-HK", { year:"numeric", month:"long", day:"numeric" });
+    const w = window.open("", "_blank");
+    if (!w) { showToast("⚠️ 請允許彈出視窗", "error"); return; }
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>分判合約 — ${esc(form.contractorName)}</title>
+<style>
+body{font-family:'Microsoft JhengHei','PingFang TC',Arial,sans-serif;padding:48px 56px;font-size:13px;color:#000;max-width:820px;margin:0 auto;line-height:1.85}
+h1{text-align:center;font-size:22px;letter-spacing:6px;margin:0 0 24px;font-weight:800}
+h2{font-size:14px;font-weight:800;margin:20px 0 8px;border-left:4px solid #000;padding-left:8px}
+p{margin:6px 0}
+ol,ul{margin:6px 0 8px 28px}ol li,ul li{margin:3px 0}
+table{width:100%;border-collapse:collapse;margin:12px 0}
+th,td{border:1px solid #333;padding:8px 12px;text-align:left;font-size:12px}
+th{background:#f0f0f0;font-weight:700}
+td.r{text-align:right}
+.sig-block{margin-top:48px;display:grid;grid-template-columns:1fr 1fr;gap:40px}
+.sig-line{border-top:1px solid #000;padding-top:6px;margin-top:42px;font-size:12px}
+.controls{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:100}
+.btn{padding:9px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit}
+.btn-print{background:#1a1a1a;color:#fff}
+@media print{.controls{display:none!important}body{padding:24px}}
+</style></head><body>
+<div class="controls"><button class="btn btn-print" onclick="window.print()">🖨️ 列印 / 儲存為 PDF</button></div>
+
+<h1>分判合約</h1>
+<p style="text-align:center;font-size:12px;color:#666;margin-bottom:24px">SUBCONTRACTOR AGREEMENT</p>
+
+<p>本分判合約由 <strong>巨揚有限公司</strong>（以下簡稱「總承判商」）與 <strong>${esc(form.contractorName)}</strong>（以下簡稱「分判商」）訂立。</p>
+<p>日期：<strong>${today}</strong></p>
+
+<h2>第一條 — 工程資料</h2>
+<table>
+<tr><th style="width:30%">工程名稱</th><td>${esc(form.projectName)}</td></tr>
+<tr><th>工程地點</th><td>${esc(form.projectLocation) || "—"}</td></tr>
+<tr><th>預計開工日期</th><td>${form.startDate || "待定"}</td></tr>
+<tr><th>預計完工日期</th><td>${form.endDate || "待定"}</td></tr>
+<tr><th>所需工人人數</th><td>${form.workersRequired} 人</td></tr>
+</table>
+
+<h2>第二條 — 合約金額及付款安排</h2>
+<p>本合約總金額為 <strong>HK$${contractSum.toLocaleString()}</strong>（港幣${contractSum > 0 ? Math.floor(contractSum/10000) + "萬" + (contractSum%10000 > 0 ? contractSum%10000 : "") : "零"}元正），按以下階段支付：</p>
+<table>
+<thead><tr><th>階段</th><th>描述</th><th style="text-align:right">百分比</th><th style="text-align:right">金額 (HK$)</th></tr></thead>
+<tbody>
+<tr><td>第一期</td><td>${esc(form.stage1Desc)}</td><td class="r">${form.stage1Pct}%</td><td class="r">$${s1.toLocaleString()}</td></tr>
+<tr><td>第二期</td><td>${esc(form.stage2Desc)}</td><td class="r">${form.stage2Pct}%</td><td class="r">$${s2.toLocaleString()}</td></tr>
+<tr><td>第三期（保留金）</td><td>${esc(form.stage3Desc)}</td><td class="r">${form.stage3Pct}%</td><td class="r">$${s3.toLocaleString()}</td></tr>
+<tr style="background:#f9f9f9;font-weight:700"><td colspan="2">合計</td><td class="r">${Number(form.stage1Pct)+Number(form.stage2Pct)+Number(form.stage3Pct)}%</td><td class="r">$${(s1+s2+s3).toLocaleString()}</td></tr>
+</tbody>
+</table>
+<p>保留金將於工程完工後 <strong>${form.defectsMonths} 個月</strong>（保養期）屆滿後發放，前提是期間無任何缺陷或維修事項。</p>
+
+<h2>第三條 — 保險要求</h2>
+${form.insuranceRequired ? `<p>分判商必須在開工前提供以下有效保險證明文件：</p>
+<ol>
+<li><strong>僱員補償保險</strong>（Employees' Compensation Insurance）— 根據《僱員補償條例》（第282章）的規定</li>
+<li><strong>承判商全險</strong>（Contractors' All Risks Insurance）— 涵蓋工程期間之一切風險</li>
+</ol>
+<p>如分判商未能於開工前提供上述保險證明，總承判商有權暫停或終止本合約。</p>` : `<p>本合約無額外保險要求。分判商須自行確保符合法定保險規定。</p>`}
+
+<h2>第四條 — 延誤責任及罰則</h2>
+<p>若工程未能按預定日期完成，分判商須承擔因此而導致之<strong>一切經濟損失及違約金</strong>，包括但不限於：</p>
+<ul>
+<li>業主或發展商向總承判商徵收之延期罰款</li>
+<li>因延誤導致之額外管理費、設備租賃費及第三方損失</li>
+<li>總承判商為完成工程而需安排之替代人手或加班費用</li>
+</ul>
+
+<h2>第五條 — 遵守法規</h2>
+<p>分判商必須<strong>嚴格遵守</strong>以下規定：</p>
+<ol>
+<li><strong>機電工程署（EMSD）</strong>發出之所有指引、規例及技術標準</li>
+<li>《升降機及自動梯條例》（第618章）及相關附屬法例</li>
+<li>《職業安全及健康條例》（第509章）</li>
+<li>《建築地盤（安全）規例》（第59I章）</li>
+<li>所有適用之香港特別行政區政府法例及規管要求</li>
+</ol>
+<p>如因分判商違反上述法規而導致任何罰款、處罰或法律責任，分判商須承擔全部責任及費用。</p>
+
+<h2>第六條 — 工作質量</h2>
+<p>分判商須確保所有工程均達到專業水準，符合 EMSD 驗收標準。如驗收不合格，分判商須自費重做直至合格為止。</p>
+
+<h2>第七條 — 終止合約</h2>
+<p>在下列情況下，總承判商有權即時終止本合約而無需作出補償：</p>
+<ul>
+<li>分判商未能按時開工或嚴重延誤工程進度</li>
+<li>分判商之工程質量未達到合理標準</li>
+<li>分判商違反本合約任何條款</li>
+<li>分判商違反安全規定，危及工人或公眾安全</li>
+</ul>
+
+<h2>第八條 — 適用法例</h2>
+<p>如對本合約有任何爭議，雙方同意依據<strong>香港特別行政區法律</strong>所約束及處理。</p>
+
+${form.notes ? `<h2>附加條款</h2><p>${esc(form.notes).replace(/\n/g, "<br/>")}</p>` : ""}
+
+<p style="margin-top:20px"><strong>雙方已閱讀並明白本合約之所有條款，並同意遵守。</strong></p>
+
+<div class="sig-block">
+<div>
+  <div class="sig-line">總承判商簽署</div>
+  <p style="margin-top:14px"><strong>巨揚有限公司</strong></p>
+  <p>代表姓名：_______________</p>
+  <p>日期：_______________</p>
+</div>
+<div>
+  <div class="sig-line">分判商簽署</div>
+  <p style="margin-top:14px"><strong>${esc(form.contractorName)}</strong></p>
+  <p>身份證/商業登記號碼：${esc(form.contractorIdNo) || "_______________"}</p>
+  <p>日期：_______________</p>
+</div>
+</div>
+</body></html>`);
+    w.document.close();
+  };
+
+  const loadContract = (c) => {
+    setForm({
+      contractorName: c.contractor_name || "", contractorAddress: c.contractor_address || "",
+      contractorPhone: c.contractor_phone || "", contractorIdNo: c.contractor_id_no || "",
+      projectName: c.project_name || "", projectLocation: c.project_location || "",
+      startDate: c.start_date || "", endDate: c.end_date || "",
+      workersRequired: String(c.workers_required || 2), contractSum: String(c.contract_sum || ""),
+      stage1Pct: String(c.stage1_pct || 20), stage1Desc: c.stage1_desc || "動工按金",
+      stage2Pct: String(c.stage2_pct || 70), stage2Desc: c.stage2_desc || "按工程進度支付",
+      stage3Pct: String(c.stage3_pct || 10), stage3Desc: c.stage3_desc || "保留金（保養期後發放）",
+      defectsMonths: String(c.defects_period_months || 6),
+      insuranceRequired: c.insurance_required !== false,
+      notes: c.notes || "",
+    });
+    showToast("✅ 已載入合約");
+  };
+
+  const Field = ({ label, k, type, ph, w: width, children }) => (
+    <div style={{ marginBottom: 10, flex: width ? `0 0 ${width}` : undefined }}>
+      <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>{label}</div>
+      {children || <input type={type||"text"} value={form[k]} onChange={e => f(k, e.target.value)}
+        placeholder={ph} className="form-input" style={{ background: "#0d0f12" }} />}
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Form */}
+      <div className="grid-2" style={{ marginBottom: 20 }}>
+        <div className="sign-card" style={{ marginBottom: 0 }}>
+          <div className="sign-title">👷 分判商資料</div>
+          <Field label="分判商名稱 *" k="contractorName" ph="例：永利電梯工程有限公司" />
+          <Field label="地址" k="contractorAddress" ph="地址（可選）" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="電話" k="contractorPhone" ph="9XXXXXXX" type="tel" />
+            <Field label="身份證/商業登記號碼" k="contractorIdNo" ph="例：12345678-000" />
+          </div>
+        </div>
+        <div className="sign-card" style={{ marginBottom: 0 }}>
+          <div className="sign-title">🏗 工程資料</div>
+          <Field label="工程名稱 *" k="projectName">
+            <select value={form.projectName} onChange={e => f("projectName", e.target.value)}
+              className="form-select" style={{ background: "#0d0f12" }}>
+              <option value="">── 選擇或輸入 ──</option>
+              {projects.map(p => <option key={p.id || p.name} value={p.name}>{p.name}</option>)}
+            </select>
+            <input value={form.projectName} onChange={e => f("projectName", e.target.value)}
+              placeholder="或直接輸入工程名稱..." className="form-input" style={{ background: "#0d0f12", marginTop: 6 }} />
+          </Field>
+          <Field label="工程地點" k="projectLocation" ph="例：荃灣沙咀道11-19號" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <Field label="預計開工日期" k="startDate" type="date" />
+            <Field label="預計完工日期" k="endDate" type="date" />
+            <Field label="所需工人人數" k="workersRequired" type="number" ph="2" />
+          </div>
+        </div>
+      </div>
+
+      {/* Payment terms */}
+      <div className="sign-card" style={{ marginBottom: 20 }}>
+        <div className="sign-title">💰 付款安排</div>
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>合約總金額 (HK$) *</div>
+          <input type="number" value={form.contractSum} onChange={e => f("contractSum", e.target.value)}
+            placeholder="例：500000" className="form-input"
+            style={{ background: "#0d0f12", fontSize: 20, fontFamily: "'Barlow Condensed'", fontWeight: 800, color: "#f0c000" }} />
+        </div>
+        <table className="data-table" style={{ marginBottom: 10 }}>
+          <thead><tr><th>階段</th><th>描述</th><th style={{ width: 80 }}>%</th><th style={{ width: 120 }}>金額</th></tr></thead>
+          <tbody>
+            {[
+              { key: "1", label: "第一期", pctK: "stage1Pct", descK: "stage1Desc", amt: s1 },
+              { key: "2", label: "第二期", pctK: "stage2Pct", descK: "stage2Desc", amt: s2 },
+              { key: "3", label: "第三期（保留金）", pctK: "stage3Pct", descK: "stage3Desc", amt: s3 },
+            ].map(s => (
+              <tr key={s.key}>
+                <td style={{ fontWeight: 700 }}>{s.label}</td>
+                <td><input value={form[s.descK]} onChange={e => f(s.descK, e.target.value)}
+                  className="form-input" style={{ background: "#0d0f12", padding: "4px 8px", fontSize: 11 }} /></td>
+                <td><input type="number" value={form[s.pctK]} onChange={e => f(s.pctK, e.target.value)}
+                  style={{ width: 50, background: "#0d0f12", border: "1px solid #2a3045", color: "#f0c000", borderRadius: 4, padding: "4px", textAlign: "right", fontWeight: 700 }} />%</td>
+                <td style={{ textAlign: "right", fontFamily: "'Barlow Condensed'", fontWeight: 700, color: "#22c55e" }}>HK${s.amt.toLocaleString()}</td>
+              </tr>
+            ))}
+            <tr style={{ background: "#0d0f12", fontWeight: 700 }}>
+              <td colSpan={2} style={{ textAlign: "right" }}>合計</td>
+              <td>{Number(form.stage1Pct)+Number(form.stage2Pct)+Number(form.stage3Pct)}%</td>
+              <td style={{ textAlign: "right", fontFamily: "'Barlow Condensed'", fontSize: 16, color: "#f0c000" }}>HK${(s1+s2+s3).toLocaleString()}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label="保養期（月）" k="defectsMonths" type="number" ph="6" />
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>保險要求</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => f("insuranceRequired", true)}
+                style={{ flex: 1, padding: "8px", borderRadius: 6, border: form.insuranceRequired ? "2px solid #22c55e" : "1px solid #2a3045", background: form.insuranceRequired ? "rgba(34,197,94,0.08)" : "#13161c", color: form.insuranceRequired ? "#22c55e" : "#8891a4", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>✅ 需要保險</button>
+              <button onClick={() => f("insuranceRequired", false)}
+                style={{ flex: 1, padding: "8px", borderRadius: 6, border: !form.insuranceRequired ? "2px solid #d63030" : "1px solid #2a3045", background: !form.insuranceRequired ? "rgba(214,48,48,0.08)" : "#13161c", color: !form.insuranceRequired ? "#d63030" : "#8891a4", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>❌ 免保險</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Notes + actions */}
+      <div className="sign-card" style={{ marginBottom: 20 }}>
+        <div className="sign-title">📝 附加條款</div>
+        <textarea value={form.notes} onChange={e => f("notes", e.target.value)}
+          placeholder="額外條款、特殊要求..."
+          className="form-input" style={{ background: "#0d0f12", width: "100%", minHeight: 80, resize: "vertical" }} />
+        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ flex: 1 }}>
+            {saving ? "儲存中..." : "💾 儲存合約"}
+          </button>
+          <button onClick={handlePrint} className="btn btn-secondary" style={{ flex: 1 }}>
+            🖨️ 列印 / PDF
+          </button>
+          <button onClick={() => setForm(empty)} className="btn btn-secondary">↺ 清空</button>
+        </div>
+      </div>
+
+      {/* Saved contracts */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">📁 已儲存合約</div>
+          <span className="badge green"><span className="badge-dot" />{saved.length} 份</span>
+        </div>
+        <div className="card-body" style={{ padding: loading ? 20 : 0 }}>
+          {loading ? <div style={{ textAlign: "center", color: "#555d6e" }}>載入中...</div>
+          : saved.length === 0 ? <div style={{ textAlign: "center", padding: 20, color: "#555d6e" }}>尚未儲存任何合約</div>
+          : <table className="data-table">
+            <thead><tr><th>分判商</th><th>工程</th><th>金額</th><th>日期</th><th>操作</th></tr></thead>
+            <tbody>
+              {saved.map(c => (
+                <tr key={c.id}>
+                  <td className="td-name">{c.contractor_name}</td>
+                  <td style={{ fontSize: 11 }}>{c.project_name}</td>
+                  <td style={{ fontFamily: "'Barlow Condensed'", fontWeight: 700, color: "#f0c000" }}>HK${Number(c.contract_sum||0).toLocaleString()}</td>
+                  <td style={{ fontSize: 11, color: "#8891a4" }}>{c.created_at ? new Date(c.created_at).toLocaleDateString("zh-HK") : "—"}</td>
+                  <td>
+                    <button onClick={() => loadContract(c)} style={{ background: "#1e2330", border: "none", color: "#60a5fa", borderRadius: 5, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>📂 載入</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Calendar Page ─────────────────────────────────────────────────────────────
 // Month-grid view with three event layers: leave (per-employee), project
 // completion deadlines, and project milestone targets. Click a date to see
@@ -5462,6 +5797,7 @@ export default function App() {
     tax: { icon: "🧾", title: "老闆稅務", sub: "計算器（香港有限公司）" },
     leave: { icon: "📝", title: "請假審批", sub: "員工請假申請 / 批核" },
     calendar: { icon: "📅", title: "行事曆", sub: "請假 / 工程完工 / 進度節點" },
+    subcontract: { icon: "📋", title: "判頭合約", sub: "分判合約 / 進度付款 / 保險" },
     settings: { icon: "⚙️", title: "系統設定", sub: "主題 / 通知 / 重設" },
   };
 
@@ -5554,6 +5890,7 @@ export default function App() {
             {active === "tax" && <TaxCalc showToast={showToast} />}
             {active === "leave" && <LeaveApproval showToast={showToast} employees={employees} />}
             {active === "calendar" && <CalendarPage employees={employees} projects={projects} />}
+            {active === "subcontract" && <SubcontractPage showToast={showToast} projects={projects} />}
             {active === "settings" && <Settings showToast={showToast} theme={theme} setTheme={setTheme} waConfig={waConfig} setWaConfig={setWaConfig} safetyRules={safetyRules} setSafetyRules={setSafetyRules} />}
           </div>
         </div>
