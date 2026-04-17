@@ -2046,11 +2046,25 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
               {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{m}月</option>)}
             </select>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button className="btn btn-secondary btn-sm" onClick={handleExportExcel}>匯出 Excel</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={async () => {
+              setSavingRecord(true);
+              try {
+                const details = employees.map(e => ({ id: e.id, name: e.name, role: e.role, rate: e.rate||0, days: e.days||22, total: (e.days||22)*(e.rate||0) }));
+                const row = { month: payrollLabel, total_amount: totalSalary, employee_count: employees.length, status: approvalSubmitted?"submitted":"pending", details: JSON.stringify(details) };
+                const existing = savedRecords.find(r => r.month === payrollLabel);
+                if (existing) { await sbUpdate("payroll_records", existing.id, row); setSavedRecords(prev => prev.map(r => r.id===existing.id?{...r,...row}:r)); }
+                else { const res = await fetch(`${SUPABASE_URL}/rest/v1/payroll_records`, { method:"POST", headers:{apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json",Prefer:"return=representation"}, body:JSON.stringify(row) }); const [saved]=await res.json(); setSavedRecords(prev=>[saved,...prev]); }
+                showToast(`✅ ${payrollLabel} 已儲存`);
+              } catch(e){ showToast("❌ "+e.message,"error"); }
+              setSavingRecord(false);
+            }} disabled={savingRecord} className="btn btn-secondary btn-sm">
+              {savingRecord ? "⏳" : "💾"} 儲存
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={handleExportExcel}>📊 Excel</button>
             <button className="btn btn-primary btn-sm" onClick={handleSubmitApproval} disabled={approvalSubmitted}
               style={{ opacity: approvalSubmitted ? 0.6 : 1 }}>
-              {approvalSubmitted ? "⏳ 審批中..." : "提交審批"}
+              {approvalSubmitted ? "⏳ 審批中" : "✅ 提交審批"}
             </button>
           </div>
         </div>
@@ -2147,48 +2161,7 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
           </div>
         )}
 
-        {/* Save current month's payroll for tax records */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          <button onClick={async () => {
-            setSavingRecord(true);
-            try {
-              const details = employees.map(e => ({
-                id: e.id, name: e.name, role: e.role, rate: e.rate || 0,
-                days: e.days || 22, total: (e.days || 22) * (e.rate || 0),
-              }));
-              const row = {
-                month: payrollLabel,
-                total_amount: totalSalary,
-                employee_count: employees.length,
-                status: approvalSubmitted ? "submitted" : "pending",
-                details: JSON.stringify(details),
-              };
-              // Upsert: if month exists, update; otherwise insert
-              const existing = savedRecords.find(r => r.month === payrollLabel);
-              if (existing) {
-                await sbUpdate("payroll_records", existing.id, row);
-                setSavedRecords(prev => prev.map(r => r.id === existing.id ? { ...r, ...row } : r));
-              } else {
-                const res = await fetch(`${SUPABASE_URL}/rest/v1/payroll_records`, {
-                  method: "POST",
-                  headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
-                  body: JSON.stringify(row),
-                });
-                const [saved] = await res.json();
-                setSavedRecords(prev => [saved, ...prev]);
-              }
-              showToast(`✅ ${payrollLabel} 薪酬記錄已儲存（${employees.length} 人，HK$${totalSalary.toLocaleString()}）`);
-            } catch (e) { showToast("❌ 儲存失敗：" + e.message, "error"); }
-            setSavingRecord(false);
-          }} disabled={savingRecord} className="btn btn-primary btn-sm">
-            {savingRecord ? "⏳" : "💾"} 儲存 {payrollLabel}
-          </button>
-          <button onClick={handleExportExcel} className="btn btn-secondary btn-sm">📊 匯出 Excel</button>
-          <button onClick={handleSubmitApproval} disabled={approvalSubmitted} className="btn btn-secondary btn-sm"
-            style={{ opacity: approvalSubmitted ? 0.6 : 1 }}>
-            {approvalSubmitted ? "⏳ 審批中" : "✅ 提交審批"}
-          </button>
-        </div>
+        {/* Action buttons moved to card header — see above */}
 
         {/* Saved payroll records — from Supabase, NOT hardcoded */}
         <div className="card">
