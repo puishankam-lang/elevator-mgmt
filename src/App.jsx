@@ -532,6 +532,7 @@ const NAV_ITEMS = [
   { id: "empdocs", icon: "📁", label: "員工文件" },
   { id: "leave", icon: "📝", label: "請假審批" },
   { id: "calendar", icon: "📅", label: "行事曆" },
+  { id: "dispatch", icon: "🚀", label: "派更管理" },
   { id: "subcontract", icon: "📋", label: "判頭合約" },
   { id: "profit", icon: "📈", label: "報價利潤試算" },
   { id: "tax", icon: "🧾", label: "老闆稅務計算" },
@@ -4721,6 +4722,180 @@ const LEAVE_TYPE_META = {
   other:        { label: "其他",   icon: "📝",  color: "#9CA3AF" },
 };
 
+// ── Dispatch Page (派更管理) ──────────────────────────────────────────────────
+function DispatchPage({ showToast, employees = [], projects = [] }) {
+  const [assignments, setAssignments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selProject, setSelProject] = useState("");
+  const [selWorkers, setSelWorkers] = useState([]);
+  const [dateStart, setDateStart] = useState(new Date().toISOString().split("T")[0]);
+  const [dateEnd, setDateEnd] = useState(new Date().toISOString().split("T")[0]);
+  const [saving, setSaving] = useState(false);
+  const [viewDate, setViewDate] = useState(new Date().toISOString().split("T")[0]);
+
+  const fetchAssignments = () => {
+    fetch(`${SUPABASE_URL}/rest/v1/project_assignments?order=start_date.desc&limit=500`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    }).then(r => r.json()).then(d => { if (Array.isArray(d)) setAssignments(d); })
+      .catch(() => {}).finally(() => setLoading(false));
+  };
+  useEffect(() => { fetchAssignments(); const id = setInterval(fetchAssignments, 15000); return () => clearInterval(id); }, []);
+
+  const empById = id => employees.find(e => e.id === id);
+  const toggleWorker = id => setSelWorkers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const handleAssign = async () => {
+    if (!selProject || selWorkers.length === 0) { showToast("⚠️ 請選擇工程及員工", "error"); return; }
+    setSaving(true);
+    try {
+      const rows = selWorkers.map(empId => ({
+        project_id: projects.find(p => p.name === selProject)?.id || null,
+        employee_id: empId,
+        site_name: selProject,
+        start_date: dateStart,
+        end_date: dateEnd,
+      }));
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/project_assignments`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(rows),
+      });
+      if (!res.ok) { const err = await res.text(); throw new Error(err); }
+      const saved = await res.json();
+      setAssignments(prev => [...saved, ...prev]);
+      showToast(`✅ 已分配 ${selWorkers.length} 名員工到 ${selProject}`);
+      setSelWorkers([]);
+    } catch (e) { showToast("❌ 分配失敗：" + e.message, "error"); }
+    setSaving(false);
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/project_assignments?id=eq.${id}`, {
+        method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      });
+      setAssignments(prev => prev.filter(a => a.id !== id));
+      showToast("✅ 已刪除");
+    } catch (e) { showToast("❌ 失敗", "error"); }
+  };
+
+  // Today's view: who is where
+  const todayAssignments = assignments.filter(a => a.start_date <= viewDate && a.end_date >= viewDate);
+  const siteGroups = {};
+  todayAssignments.forEach(a => {
+    if (!siteGroups[a.site_name]) siteGroups[a.site_name] = [];
+    const emp = empById(a.employee_id);
+    if (emp) siteGroups[a.site_name].push(emp);
+  });
+
+  return (
+    <div>
+      {/* Assign form */}
+      <div className="grid-2" style={{ marginBottom: 20 }}>
+        <div className="sign-card" style={{ marginBottom: 0 }}>
+          <div className="sign-title">🚀 批次分配</div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>工程 / 工地 *</div>
+            <select value={selProject} onChange={e => setSelProject(e.target.value)}
+              className="form-select" style={{ background: "#0d0f12" }}>
+              <option value="">── 選擇工程 ──</option>
+              {projects.map(p => <option key={p.id || p.name} value={p.name}>{p.name}</option>)}
+            </select>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>開始日期</div>
+              <input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="form-input" style={{ background: "#0d0f12" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>結束日期</div>
+              <input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)} className="form-input" style={{ background: "#0d0f12" }} />
+            </div>
+          </div>
+          <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 6 }}>選擇員工（可多選）*</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12, maxHeight: 180, overflowY: "auto" }}>
+            {employees.map(emp => {
+              const sel = selWorkers.includes(emp.id);
+              return (
+                <div key={emp.id} onClick={() => toggleWorker(emp.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 20, border: `1.5px solid ${sel ? "#f0c000" : "#2a3045"}`, background: sel ? "rgba(240,192,0,0.08)" : "#0d0f12", color: sel ? "#f0c000" : "#8891a4", cursor: "pointer", fontSize: 12, fontWeight: sel ? 700 : 400 }}>
+                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: emp.color || "#f0c000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#0d0f12" }}>{emp.name[0]}</div>
+                  {emp.name}
+                  {sel && <span style={{ marginLeft: 4 }}>✓</span>}
+                </div>
+              );
+            })}
+          </div>
+          {selWorkers.length > 0 && (
+            <div style={{ fontSize: 12, color: "#f0c000", marginBottom: 10 }}>已選 {selWorkers.length} 名：{selWorkers.map(id => empById(id)?.name).filter(Boolean).join("、")}</div>
+          )}
+          <button onClick={handleAssign} disabled={saving} className="btn btn-primary" style={{ width: "100%" }}>
+            {saving ? "分配中..." : `🚀 確認分配 ${selWorkers.length > 0 ? `(${selWorkers.length} 人)` : ""}`}
+          </button>
+        </div>
+
+        {/* Today's overview */}
+        <div className="sign-card" style={{ marginBottom: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div className="sign-title" style={{ marginBottom: 0 }}>📍 工地人員分佈</div>
+            <input type="date" value={viewDate} onChange={e => setViewDate(e.target.value)}
+              style={{ background: "#0d0f12", border: "1px solid #2a3045", color: "#f0c000", borderRadius: 6, padding: "4px 8px", fontSize: 11 }} />
+          </div>
+          {Object.keys(siteGroups).length === 0 ? (
+            <div style={{ textAlign: "center", padding: 30, color: "#555d6e", fontSize: 13 }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
+              {viewDate} 無分配記錄
+            </div>
+          ) : Object.entries(siteGroups).map(([site, workers]) => (
+            <div key={site} style={{ background: "#0d0f12", border: "1px solid #1e2330", borderRadius: 10, padding: "10px 14px", marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#f0c000", marginBottom: 6 }}>🏗 {site}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {workers.map(w => (
+                  <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 4, background: "#13161c", borderRadius: 20, padding: "3px 10px" }}>
+                    <div style={{ width: 18, height: 18, borderRadius: "50%", background: w.color || "#f0c000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "#0d0f12" }}>{w.name[0]}</div>
+                    <span style={{ fontSize: 11, color: "#e8eaf0" }}>{w.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Recent assignments table */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">📋 分配記錄</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#22c55e" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", animation: "pulse 2s infinite" }} />
+            即時更新
+          </div>
+        </div>
+        <div className="card-body" style={{ padding: 0 }}>
+          {loading ? <div style={{ textAlign: "center", padding: 20, color: "#555d6e" }}>載入中...</div>
+          : assignments.length === 0 ? <div style={{ textAlign: "center", padding: 20, color: "#555d6e" }}>尚無分配記錄</div>
+          : <table className="data-table">
+            <thead><tr><th>工地</th><th>員工</th><th>日期</th><th>操作</th></tr></thead>
+            <tbody>
+              {assignments.slice(0, 100).map(a => {
+                const emp = empById(a.employee_id);
+                return (
+                  <tr key={a.id}>
+                    <td style={{ fontSize: 11 }}>{a.site_name}</td>
+                    <td className="td-name">{emp?.name || `#${a.employee_id}`}</td>
+                    <td style={{ fontSize: 11, color: "#8891a4" }}>{a.start_date}{a.start_date !== a.end_date ? ` → ${a.end_date}` : ""}</td>
+                    <td><button onClick={() => handleDelete(a.id)} style={{ background: "rgba(214,48,48,0.1)", border: "none", color: "#d63030", borderRadius: 5, padding: "3px 8px", fontSize: 10, cursor: "pointer" }}>🗑</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Subcontractor Agreement Page ──────────────────────────────────────────────
 function SubcontractPage({ showToast, projects = [] }) {
   const empty = {
@@ -5944,6 +6119,7 @@ export default function App() {
     tax: { icon: "🧾", title: "老闆稅務", sub: "計算器（香港有限公司）" },
     leave: { icon: "📝", title: "請假審批", sub: "員工請假申請 / 批核" },
     calendar: { icon: "📅", title: "行事曆", sub: "請假 / 工程完工 / 進度節點" },
+    dispatch: { icon: "🚀", title: "派更管理", sub: "批次分配員工到工地" },
     subcontract: { icon: "📋", title: "判頭合約", sub: "分判合約 / 進度付款 / 保險" },
     settings: { icon: "⚙️", title: "系統設定", sub: "主題 / 通知 / 重設" },
   };
@@ -6037,6 +6213,7 @@ export default function App() {
             {active === "tax" && <TaxCalc showToast={showToast} />}
             {active === "leave" && <LeaveApproval showToast={showToast} employees={employees} />}
             {active === "calendar" && <CalendarPage employees={employees} projects={projects} />}
+            {active === "dispatch" && <DispatchPage showToast={showToast} employees={employees} projects={projects} />}
             {active === "subcontract" && <SubcontractPage showToast={showToast} projects={projects} />}
             {active === "settings" && <Settings showToast={showToast} theme={theme} setTheme={setTheme} waConfig={waConfig} setWaConfig={setWaConfig} safetyRules={safetyRules} setSafetyRules={setSafetyRules} />}
           </div>
