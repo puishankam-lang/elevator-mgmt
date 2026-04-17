@@ -2932,20 +2932,22 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
   const loadCFList = async () => {
     setLoading(true);
     try {
-      // Use Supabase join: invoices → projects
-      const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=cf_num.asc.nullslast&limit=2000&offset=0`,
-        { headers: { 
-          "apikey": SUPABASE_KEY, 
-          "Authorization": `Bearer ${SUPABASE_KEY}`,
-          "Prefer": "count=exact",
-          "Range-Unit": "items",
-          "Range": "0-1999"
-        } }
-      );
-      const data = await res.json();
-      // Flatten: each row = { id, cfNo(stage), ecName, amount, status, pct, description, contractValue }
-      const flat = data.map(inv => ({
+      // Supabase caps at 1000 rows per request (server max-rows).
+      // Paginate to fetch ALL CFs, not just the first 1000.
+      const allData = [];
+      let offset = 0;
+      while (true) {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=cf_num.asc.nullslast&limit=1000&offset=${offset}`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+        );
+        const page = await res.json();
+        if (!Array.isArray(page)) break;
+        allData.push(...page);
+        if (page.length < 1000) break; // last page
+        offset += 1000;
+      }
+      const flat = allData.map(inv => ({
         id: inv.id,
         cfNo: inv.stage || "",
         ecName: inv.projects?.name || "",
@@ -2958,15 +2960,12 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
         startDate: inv.start_date || "",
         endDate: inv.end_date || "",
         contactPhone: inv.contact_phone || "",
+        cf_num: inv.cf_num,
       }));
       setCfList(flat);
     } catch(e) {
-      showToast("⚠️ 載入發票失敗，使用示範數據", "error");
-      // Demo fallback
-      setCfList([
-        { id:1, cfNo:"CF01162", ecName:"EC-550屯門醫院輕鐵站行人天橋NF411", amount:10750, status:"pending", pct:"5", description:"已完成客戶交機時安裝手尾", contractValue:215000, projectId:1 },
-        { id:2, cfNo:"CF01156", ecName:"EC-550屯門鳴琴路旁Footbridge NF198", amount:64500, status:"paid", pct:"30", description:"已完成機房及井道全面安裝，已拆棚交較車行慢車", contractValue:215000, projectId:1 },
-      ]);
+      showToast("⚠️ 載入發票失敗", "error");
+      setCfList([]);
     }
     setLoading(false);
   };
