@@ -3089,36 +3089,39 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
     setSaving(false);
   };
 
-  // Start inline editing: populate editRow with current values
+  // Open modal overlay with full edit form (stays at current scroll position)
   const handleEditCF = (item) => {
     setEditingId(item.id);
     setEditRow({
+      cfNo: item.cfNo || "",
+      ecName: item.ecName || "",
       amount: String(item.amount || ""),
+      pct: item.pct || "",
       description: item.description || "",
+      contractValue: item.contractValue ? String(item.contractValue) : "",
       startDate: item.startDate || "",
       endDate: item.endDate || "",
       contactPhone: item.contactPhone || "",
     });
   };
 
-  // Save inline edit
   const handleSaveInline = async () => {
+    if (!editRow.amount) { showToast("⚠️ 請填寫金額", "error"); return; }
     setEditSaving(true);
     try {
       await sbUpdate("invoices", editingId, {
+        stage: editRow.cfNo,
         amount: Number(editRow.amount) || 0,
         label: editRow.description,
         start_date: editRow.startDate || null,
         end_date: editRow.endDate || null,
         contact_phone: editRow.contactPhone || null,
+        cf_num: parseInt(editRow.cfNo.replace(/[^0-9]/g, "")) || null,
       });
       setCfList(prev => prev.map(c => c.id === editingId ? {
-        ...c,
-        amount: Number(editRow.amount) || 0,
-        description: editRow.description,
-        startDate: editRow.startDate,
-        endDate: editRow.endDate,
-        contactPhone: editRow.contactPhone,
+        ...c, cfNo: editRow.cfNo, amount: Number(editRow.amount) || 0,
+        description: editRow.description, startDate: editRow.startDate,
+        endDate: editRow.endDate, contactPhone: editRow.contactPhone,
       } : c));
       showToast("✅ 已更新！");
       setEditingId(null);
@@ -3376,9 +3379,10 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                     const daysLeft = item.endDate ? Math.ceil((new Date(item.endDate) - new Date()) / 86400000) : null;
                     const isNearDeadline = daysLeft !== null && daysLeft >= 0 && daysLeft <= 10;
                     const isOverdue = daysLeft !== null && daysLeft < 0;
-                    const isEditing = editingId === item.id;
                     const isCompleted = item.status === "completed";
-                    const rowBg = isEditing ? "rgba(240,192,0,0.06)" : isNearDeadline ? "rgba(239,68,68,0.04)" : isCompleted ? "rgba(255,255,255,0.015)" : item.status === "paid" ? "rgba(34,197,94,0.04)" : idx%2===0 ? "rgba(255,255,255,0.01)" : "transparent";
+                    // If completed, HIDE overdue warnings — it's archived, not actionable
+                    const showDeadline = !isCompleted;
+                    const rowBg = (isNearDeadline && showDeadline) ? "rgba(239,68,68,0.04)" : isCompleted ? "rgba(255,255,255,0.015)" : item.status === "paid" ? "rgba(34,197,94,0.04)" : idx%2===0 ? "rgba(255,255,255,0.01)" : "transparent";
                     const dimStyle = isCompleted ? { opacity: 0.5 } : {};
                     return (
                   <tr key={item.id} style={{ borderBottom:"1px solid #0d0f12", background: rowBg, ...dimStyle, transition:"opacity 0.3s" }}>
@@ -3399,57 +3403,31 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                     <td style={{ padding:"8px 10px", maxWidth:220 }}>
                       <div style={{ fontSize:12, color: isCompleted ? "#555d6e" : "#e8eaf0", lineHeight:1.4 }}>{item.ecName}</div>
                     </td>
-                    {/* Amount — editable when inline editing */}
+                    {/* Amount */}
                     <td style={{ padding:"8px 10px", whiteSpace:"nowrap" }}>
-                      {isEditing ? (
-                        <input type="number" value={editRow.amount} onChange={e => setEditRow({...editRow, amount: e.target.value})}
-                          style={{ width:100, background:"#0d0f12", border:"1px solid #f0c000", color:"#f0c000", borderRadius:4, padding:"4px 6px", fontFamily:"'Barlow Condensed'", fontWeight:700, fontSize:14, textAlign:"right" }} />
-                      ) : (
-                        <div style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, fontSize:15, color: isCompleted ? "#555d6e" : item.status==="paid" ? "#22c55e" : "#f0c000" }}>
-                          {item.amount > 0 ? `HK$${Number(item.amount).toLocaleString()}` : "—"}
-                        </div>
-                      )}
+                      <div style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, fontSize:15, color: isCompleted ? "#555d6e" : item.status==="paid" ? "#22c55e" : "#f0c000" }}>
+                        {item.amount > 0 ? `HK$${Number(item.amount).toLocaleString()}` : "—"}
+                      </div>
                     </td>
-                    {/* Description — editable */}
+                    {/* Description */}
                     <td style={{ padding:"8px 10px", maxWidth:200 }}>
-                      {isEditing ? (
-                        <input value={editRow.description} onChange={e => setEditRow({...editRow, description: e.target.value})}
-                          style={{ width:"100%", background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:4, padding:"4px 6px", fontSize:11 }} />
-                      ) : (
-                        <div style={{ fontSize:11, color: isCompleted ? "#3a4255" : "#9aa0b4", lineHeight:1.5, overflow:"hidden", textOverflow:"ellipsis", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>
-                          {item.description || "—"}
-                        </div>
-                      )}
+                      <div style={{ fontSize:11, color: isCompleted ? "#3a4255" : "#9aa0b4", lineHeight:1.5, overflow:"hidden", textOverflow:"ellipsis", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>
+                        {item.description || "—"}
+                      </div>
                     </td>
-                    {/* Dates — editable */}
+                    {/* End date — hide overdue for completed */}
                     <td style={{ padding:"8px 10px", whiteSpace:"nowrap", minWidth:130 }}>
-                      {isEditing ? (
-                        <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                          <input type="date" value={editRow.endDate} onChange={e => setEditRow({...editRow, endDate: e.target.value})}
-                            style={{ background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:4, padding:"3px 6px", fontSize:11 }} />
-                        </div>
-                      ) : item.endDate ? (
-                        <div style={{ fontSize:11, color: isOverdue ? "#EF4444" : isNearDeadline ? "#f0c000" : isCompleted ? "#3a4255" : "#8891a4", fontWeight: isNearDeadline||isOverdue ? 700 : 400 }}>
-                          ■ {item.endDate}
-                          {isNearDeadline && !isCompleted && <span style={{ marginLeft:4, color:"#EF4444" }}>({daysLeft}日)</span>}
-                          {isOverdue && !isCompleted && <span style={{ marginLeft:4, color:"#EF4444" }}>超期!</span>}
+                      {item.endDate ? (
+                        <div style={{ fontSize:11, color: isCompleted ? "#22c55e" : isOverdue ? "#EF4444" : isNearDeadline ? "#f0c000" : "#8891a4", fontWeight: (isNearDeadline||isOverdue) && showDeadline ? 700 : 400 }}>
+                          {isCompleted ? "✅ " : "■ "}{item.endDate}
+                          {isNearDeadline && showDeadline && <span style={{ marginLeft:4, color:"#EF4444" }}>({daysLeft}日)</span>}
+                          {isOverdue && showDeadline && <span style={{ marginLeft:4, color:"#EF4444" }}>超期!</span>}
                         </div>
                       ) : <span style={{ color:"#3a4255" }}>—</span>}
                     </td>
-                    {/* Actions: inline save/cancel when editing, normal buttons otherwise */}
+                    {/* Actions — opens modal on ✏️ click */}
                     <td style={{ padding:"8px 10px", whiteSpace:"nowrap" }}>
-                      {isEditing ? (
-                        <div style={{ display:"flex", gap:4 }}>
-                          <button onClick={handleSaveInline} disabled={editSaving}
-                            style={{ background:"#22c55e", border:"none", color:"#0d0f12", borderRadius:5, padding:"4px 12px", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-                            {editSaving ? "⏳" : "✅ 儲存"}
-                          </button>
-                          <button onClick={() => setEditingId(null)}
-                            style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#8891a4", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
-                            ✕
-                          </button>
-                        </div>
-                      ) : (
+                      {(
                         <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
                           {!isCompleted && (
                             <button onClick={() => handleEditCF(item)}
@@ -3508,6 +3486,84 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                   style={{ background:"#1e2330", border:"none", color: currentPage===totalPages?"#3a4255":"#e8eaf0", borderRadius:5, padding:"6px 12px", cursor: currentPage===totalPages?"default":"pointer", fontSize:12 }}>»</button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ EDIT MODAL — fixed center overlay, doesn't move scroll ═══ */}
+      {editingId && (
+        <div onClick={() => setEditingId(null)}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background:"#13161c", border:"1.5px solid #f0c000", borderRadius:14, padding:20, width:"100%", maxWidth:540, maxHeight:"90vh", overflowY:"auto" }}>
+            <div style={{ fontFamily:"'Barlow Condensed'", fontSize:18, fontWeight:700, color:"#f0c000", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span>✏️ 編輯 {editRow.cfNo}</span>
+              <button onClick={() => setEditingId(null)}
+                style={{ background:"none", border:"none", color:"#555d6e", fontSize:20, cursor:"pointer" }}>✕</button>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
+              <div>
+                <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>CF 號碼</div>
+                <input value={editRow.cfNo} onChange={e => setEditRow({...editRow, cfNo: e.target.value})}
+                  className="form-input" style={{ background:"#0d0f12" }} />
+              </div>
+              <div>
+                <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>完成 %</div>
+                <input value={editRow.pct} onChange={e => setEditRow({...editRow, pct: e.target.value})}
+                  className="form-input" style={{ background:"#0d0f12" }} />
+              </div>
+              <div>
+                <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>發票金額 (HK$) *</div>
+                <input value={editRow.amount} onChange={e => setEditRow({...editRow, amount: e.target.value})}
+                  type="number" className="form-input" style={{ background:"#0d0f12" }} />
+              </div>
+            </div>
+            <div style={{ marginBottom:10 }}>
+              <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>合約總值 (HK$)</div>
+              <input value={editRow.contractValue} onChange={e => setEditRow({...editRow, contractValue: e.target.value})}
+                type="number" className="form-input" style={{ background:"#0d0f12" }} />
+            </div>
+            <div style={{ marginBottom:10 }}>
+              <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>EC 工程名稱</div>
+              <input value={editRow.ecName} readOnly
+                className="form-input" style={{ background:"#0d0f12", color:"#555d6e" }} />
+            </div>
+            <div style={{ marginBottom:10 }}>
+              <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>工程描述</div>
+              <input value={editRow.description} onChange={e => setEditRow({...editRow, description: e.target.value})}
+                className="form-input" style={{ background:"#0d0f12", width:"100%" }} />
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
+              <div>
+                <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>📅 開始日期</div>
+                <input type="date" value={editRow.startDate} onChange={e => setEditRow({...editRow, startDate: e.target.value})}
+                  className="form-input" style={{ background:"#0d0f12" }} />
+              </div>
+              <div>
+                <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>📅 結束日期</div>
+                <input type="date" value={editRow.endDate} onChange={e => setEditRow({...editRow, endDate: e.target.value})}
+                  className="form-input" style={{ background:"#0d0f12", borderColor: editRow.endDate ? "#f0c000" : "" }} />
+              </div>
+              <div>
+                <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>📱 聯絡人電話</div>
+                <input type="tel" value={editRow.contactPhone} onChange={e => setEditRow({...editRow, contactPhone: e.target.value})}
+                  placeholder="9XXXXXXX" className="form-input" style={{ background:"#0d0f12" }} />
+              </div>
+            </div>
+            {editRow.endDate && (() => {
+              const d = Math.ceil((new Date(editRow.endDate) - new Date()) / 86400000);
+              return d <= 0 ? <div style={{ background:"rgba(239,68,68,0.1)", border:"1px solid #EF4444", borderRadius:8, padding:"8px 12px", marginBottom:10, fontSize:12, color:"#EF4444" }}>⚠️ 已超期 {Math.abs(d)} 日</div>
+                : d <= 10 ? <div style={{ background:"rgba(240,192,0,0.08)", border:"1px solid #f0c000", borderRadius:8, padding:"8px 12px", marginBottom:10, fontSize:12, color:"#f0c000" }}>🔴 距離結束只剩 {d} 日</div>
+                : <div style={{ background:"rgba(34,197,94,0.06)", border:"1px solid rgba(34,197,94,0.3)", borderRadius:8, padding:"8px 12px", marginBottom:10, fontSize:12, color:"#22c55e" }}>✅ 距離結束還有 {d} 日</div>;
+            })()}
+            <div style={{ display:"flex", gap:8, marginTop:4 }}>
+              <button onClick={handleSaveInline} disabled={editSaving}
+                className="btn btn-primary" style={{ flex:1 }}>
+                {editSaving ? "儲存中..." : "✅ 確認更新"}
+              </button>
+              <button onClick={() => setEditingId(null)}
+                className="btn btn-secondary">取消</button>
+            </div>
           </div>
         </div>
       )}
