@@ -1902,7 +1902,23 @@ function Invoice({ showToast }) {
 function Payroll({ showToast, employees = EMPLOYEES }) {
   const [approvalSubmitted, setApprovalSubmitted] = useState(false);
   const [signatures, setSignatures] = useState({});
-  const [viewSig, setViewSig] = useState(null); // employee sig to view in modal
+  const [viewSig, setViewSig] = useState(null);
+  // Editable payroll month — defaults to current month
+  const now = new Date();
+  const [payrollYear, setPayrollYear] = useState(now.getFullYear());
+  const [payrollMonth, setPayrollMonth] = useState(now.getMonth() + 1);
+  const payrollLabel = `${payrollYear}年${payrollMonth}月`;
+  // Saved payroll records from Supabase
+  const [savedRecords, setSavedRecords] = useState([]);
+  const [recordLoading, setRecordLoading] = useState(true);
+  const [savingRecord, setSavingRecord] = useState(false);
+
+  useEffect(() => {
+    fetch(`${SUPABASE_URL}/rest/v1/payroll_records?order=created_at.desc&limit=50`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    }).then(r => r.json()).then(d => { if (Array.isArray(d)) setSavedRecords(d); })
+      .catch(() => {}).finally(() => setRecordLoading(false));
+  }, []);
 
   useEffect(() => {
     fetch(`${SUPABASE_URL}/rest/v1/payroll_signatures?order=signed_at.desc&limit=500`, {
@@ -2000,7 +2016,17 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-header">
-          <div className="card-title">薪酬試算明細（2025 年 7 月）</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            薪酬試算明細 —
+            <select value={payrollYear} onChange={e => setPayrollYear(Number(e.target.value))}
+              style={{ background: "#0d0f12", border: "1px solid #2a3045", color: "#f0c000", borderRadius: 4, padding: "2px 6px", fontSize: 13, fontWeight: 700 }}>
+              {[2025, 2026, 2027].map(y => <option key={y} value={y}>{y}年</option>)}
+            </select>
+            <select value={payrollMonth} onChange={e => setPayrollMonth(Number(e.target.value))}
+              style={{ background: "#0d0f12", border: "1px solid #2a3045", color: "#f0c000", borderRadius: 4, padding: "2px 6px", fontSize: 13, fontWeight: 700 }}>
+              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{m}月</option>)}
+            </select>
+          </div>
           <div style={{ display: "flex", gap: 10 }}>
             <button className="btn btn-secondary btn-sm" onClick={handleExportExcel}>匯出 Excel</button>
             <button className="btn btn-primary btn-sm" onClick={handleSubmitApproval} disabled={approvalSubmitted}
@@ -2033,7 +2059,7 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
                     <td className="td-amount">HK${total.toLocaleString()}</td>
                     <td>
                       {(() => {
-                        const key = `${e.id}_2025年7月`;
+                        const key = `${e.id}_${payrollLabel}`;
                         const sig = signatures[key];
                         return sig ? (
                           <button onClick={() => setViewSig(sig)}
@@ -2102,27 +2128,83 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
           </div>
         )}
 
+        {/* Save current month's payroll for tax records */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <button onClick={async () => {
+            setSavingRecord(true);
+            try {
+              const details = employees.map(e => ({
+                id: e.id, name: e.name, role: e.role, rate: e.rate || 0,
+                days: e.days || 22, total: (e.days || 22) * (e.rate || 0),
+              }));
+              const row = {
+                month: payrollLabel,
+                total_amount: totalSalary,
+                employee_count: employees.length,
+                status: approvalSubmitted ? "submitted" : "pending",
+                details: JSON.stringify(details),
+              };
+              // Upsert: if month exists, update; otherwise insert
+              const existing = savedRecords.find(r => r.month === payrollLabel);
+              if (existing) {
+                await sbUpdate("payroll_records", existing.id, row);
+                setSavedRecords(prev => prev.map(r => r.id === existing.id ? { ...r, ...row } : r));
+              } else {
+                const res = await fetch(`${SUPABASE_URL}/rest/v1/payroll_records`, {
+                  method: "POST",
+                  headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+                  body: JSON.stringify(row),
+                });
+                const [saved] = await res.json();
+                setSavedRecords(prev => [saved, ...prev]);
+              }
+              showToast(`✅ ${payrollLabel} 薪酬記錄已儲存（${employees.length} 人，HK$${totalSalary.toLocaleString()}）`);
+            } catch (e) { showToast("❌ 儲存失敗：" + e.message, "error"); }
+            setSavingRecord(false);
+          }} disabled={savingRecord} className="btn btn-primary" style={{ flex: 1 }}>
+            {savingRecord ? "儲存中..." : `💾 儲存 ${payrollLabel} 薪酬記錄（報稅用）`}
+          </button>
+          <button onClick={handleExportExcel} className="btn btn-secondary">📊 匯出 Excel</button>
+        </div>
+
+        {/* Saved payroll records — from Supabase, NOT hardcoded */}
         <div className="card">
-          <div className="card-header"><div className="card-title">歷史薪酬記錄</div></div>
+          <div className="card-header">
+            <div className="card-title">📁 已儲存薪酬記錄（報稅 / 審計用）</div>
+          </div>
           <div className="card-body" style={{ padding: 0 }}>
-            <table className="data-table">
-              <thead><tr><th>月份</th><th>薪酬總額</th><th>人數</th><th>狀態</th></tr></thead>
-              <tbody>
-                {[
-                  ["2025年7月", `HK$${totalSalary.toLocaleString()}`, employees.length, "yellow", "待發"],
-                  ["2025年6月", "HK$72,800", 5, "green", "已發"],
-                  ["2025年5月", "HK$68,500", 4, "green", "已發"],
-                  ["2025年4月", "HK$61,200", 4, "green", "已發"],
-                ].map((r, i) => (
-                  <tr key={i}>
-                    <td className="td-name">{r[0]}</td>
-                    <td className="td-amount">{r[1]}</td>
-                    <td>{r[2]} 人</td>
-                    <td><span className={`badge ${r[3]}`}><span className="badge-dot" /> {r[4]}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {recordLoading ? <div style={{ textAlign: "center", padding: 20, color: "#555d6e" }}>載入中...</div>
+            : savedRecords.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 30, color: "#555d6e", fontSize: 13 }}>
+                尚無已儲存記錄 — 按上方「💾 儲存」按鈕保留本月薪酬明細
+              </div>
+            ) : (
+              <table className="data-table">
+                <thead><tr><th>月份</th><th>薪酬總額</th><th>人數</th><th>狀態</th><th>操作</th></tr></thead>
+                <tbody>
+                  {savedRecords.map(r => (
+                    <tr key={r.id}>
+                      <td className="td-name">{r.month}</td>
+                      <td className="td-amount">HK${Number(r.total_amount || 0).toLocaleString()}</td>
+                      <td>{r.employee_count} 人</td>
+                      <td><span className={`badge ${r.status === "submitted" ? "green" : "yellow"}`}><span className="badge-dot" />{r.status === "submitted" ? "已提交" : "待發"}</span></td>
+                      <td>
+                        <button onClick={async () => {
+                          if (!window.confirm(`刪除 ${r.month} 記錄？`)) return;
+                          try {
+                            await fetch(`${SUPABASE_URL}/rest/v1/payroll_records?id=eq.${r.id}`, {
+                              method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+                            });
+                            setSavedRecords(prev => prev.filter(x => x.id !== r.id));
+                            showToast("✅ 已刪除");
+                          } catch { showToast("❌ 失敗", "error"); }
+                        }} style={{ background: "rgba(214,48,48,0.1)", border: "none", color: "#d63030", borderRadius: 5, padding: "3px 8px", fontSize: 10, cursor: "pointer" }}>🗑</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>
