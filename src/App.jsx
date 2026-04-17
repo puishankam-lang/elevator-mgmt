@@ -3007,7 +3007,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
     const todayKey = today.toISOString().slice(0, 10);
     const alerts = [];
     cfList.forEach(inv => {
-      if (!inv.endDate || inv.status === "paid") return;
+      if (!inv.endDate || inv.status === "paid" || inv.status === "completed") return;
       const end = new Date(inv.endDate);
       const daysLeft = Math.ceil((end - today) / 86400000);
       if (daysLeft >= 0 && daysLeft <= 10) {
@@ -3380,9 +3380,10 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                     const isNearDeadline = daysLeft !== null && daysLeft >= 0 && daysLeft <= 10;
                     const isOverdue = daysLeft !== null && daysLeft < 0;
                     const isCompleted = item.status === "completed";
-                    // If completed, HIDE overdue warnings — it's archived, not actionable
-                    const showDeadline = !isCompleted;
-                    const rowBg = (isNearDeadline && showDeadline) ? "rgba(239,68,68,0.04)" : isCompleted ? "rgba(255,255,255,0.015)" : item.status === "paid" ? "rgba(34,197,94,0.04)" : idx%2===0 ? "rgba(255,255,255,0.01)" : "transparent";
+                    const isPaid = item.status === "paid";
+                    // If completed OR paid, HIDE overdue/deadline warnings — it's settled
+                    const showDeadline = !isCompleted && !isPaid;
+                    const rowBg = (isNearDeadline && showDeadline) ? "rgba(239,68,68,0.04)" : isCompleted ? "rgba(255,255,255,0.015)" : isPaid ? "rgba(34,197,94,0.04)" : idx%2===0 ? "rgba(255,255,255,0.01)" : "transparent";
                     const dimStyle = isCompleted ? { opacity: 0.5 } : {};
                     return (
                   <tr key={item.id} style={{ borderBottom:"1px solid #0d0f12", background: rowBg, ...dimStyle, transition:"opacity 0.3s" }}>
