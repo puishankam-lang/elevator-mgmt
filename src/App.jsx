@@ -532,6 +532,7 @@ const NAV_ITEMS = [
   { id: "empdocs", icon: "📁", label: "員工文件" },
   { id: "leave", icon: "📝", label: "請假審批" },
   { id: "calendar", icon: "📅", label: "行事曆" },
+  { id: "quotation", icon: "📄", label: "報價單" },
   { id: "dispatch", icon: "🚀", label: "派更管理" },
   { id: "subcontract", icon: "📋", label: "判頭合約" },
   { id: "profit", icon: "📈", label: "報價利潤試算" },
@@ -2557,6 +2558,7 @@ const MILESTONE_PRESETS = [
 ];
 
 function generateInvoicePDF(inv, opts = {}) {
+  const isQuotation = opts.isQuotation || false;
   const w = window.open("", "_blank");
   if (!w) { alert("請允許彈出視窗以生成 PDF"); return; }
   const today = new Date().toISOString().split("T")[0]; // yyyy-mm-dd for <input type=date>
@@ -4722,6 +4724,259 @@ const LEAVE_TYPE_META = {
   other:        { label: "其他",   icon: "📝",  color: "#9CA3AF" },
 };
 
+// ── Quotation Page (報價單) ─────────────────────────────────────────────────
+function QuotationPage({ showToast, projects = [] }) {
+  const [quotes, setQuotes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState(null);
+  const [editRow, setEditRow] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState({ ecName: "", amount: "", label: "", endDate: "" });
+  const [addSaving, setAddSaving] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const fetchQuotes = () => {
+    fetch(`${SUPABASE_URL}/rest/v1/quotations?order=quote_num.desc.nullslast&limit=500`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    }).then(r => r.json()).then(d => { if (Array.isArray(d)) setQuotes(d); })
+      .catch(() => {}).finally(() => setLoading(false));
+  };
+  useEffect(() => { fetchQuotes(); const id = setInterval(fetchQuotes, 15000); return () => clearInterval(id); }, []);
+
+  const handleAdd = async () => {
+    if (!addForm.ecName || !addForm.amount) { showToast("⚠️ 請填寫工程名稱及金額", "error"); return; }
+    setAddSaving(true);
+    try {
+      // Find next quote_num
+      const maxNum = quotes.reduce((m, q) => Math.max(m, q.quote_num || 0), 0);
+      const nextNum = maxNum + 1;
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/quotations`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify({
+          quote_num: nextNum,
+          stage: `QT${String(nextNum).padStart(5, "0")}`,
+          ec_name: addForm.ecName,
+          amount: Number(addForm.amount),
+          label: addForm.label,
+          end_date: addForm.endDate || null,
+          project_id: projects.find(p => p.name === addForm.ecName)?.id || null,
+          status: "pending",
+        }),
+      });
+      const [saved] = await res.json();
+      setQuotes(prev => [saved, ...prev]);
+      setAddForm({ ecName: "", amount: "", label: "", endDate: "" });
+      setShowAdd(false);
+      showToast(`✅ QT${String(nextNum).padStart(5, "0")} 已新增！`);
+    } catch (e) { showToast("❌ " + e.message, "error"); }
+    setAddSaving(false);
+  };
+
+  const handleEdit = (q) => {
+    setEditId(q.id);
+    setEditRow({ ecName: q.ec_name || "", amount: String(q.amount || ""), label: q.label || "", endDate: q.end_date || "" });
+  };
+
+  const handleSave = async () => {
+    setEditSaving(true);
+    try {
+      await sbUpdate("quotations", editId, {
+        ec_name: editRow.ecName, amount: Number(editRow.amount) || 0,
+        label: editRow.label, end_date: editRow.endDate || null,
+      });
+      setQuotes(prev => prev.map(q => q.id === editId ? { ...q, ec_name: editRow.ecName, amount: Number(editRow.amount), label: editRow.label, end_date: editRow.endDate } : q));
+      setEditId(null);
+      showToast("✅ 已更新！");
+    } catch (e) { showToast("❌ " + e.message, "error"); }
+    setEditSaving(false);
+  };
+
+  const handleConvert = async (q) => {
+    if (!window.confirm(`將 ${q.stage} 轉化為發票？\n\n工程：${q.ec_name}\n金額：HK$${Number(q.amount).toLocaleString()}`)) return;
+    try {
+      // Find next CF num
+      const cfRes = await fetch(`${SUPABASE_URL}/rest/v1/invoices?select=cf_num&order=cf_num.desc.nullslast&limit=1`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      });
+      const cfRows = await cfRes.json();
+      const nextCF = (Array.isArray(cfRows) && cfRows[0]?.cf_num ? Number(cfRows[0].cf_num) : 0) + 1;
+      const cfNo = `CF${String(nextCF).padStart(5, "0")}`;
+
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/invoices`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify({
+          cf_num: nextCF, stage: cfNo, ec_name: q.ec_name,
+          amount: q.amount, label: q.label, end_date: q.end_date,
+          project_id: q.project_id, status: "pending",
+        }),
+      });
+      const [inv] = await res.json();
+      // Mark quotation as converted
+      await sbUpdate("quotations", q.id, { status: "converted", converted_invoice_id: inv.id });
+      setQuotes(prev => prev.map(x => x.id === q.id ? { ...x, status: "converted", converted_invoice_id: inv.id } : x));
+      showToast(`✅ 已轉化為 ${cfNo} — HK$${Number(q.amount).toLocaleString()}`);
+    } catch (e) { showToast("❌ 轉化失敗：" + e.message, "error"); }
+  };
+
+  const filtered = quotes.filter(q => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    return (q.stage || "").toLowerCase().includes(s) || (q.ec_name || "").toLowerCase().includes(s) || (q.label || "").toLowerCase().includes(s);
+  });
+
+  const pendingAmt = filtered.filter(q => q.status === "pending").reduce((a, q) => a + Number(q.amount || 0), 0);
+  const convertedAmt = filtered.filter(q => q.status === "converted").reduce((a, q) => a + Number(q.amount || 0), 0);
+
+  return (
+    <div>
+      {/* KPI */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
+        {[
+          { label: "報價單總數", value: quotes.length, color: "#f0c000" },
+          { label: "待跟進", value: filtered.filter(q => q.status === "pending").length, color: "#60a5fa" },
+          { label: "已轉發票", value: filtered.filter(q => q.status === "converted").length, color: "#22c55e" },
+          { label: "待跟進金額", value: `HK$${(pendingAmt/10000).toFixed(0)}萬`, color: "#f0c000" },
+        ].map((k, i) => (
+          <div key={i} style={{ background: "#13161c", border: "1px solid #1e2330", borderRadius: 10, padding: "12px 16px" }}>
+            <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{k.label}</div>
+            <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 22, fontWeight: 800, color: k.color }}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Search + Add */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <input className="form-input" placeholder="🔍 搜尋報價單..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 1 }} />
+        <button className="btn btn-primary" onClick={() => setShowAdd(!showAdd)}>{showAdd ? "✕ 收起" : "+ 新增報價單"}</button>
+      </div>
+
+      {/* Add form */}
+      {showAdd && (
+        <div style={{ background: "#13161c", border: "1px solid #f0c000", borderRadius: 10, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 16, fontWeight: 700, color: "#f0c000", marginBottom: 12 }}>📄 新增報價單</div>
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>工程名稱 *</div>
+              <input value={addForm.ecName} onChange={e => setAddForm({ ...addForm, ecName: e.target.value })} placeholder="EC-590..." className="form-input" />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>報價金額 (HK$) *</div>
+              <input type="number" value={addForm.amount} onChange={e => setAddForm({ ...addForm, amount: e.target.value })} className="form-input" />
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>到期日</div>
+              <input type="date" value={addForm.endDate} onChange={e => setAddForm({ ...addForm, endDate: e.target.value })} className="form-input" />
+            </div>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>描述</div>
+            <input value={addForm.label} onChange={e => setAddForm({ ...addForm, label: e.target.value })} placeholder="工程描述..." className="form-input" style={{ width: "100%" }} />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={handleAdd} disabled={addSaving} className="btn btn-primary" style={{ flex: 1 }}>{addSaving ? "儲存中..." : "✅ 確認新增"}</button>
+            <button onClick={() => setShowAdd(false)} className="btn btn-secondary">取消</button>
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      {loading ? <div style={{ textAlign: "center", padding: 40, color: "#555d6e" }}>載入中...</div> : (
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#13161c", borderBottom: "2px solid #1e2330" }}>
+                  {["報價單號", "工程名稱", "金額", "描述", "狀態", "操作"].map(h => (
+                    <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 0.8 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((q, idx) => {
+                  const isConverted = q.status === "converted";
+                  return (
+                    <tr key={q.id} style={{ borderBottom: "1px solid #0d0f12", background: isConverted ? "rgba(34,197,94,0.04)" : idx % 2 === 0 ? "rgba(255,255,255,0.01)" : "transparent", opacity: isConverted ? 0.6 : 1 }}>
+                      <td style={{ padding: "10px 12px" }}>
+                        <span style={{ background: isConverted ? "#1a2e1a" : "#1a1f2e", color: isConverted ? "#22c55e" : "#f0c000", borderRadius: 5, padding: "3px 9px", fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 13 }}>
+                          {q.stage}
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 12px", fontSize: 12 }}>{q.ec_name}</td>
+                      <td style={{ padding: "10px 12px", fontFamily: "'Barlow Condensed'", fontWeight: 700, fontSize: 15, color: isConverted ? "#22c55e" : "#f0c000" }}>
+                        HK${Number(q.amount || 0).toLocaleString()}
+                      </td>
+                      <td style={{ padding: "10px 12px", fontSize: 11, color: "#9aa0b4", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {q.label || "—"}
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <span className={`badge ${isConverted ? "green" : "yellow"}`}><span className="badge-dot" />{isConverted ? "已轉發票" : "待跟進"}</span>
+                      </td>
+                      <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          {!isConverted && (
+                            <>
+                              <button onClick={() => handleEdit(q)}
+                                style={{ background: "none", border: "1px solid #f0c000", color: "#f0c000", borderRadius: 5, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>✏️</button>
+                              <button onClick={() => handleConvert(q)}
+                                title="轉化為發票"
+                                style={{ background: "rgba(34,197,94,0.1)", border: "1px solid #22c55e", color: "#22c55e", borderRadius: 5, padding: "4px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>
+                                📋→💰
+                              </button>
+                            </>
+                          )}
+                          <button onClick={() => generateInvoicePDF(
+                            { cfNo: q.stage, ecName: q.ec_name, amount: q.amount, description: q.label, endDate: q.end_date },
+                            { isQuotation: true }
+                          )}
+                            style={{ background: "none", border: "1px solid #2a3045", color: "#60a5fa", borderRadius: 5, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>🖨️</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal */}
+      {editId && (
+        <div onClick={() => setEditId(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#13161c", border: "1.5px solid #f0c000", borderRadius: 14, padding: 20, width: "100%", maxWidth: 480 }}>
+            <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 18, fontWeight: 700, color: "#f0c000", marginBottom: 14 }}>✏️ 編輯報價單</div>
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>工程名稱</div>
+              <input value={editRow.ecName} onChange={e => setEditRow({ ...editRow, ecName: e.target.value })} className="form-input" style={{ background: "#0d0f12" }} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>金額 (HK$)</div>
+                <input type="number" value={editRow.amount} onChange={e => setEditRow({ ...editRow, amount: e.target.value })} className="form-input" style={{ background: "#0d0f12" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>到期日</div>
+                <input type="date" value={editRow.endDate} onChange={e => setEditRow({ ...editRow, endDate: e.target.value })} className="form-input" style={{ background: "#0d0f12" }} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>描述</div>
+              <input value={editRow.label} onChange={e => setEditRow({ ...editRow, label: e.target.value })} className="form-input" style={{ background: "#0d0f12", width: "100%" }} />
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={handleSave} disabled={editSaving} className="btn btn-primary" style={{ flex: 1 }}>{editSaving ? "儲存中..." : "✅ 確認更新"}</button>
+              <button onClick={() => setEditId(null)} className="btn btn-secondary">取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Dispatch Page (派更管理) ──────────────────────────────────────────────────
 function DispatchPage({ showToast, employees = [], projects = [] }) {
   const [assignments, setAssignments] = useState([]);
@@ -6119,6 +6374,7 @@ export default function App() {
     tax: { icon: "🧾", title: "老闆稅務", sub: "計算器（香港有限公司）" },
     leave: { icon: "📝", title: "請假審批", sub: "員工請假申請 / 批核" },
     calendar: { icon: "📅", title: "行事曆", sub: "請假 / 工程完工 / 進度節點" },
+    quotation: { icon: "📄", title: "報價單", sub: "報價管理 / 轉化為發票" },
     dispatch: { icon: "🚀", title: "派更管理", sub: "批次分配員工到工地" },
     subcontract: { icon: "📋", title: "判頭合約", sub: "分判合約 / 進度付款 / 保險" },
     settings: { icon: "⚙️", title: "系統設定", sub: "主題 / 通知 / 重設" },
@@ -6213,6 +6469,7 @@ export default function App() {
             {active === "tax" && <TaxCalc showToast={showToast} />}
             {active === "leave" && <LeaveApproval showToast={showToast} employees={employees} />}
             {active === "calendar" && <CalendarPage employees={employees} projects={projects} />}
+            {active === "quotation" && <QuotationPage showToast={showToast} projects={projects} />}
             {active === "dispatch" && <DispatchPage showToast={showToast} employees={employees} projects={projects} />}
             {active === "subcontract" && <SubcontractPage showToast={showToast} projects={projects} />}
             {active === "settings" && <Settings showToast={showToast} theme={theme} setTheme={setTheme} waConfig={waConfig} setWaConfig={setWaConfig} safetyRules={safetyRules} setSafetyRules={setSafetyRules} />}
