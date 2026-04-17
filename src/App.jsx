@@ -6151,6 +6151,22 @@ function LeaveApproval({ showToast, employees = [] }) {
                     </div>
                   </>
                 )}
+                {/* Delete button — available for all statuses (testing cleanup) */}
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: r.status === "pending" ? 0 : 8 }}>
+                  <button onClick={async () => {
+                    if (!window.confirm(`刪除此請假記錄？（${emp?.name} ${t?.label} ${r.start_date}）`)) return;
+                    try {
+                      await fetch(`${SUPABASE_URL}/rest/v1/leave_requests?id=eq.${r.id}`, {
+                        method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+                      });
+                      setRequests(prev => prev.filter(x => x.id !== r.id));
+                      showToast("✅ 已刪除");
+                    } catch (e) { showToast("❌ 刪除失敗", "error"); }
+                  }}
+                    style={{ background: "rgba(214,48,48,0.08)", border: "1px solid rgba(214,48,48,0.3)", color: "#d63030", borderRadius: 6, padding: "4px 12px", fontSize: 11, cursor: "pointer" }}>
+                    🗑 刪除
+                  </button>
+                </div>
               </div>
             </div>
           );
