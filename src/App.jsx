@@ -4981,6 +4981,17 @@ function QuotationPage({ showToast, projects = [] }) {
                             { isQuotation: true }
                           )}
                             style={{ background: "none", border: "1px solid #2a3045", color: "#60a5fa", borderRadius: 5, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>🖨️</button>
+                          <button onClick={async () => {
+                            if (!window.confirm(`刪除 ${q.stage}？此操作無法復原。`)) return;
+                            try {
+                              await fetch(`${SUPABASE_URL}/rest/v1/quotations?id=eq.${q.id}`, {
+                                method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+                              });
+                              setQuotes(prev => prev.filter(x => x.id !== q.id));
+                              showToast("✅ 已刪除");
+                            } catch (e) { showToast("❌ 刪除失敗", "error"); }
+                          }}
+                            style={{ background: "rgba(214,48,48,0.1)", border: "none", color: "#d63030", borderRadius: 5, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>🗑</button>
                         </div>
                       </td>
                     </tr>
