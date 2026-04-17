@@ -1943,44 +1943,63 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
   }, []);
   const totalSalary = employees.reduce((a, e) => a + (e.days || 22) * (e.rate || 0), 0);
 
+  // Professional Excel export — generates an HTML table that Excel opens
+  // with proper formatting: company header, merged title row, borders,
+  // currency formatting, auto-sum TOTAL row, and signature space.
   const handleExportExcel = () => {
-    try {
-      if (!employees || employees.length === 0) {
-        showToast("⚠️ 尚無員工資料，請先新增員工", "error");
-        return;
-      }
-      const headers = ["員工", "職位", "日薪(HK$)", "出勤天數", "遲到扣薪", "總薪酬(HK$)", "狀態"];
-      const rows = employees.map(e => {
-        const total = (e.days || 22) * (e.rate || 0);
-        return [e.name || "", e.role || "", e.rate || 0, `${e.days || 22}天`, "–", total, "待審批"];
-      });
-      // Escape any existing double-quotes in values to prevent CSV breakage
-      const escape = v => `"${String(v).replace(/"/g, '""')}"`;
-      const csvContent = [headers, ...rows].map(r => r.map(escape).join(",")).join("\r\n");
-      // BOM + content for Excel UTF-8 compatibility
-      const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
-      const filename = `薪酬報表_${new Date().toLocaleDateString("zh-HK").replace(/\//g, "-")}.csv`;
-      // IE/Edge legacy fallback
-      if (window.navigator && window.navigator.msSaveBlob) {
-        window.navigator.msSaveBlob(blob, filename);
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        a.style.display = "none";
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }, 100);
-      }
-      showToast(`📊 已匯出 ${employees.length} 筆薪酬資料（${filename}）`, "success");
-    } catch (err) {
-      console.error("Excel export failed:", err);
-      showToast(`❌ 匯出失敗：${err.message || "未知錯誤"}`, "error");
-    }
+    if (!employees || employees.length === 0) { showToast("⚠️ 尚無員工資料", "error"); return; }
+    const today = new Date().toLocaleDateString("zh-HK");
+    const rows = employees.map(e => {
+      const total = (e.days || 22) * (e.rate || 0);
+      return { name: e.name, role: e.role, rate: e.rate || 0, days: e.days || 22, total };
+    });
+    const n = rows.length;
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head><meta charset="UTF-8">
+<style>
+  td,th{border:1px solid #999;padding:6px 10px;font-family:Arial;font-size:11px}
+  th{background:#e8e8e8;font-weight:bold;text-align:center}
+  .r{text-align:right} .c{text-align:center}
+  .title{font-size:16px;font-weight:bold;border:none}
+  .sub{font-size:12px;color:#444;border:none}
+  .total td{font-weight:bold;background:#f0f0f0;font-size:12px;border-top:2px solid #333}
+  .currency{mso-number-format:"\\#\\,\\#\\#0"}
+  .sig{border:none;padding-top:30px;font-size:11px;color:#666}
+</style></head><body>
+<table>
+  <tr><td class="title" colspan="7">Chun Fai Lifts Engineering Company Ltd.</td></tr>
+  <tr><td class="title" colspan="7">俊輝電梯工程有限公司</td></tr>
+  <tr><td class="sub" colspan="7">Payroll Report 薪酬報表 — ${payrollLabel}</td></tr>
+  <tr><td class="sub" colspan="7">列印日期：${today}</td></tr>
+  <tr><td colspan="7"></td></tr>
+  <tr>
+    <th>員工</th><th>職位</th><th>日薪 (HK$)</th><th>出勤天數</th>
+    <th>遲到扣薪</th><th>總薪酬 (HK$)</th><th>狀態</th>
+  </tr>
+  ${rows.map((r, i) => `<tr>
+    <td>${r.name}</td><td class="c">${r.role}</td>
+    <td class="r currency">${r.rate}</td><td class="c">${r.days} 天</td>
+    <td class="c">–</td><td class="r currency">${r.total}</td>
+    <td class="c">${approvalSubmitted ? "已提交" : "待審批"}</td>
+  </tr>`).join("")}
+  <tr class="total">
+    <td colspan="2" style="text-align:right">合計（${n} 人）</td>
+    <td></td><td></td><td></td>
+    <td class="r currency">${totalSalary}</td><td></td>
+  </tr>
+  <tr><td colspan="7" style="border:none"></td></tr>
+  <tr><td colspan="7" style="border:none"></td></tr>
+  <tr><td class="sig" colspan="3">核准簽署：_______________</td><td class="sig" colspan="4">公司印鑑：</td></tr>
+  <tr><td class="sig" colspan="3">日期：_______________</td><td class="sig" colspan="4"></td></tr>
+</table></body></html>`;
+    const blob = new Blob(["\ufeff" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const filename = `薪酬報表_${payrollLabel}_${today.replace(/\//g, "-")}.xls`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.style.display = "none";
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    showToast(`📊 已匯出 ${filename}`, "success");
   };
 
   const handleSubmitApproval = () => {
@@ -2161,10 +2180,14 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
               showToast(`✅ ${payrollLabel} 薪酬記錄已儲存（${employees.length} 人，HK$${totalSalary.toLocaleString()}）`);
             } catch (e) { showToast("❌ 儲存失敗：" + e.message, "error"); }
             setSavingRecord(false);
-          }} disabled={savingRecord} className="btn btn-primary" style={{ flex: 1 }}>
-            {savingRecord ? "儲存中..." : `💾 儲存 ${payrollLabel} 薪酬記錄（報稅用）`}
+          }} disabled={savingRecord} className="btn btn-primary btn-sm">
+            {savingRecord ? "⏳" : "💾"} 儲存 {payrollLabel}
           </button>
-          <button onClick={handleExportExcel} className="btn btn-secondary">📊 匯出 Excel</button>
+          <button onClick={handleExportExcel} className="btn btn-secondary btn-sm">📊 匯出 Excel</button>
+          <button onClick={handleSubmitApproval} disabled={approvalSubmitted} className="btn btn-secondary btn-sm"
+            style={{ opacity: approvalSubmitted ? 0.6 : 1 }}>
+            {approvalSubmitted ? "⏳ 審批中" : "✅ 提交審批"}
+          </button>
         </div>
 
         {/* Saved payroll records — from Supabase, NOT hardcoded */}
