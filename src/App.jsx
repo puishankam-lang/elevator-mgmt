@@ -5305,28 +5305,28 @@ function CalendarPage({ employees = [], projects = [] }) {
           style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid #2a3045", background: "#1e2330", color: "#e8eaf0", cursor: "pointer", fontWeight: 600 }}>下月 →</button>
       </div>
 
-      {/* Legend */}
-      <div style={{ display: "flex", gap: 14, marginBottom: 14, fontSize: 11, color: "#9aa0b4", flexWrap: "wrap" }}>
+      {/* Legend — compact, professional */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 10, fontSize: 9, color: "#555d6e", flexWrap: "wrap", letterSpacing: "0.3px" }}>
         {Object.entries(LEAVE_TYPE_META).map(([k, v]) => (
           <span key={k} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: v.color }} />
+            <span style={{ width: 6, height: 6, borderRadius: 2, background: v.color }} />
             {v.icon} {v.label}
           </span>
         ))}
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#FF6B1A" }} />🏗 工程進行中
+          <span style={{ width: 6, height: 6, borderRadius: 2, background: "#FF6B1A" }} />🏗 工程進行中
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#EF4444" }} />⏰ 工程完工
+          <span style={{ width: 6, height: 6, borderRadius: 2, background: "#EF4444" }} />⏰ 工程完工
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#A78BFA" }} />📄 文件到期
+          <span style={{ width: 6, height: 6, borderRadius: 2, background: "#A78BFA" }} />📄 文件到期
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#f0c000" }} />💰 CF 請款到期
+          <span style={{ width: 6, height: 6, borderRadius: 2, background: "#f0c000" }} />💰 CF 請款到期
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#60a5fa" }} />📋 CF 開始
+          <span style={{ width: 6, height: 6, borderRadius: 2, background: "#60a5fa" }} />📋 CF 開始
         </span>
       </div>
 
@@ -5339,37 +5339,76 @@ function CalendarPage({ employees = [], projects = [] }) {
                 <div key={d} style={{ padding: "10px 8px", textAlign: "center", fontSize: 11, fontWeight: 700, color: i === 0 || i === 6 ? "#d63030" : "#9aa0b4", borderRight: i < 6 ? "1px solid #1e2330" : "none" }}>{d}</div>
               ))}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gridAutoRows: "minmax(96px, auto)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gridAutoRows: "minmax(80px, 80px)" }}>
               {cells.map((day, i) => {
                 const key = dateKey(day);
                 const events = day ? (eventsByDate[key] || []) : [];
                 const isToday = key === todayStr;
                 const isSelected = key === selectedDay;
                 const isWeekend = i % 7 === 0 || i % 7 === 6;
+                // Dedupe: only show one chip per project per day (project_span can duplicate with deadline)
+                const seen = new Set();
+                const uniqueEvents = events.filter(ev => {
+                  const k = `${ev.kind}_${ev.label}`;
+                  if (seen.has(k)) return false;
+                  seen.add(k); return true;
+                });
+                // Short label for each event kind — keep cells clean
+                const shortLabel = (ev) => {
+                  if (ev.kind === "project_span") {
+                    const ec = ev.label.match(/EC-\d+/)?.[0];
+                    return ec || ev.label.slice(0, 8);
+                  }
+                  if (ev.kind === "deadline") return ev.label.match(/EC-\d+/)?.[0] || "完工";
+                  if (ev.kind === "invoice" || ev.kind === "invoice_start") {
+                    const cf = ev.label.match(/CF\d+/)?.[0];
+                    return cf || "CF";
+                  }
+                  if (ev.kind === "doc_expiry") return ev.label.split(" ").pop() || "到期";
+                  if (ev.kind === "leave") {
+                    const name = ev.label.split(" ")[0];
+                    return name.length > 3 ? name.slice(0, 3) : name;
+                  }
+                  return ev.label.slice(0, 6);
+                };
                 return (
                   <div key={i}
                     onClick={() => day && setSelectedDay(key === selectedDay ? null : key)}
                     style={{
                       borderRight: i % 7 < 6 ? "1px solid #1e2330" : "none",
                       borderBottom: "1px solid #1e2330",
-                      padding: 6,
+                      padding: "4px 3px",
                       background: !day ? "#0a0c10" : isSelected ? "#1a1f2e" : isToday ? "rgba(240,192,0,0.05)" : "#13161c",
                       cursor: day ? "pointer" : "default",
-                      minHeight: 96,
-                      position: "relative",
+                      overflow: "hidden",
                     }}>
                     {day && (
                       <>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: isToday ? "#f0c000" : isWeekend ? "#d63030" : "#e8eaf0", marginBottom: 4 }}>
-                          {day}{isToday && <span style={{ fontSize: 9, marginLeft: 4 }}>今日</span>}
+                        <div style={{ fontSize: 11, fontWeight: 700, color: isToday ? "#f0c000" : isWeekend ? "#d63030" : "#c8d0e0", marginBottom: 2, lineHeight: 1 }}>
+                          {day}{isToday && <span style={{ fontSize: 8, marginLeft: 2, color: "#f0c000" }}>●</span>}
                         </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          {events.slice(0, 3).map((ev, j) => (
-                            <div key={j} style={{ background: ev.color + "22", borderLeft: `3px solid ${ev.color}`, color: ev.color, fontSize: 10, padding: "2px 4px", borderRadius: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {ev.icon} {ev.label}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                          {uniqueEvents.slice(0, 3).map((ev, j) => (
+                            <div key={j} style={{
+                              background: ev.color + "25",
+                              borderLeft: `2px solid ${ev.color}`,
+                              color: ev.color,
+                              fontSize: 8,
+                              fontWeight: 600,
+                              padding: "1px 3px",
+                              borderRadius: 2,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              lineHeight: 1.3,
+                              letterSpacing: "-0.3px",
+                            }}>
+                              {shortLabel(ev)}
                             </div>
                           ))}
-                          {events.length > 3 && <div style={{ fontSize: 10, color: "#555d6e" }}>+{events.length - 3} 個其他</div>}
+                          {uniqueEvents.length > 3 && (
+                            <div style={{ fontSize: 8, color: "#555d6e", lineHeight: 1, paddingLeft: 2 }}>+{uniqueEvents.length - 3}</div>
+                          )}
                         </div>
                       </>
                     )}
