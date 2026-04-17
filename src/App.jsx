@@ -5129,15 +5129,38 @@ function CalendarPage({ employees = [], projects = [] }) {
       });
     }
   });
-  // Project deadlines (end date)
-  projects.forEach(p => {
-    if (!p.end) return;
-    addEvent(p.end, {
-      kind: "deadline",
-      color: "#EF4444",
-      icon: "⏰",
-      label: `${p.name} 完工`,
-    });
+  // Project spans — fan out across start→end like leave events, so each
+  // day the project is active shows a colored bar. Also keep the ⏰
+  // deadline chip on the end date. Assign each project a stable color
+  // from a palette so they're visually distinguishable.
+  const PROJECT_COLORS = ["#FF6B1A","#3B82F6","#22C55E","#A78BFA","#F43F5E","#06B6D4","#F59E0B","#EC4899","#10B981","#8B5CF6"];
+  projects.forEach((p, pi) => {
+    const pColor = PROJECT_COLORS[pi % PROJECT_COLORS.length];
+    const startD = p.start ? new Date(p.start) : null;
+    const endD = p.end ? new Date(p.end) : null;
+    // Span bar across start→end
+    if (startD && endD && endD >= startD) {
+      for (let d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
+        const key = d.toISOString().split("T")[0];
+        addEvent(key, {
+          kind: "project_span",
+          color: pColor,
+          icon: "🏗",
+          label: p.name,
+          detail: { name: p.name, client: p.client, pct: p.pct, plan: p.plan, start: p.start, end: p.end, value: p.value },
+        });
+      }
+    }
+    // Deadline chip on end date
+    if (p.end) {
+      addEvent(p.end, {
+        kind: "deadline",
+        color: "#EF4444",
+        icon: "⏰",
+        label: `${p.name} 完工`,
+        detail: { name: p.name, end: p.end, pct: p.pct },
+      });
+    }
   });
   // Document expiry dates — green card / EMSD licence renewal reminders
   const DOC_LABELS = {
@@ -5291,6 +5314,9 @@ function CalendarPage({ employees = [], projects = [] }) {
           </span>
         ))}
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#FF6B1A" }} />🏗 工程進行中
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <span style={{ width: 8, height: 8, borderRadius: 2, background: "#EF4444" }} />⏰ 工程完工
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -5373,6 +5399,26 @@ function CalendarPage({ employees = [], projects = [] }) {
               <div key={i} style={{ padding: "10px 12px", marginBottom: 8, background: ev.color + "11", border: `1px solid ${ev.color}55`, borderRadius: 8 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: ev.color }}>{ev.icon} {ev.label}</div>
                 {ev.status && <div style={{ fontSize: 10, color: "#9aa0b4", marginTop: 2 }}>{ev.status === "approved" ? "✅ 已批准" : "🕒 待審批"}</div>}
+                {/* Project detail popup */}
+                {ev.detail && (
+                  <div style={{ marginTop: 6, fontSize: 11, color: "#9aa0b4", lineHeight: 1.7, borderTop: `1px solid ${ev.color}33`, paddingTop: 6 }}>
+                    {ev.detail.client && <div>👤 客戶：<span style={{ color: "#e8eaf0" }}>{ev.detail.client}</span></div>}
+                    {ev.detail.start && <div>📅 開始：<span style={{ color: "#e8eaf0" }}>{ev.detail.start}</span></div>}
+                    {ev.detail.end && <div>📅 結束：<span style={{ color: "#e8eaf0" }}>{ev.detail.end}</span></div>}
+                    {ev.detail.value > 0 && <div>💰 合約：<span style={{ color: "#f0c000", fontWeight: 700 }}>HK${Number(ev.detail.value).toLocaleString()}</span></div>}
+                    {ev.detail.pct !== undefined && (
+                      <div style={{ marginTop: 4 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 2 }}>
+                          <span>進度</span>
+                          <span style={{ color: ev.detail.pct >= 80 ? "#22c55e" : "#f0c000", fontWeight: 700 }}>{ev.detail.pct}%</span>
+                        </div>
+                        <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 4, height: 4, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${ev.detail.pct}%`, background: ev.detail.pct >= 80 ? "#22c55e" : "#f0c000", borderRadius: 4 }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
