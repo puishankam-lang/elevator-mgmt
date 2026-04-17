@@ -1338,7 +1338,11 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
                 {mobileAttendance.map(a => (
                   <tr key={a.id}>
                     <td className="td-name">{empName(a.employee_id)}</td>
-                    <td style={{ fontSize: 11 }}>{a.site || "–"}</td>
+                    <td style={{ fontSize: 11 }}>
+                      {a.site?.startsWith("[手動]") ? (
+                        <span style={{ color: "#f0c000" }} title="員工手動新增的工地（非系統預設）">⚠️ {a.site}</span>
+                      ) : (a.site || "–")}
+                    </td>
                     <td>{a.check_in ? new Date(a.check_in).toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" }) : "–"}</td>
                     <td style={{ fontSize: 10, color: "#60a5fa", fontFamily: "monospace" }}>
                       {a.check_in_lat && a.check_in_lng
