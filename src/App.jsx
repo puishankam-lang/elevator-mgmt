@@ -2926,7 +2926,10 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "", startDate: "", endDate: "", contactPhone: "" });
   const [saving, setSaving] = useState(false);
+  // Inline editing state — when editingId is set, that table row becomes editable
   const [editingId, setEditingId] = useState(null);
+  const [editRow, setEditRow] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
 
   // Load all invoices with project names from Supabase
   const loadCFList = async () => {
@@ -3086,54 +3089,54 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
     setSaving(false);
   };
 
+  // Start inline editing: populate editRow with current values
   const handleEditCF = (item) => {
-    setAddForm({
-      cfNo: item.cfNo,
-      ecName: item.ecName,
-      amount: String(item.amount),
-      pct: item.pct || "",
+    setEditingId(item.id);
+    setEditRow({
+      amount: String(item.amount || ""),
       description: item.description || "",
-      contractValue: item.contractValue ? String(item.contractValue) : "",
       startDate: item.startDate || "",
       endDate: item.endDate || "",
       contactPhone: item.contactPhone || "",
     });
-    setEditingId(item.id);
-    setShowAddForm(true);
   };
 
-  const handleUpdateCF = async () => {
-    if (!addForm.cfNo || !addForm.amount) {
-      showToast("⚠️ 請填寫 CF 號及金額", "error"); return;
-    }
-    setSaving(true);
+  // Save inline edit
+  const handleSaveInline = async () => {
+    setEditSaving(true);
     try {
       await sbUpdate("invoices", editingId, {
-        stage: addForm.cfNo,
-        amount: Number(addForm.amount),
-        label: addForm.description,
-        start_date: addForm.startDate || null,
-        end_date: addForm.endDate || null,
-        contact_phone: addForm.contactPhone || null,
-        cf_num: parseInt(addForm.cfNo.replace(/[^0-9]/g,'')) || null,
+        amount: Number(editRow.amount) || 0,
+        label: editRow.description,
+        start_date: editRow.startDate || null,
+        end_date: editRow.endDate || null,
+        contact_phone: editRow.contactPhone || null,
       });
       setCfList(prev => prev.map(c => c.id === editingId ? {
         ...c,
-        cfNo: addForm.cfNo,
-        amount: Number(addForm.amount),
-        description: addForm.description,
-        startDate: addForm.startDate,
-        endDate: addForm.endDate,
-        contactPhone: addForm.contactPhone,
+        amount: Number(editRow.amount) || 0,
+        description: editRow.description,
+        startDate: editRow.startDate,
+        endDate: editRow.endDate,
+        contactPhone: editRow.contactPhone,
       } : c));
+      showToast("✅ 已更新！");
       setEditingId(null);
-      setAddForm({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "", startDate: "", endDate: "", contactPhone: "" });
-      setShowAddForm(false);
-      showToast(`✅ ${addForm.cfNo} 已更新！`);
-    } catch(e) {
+    } catch (e) {
       showToast("❌ 更新失敗：" + e.message, "error");
     }
-    setSaving(false);
+    setEditSaving(false);
+  };
+
+  // Mark invoice as completed (archived)
+  const handleComplete = async (item) => {
+    try {
+      await sbUpdate("invoices", item.id, { status: "completed" });
+      setCfList(prev => prev.map(c => c.id === item.id ? { ...c, status: "completed" } : c));
+      showToast(`✅ ${item.cfNo} 已標記為「已完成」`);
+    } catch (e) {
+      showToast("❌ 操作失敗：" + e.message, "error");
+    }
   };
 
   // Filtered list
@@ -3144,7 +3147,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
   const filtered = cfList.filter(c => {
     const s = search.toLowerCase();
     const matchSearch = !s || c.cfNo.toLowerCase().includes(s) || c.ecName.toLowerCase().includes(s) || c.description.toLowerCase().includes(s);
-    const matchPaid = filterPaid === "all" || (filterPaid === "paid" ? c.status === "paid" : c.status !== "paid");
+    const matchPaid = filterPaid === "all" || (filterPaid === "completed" ? c.status === "completed" : filterPaid === "paid" ? c.status === "paid" : (c.status !== "paid" && c.status !== "completed"));
     const matchEC = filterEC === "all" || c.ecName.includes(filterEC);
     return matchSearch && matchPaid && matchEC;
   });
@@ -3190,13 +3193,14 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
           <option value="all">全部收款狀態</option>
           <option value="paid">✅ 已收款</option>
           <option value="unpaid">⏳ 待收款</option>
+          <option value="completed">📦 已完成</option>
         </select>
         <select value={filterEC} onChange={e => handleFilterEC(e.target.value)}
           style={{ background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 12px", fontSize:12, maxWidth:160 }}>
           <option value="all">全部 EC 工程</option>
           {ecCodes.map(ec => <option key={ec} value={ec}>{ec}</option>)}
         </select>
-        <button className="btn btn-primary" onClick={() => { setShowAddForm(v => !v); setEditingId(null); }}>
+        <button className="btn btn-primary" onClick={() => setShowAddForm(v => !v)}>
           {showAddForm ? "✕ 收起" : "+ 新增 CF"}
         </button>
       </div>
@@ -3204,7 +3208,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
       {/* Add CF form */}
       {showAddForm && (
         <div style={{ background:"#13161c", border:"1px solid #f0c000", borderRadius:10, padding:16, marginBottom:16 }}>
-          <div style={{ fontFamily:"'Barlow Condensed'", fontSize:16, fontWeight:700, color:"#f0c000", marginBottom:12 }}>{editingId ? "✏️ 編輯 CF 發票" : "📋 新增 CF 發票"}</div>
+          <div style={{ fontFamily:"'Barlow Condensed'", fontSize:16, fontWeight:700, color:"#f0c000", marginBottom:12 }}>📋 新增 CF 發票</div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:10 }}>
             {[
               { label:"CF 號碼 *", key:"cfNo", ph:"CF01163" },
@@ -3266,10 +3270,10 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
             );
           })()}
           <div style={{ display:"flex", gap:8 }}>
-            <button className="btn btn-primary" onClick={editingId ? handleUpdateCF : handleAddCF} disabled={saving} style={{ flex:1 }}>
-              {saving ? "儲存中..." : editingId ? "✅ 確認更新" : "✅ 確認新增"}
+            <button className="btn btn-primary" onClick={handleAddCF} disabled={saving} style={{ flex:1 }}>
+              {saving ? "儲存中..." : "✅ 確認新增"}
             </button>
-            <button className="btn btn-secondary" onClick={() => { setShowAddForm(false); setEditingId(null); setAddForm({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "", startDate: "", endDate: "", contactPhone: "" }); }}>取消</button>
+            <button className="btn btn-secondary" onClick={() => { setShowAddForm(false); setAddForm({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "", startDate: "", endDate: "", contactPhone: "" }); }}>取消</button>
           </div>
         </div>
       )}
@@ -3362,7 +3366,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
                 <tr style={{ background:"#13161c", borderBottom:"2px solid #1e2330" }}>
-                  {["✅ 收款","CF 號碼","EC 工程名稱","發票金額","完成 %","工程描述","操作"].map(h => (
+                  {["✅","CF 號碼","EC 工程名稱","發票金額","工程描述","到期日","操作"].map(h => (
                     <th key={h} style={{ padding:"10px 12px", textAlign:"left", fontSize:10, color:"#3a4255", textTransform:"uppercase", letterSpacing:0.8, whiteSpace:"nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -3372,76 +3376,108 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                     const daysLeft = item.endDate ? Math.ceil((new Date(item.endDate) - new Date()) / 86400000) : null;
                     const isNearDeadline = daysLeft !== null && daysLeft >= 0 && daysLeft <= 10;
                     const isOverdue = daysLeft !== null && daysLeft < 0;
+                    const isEditing = editingId === item.id;
+                    const isCompleted = item.status === "completed";
+                    const rowBg = isEditing ? "rgba(240,192,0,0.06)" : isNearDeadline ? "rgba(239,68,68,0.04)" : isCompleted ? "rgba(255,255,255,0.015)" : item.status === "paid" ? "rgba(34,197,94,0.04)" : idx%2===0 ? "rgba(255,255,255,0.01)" : "transparent";
+                    const dimStyle = isCompleted ? { opacity: 0.5 } : {};
                     return (
-                  <tr key={item.id} style={{ borderBottom:"1px solid #0d0f12", background: isNearDeadline ? "rgba(239,68,68,0.04)" : item.status === "paid" ? "rgba(34,197,94,0.04)" : idx%2===0 ? "rgba(255,255,255,0.01)" : "transparent" }}>
+                  <tr key={item.id} style={{ borderBottom:"1px solid #0d0f12", background: rowBg, ...dimStyle, transition:"opacity 0.3s" }}>
                     {/* Paid checkbox */}
-                    <td style={{ padding:"10px 12px", textAlign:"center" }}>
-                      <input type="checkbox" checked={item.status === "paid"} onChange={() => togglePaid(item)}
-                        style={{ width:16, height:16, accentColor:"#22c55e", cursor:"pointer" }} />
+                    <td style={{ padding:"8px 10px", textAlign:"center" }}>
+                      <input type="checkbox" checked={item.status === "paid" || isCompleted} onChange={() => !isCompleted && togglePaid(item)}
+                        disabled={isCompleted}
+                        style={{ width:16, height:16, accentColor: isCompleted ? "#9aa0b4" : "#22c55e", cursor: isCompleted ? "default" : "pointer" }} />
                     </td>
                     {/* CF No */}
-                    <td style={{ padding:"10px 12px", whiteSpace:"nowrap" }}>
-                      <span style={{ background: item.status==="paid" ? "#1a2e1a" : "#1a1f2e", color: item.status==="paid" ? "#22c55e" : "#f0c000", borderRadius:5, padding:"3px 9px", fontFamily:"'Barlow Condensed'", fontWeight:800, fontSize:13 }}>
+                    <td style={{ padding:"8px 10px", whiteSpace:"nowrap" }}>
+                      <span style={{ background: isCompleted ? "#1e2330" : item.status==="paid" ? "#1a2e1a" : "#1a1f2e", color: isCompleted ? "#555d6e" : item.status==="paid" ? "#22c55e" : "#f0c000", borderRadius:5, padding:"3px 9px", fontFamily:"'Barlow Condensed'", fontWeight:800, fontSize:13 }}>
                         {item.cfNo}
                       </span>
+                      {isCompleted && <span style={{ marginLeft:6, fontSize:9, color:"#555d6e" }}>📦</span>}
                     </td>
                     {/* EC Name */}
-                    <td style={{ padding:"10px 12px", maxWidth:220 }}>
-                      <div style={{ fontSize:12, color:"#e8eaf0", lineHeight:1.4 }}>{item.ecName}</div>
+                    <td style={{ padding:"8px 10px", maxWidth:220 }}>
+                      <div style={{ fontSize:12, color: isCompleted ? "#555d6e" : "#e8eaf0", lineHeight:1.4 }}>{item.ecName}</div>
                     </td>
-                    {/* Amount */}
-                    <td style={{ padding:"10px 12px", whiteSpace:"nowrap" }}>
-                      <div style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, fontSize:15, color: item.status==="paid" ? "#22c55e" : "#f0c000" }}>
-                        {item.amount > 0 ? `HK$${Number(item.amount).toLocaleString()}` : "—"}
-                      </div>
+                    {/* Amount — editable when inline editing */}
+                    <td style={{ padding:"8px 10px", whiteSpace:"nowrap" }}>
+                      {isEditing ? (
+                        <input type="number" value={editRow.amount} onChange={e => setEditRow({...editRow, amount: e.target.value})}
+                          style={{ width:100, background:"#0d0f12", border:"1px solid #f0c000", color:"#f0c000", borderRadius:4, padding:"4px 6px", fontFamily:"'Barlow Condensed'", fontWeight:700, fontSize:14, textAlign:"right" }} />
+                      ) : (
+                        <div style={{ fontFamily:"'Barlow Condensed'", fontWeight:700, fontSize:15, color: isCompleted ? "#555d6e" : item.status==="paid" ? "#22c55e" : "#f0c000" }}>
+                          {item.amount > 0 ? `HK$${Number(item.amount).toLocaleString()}` : "—"}
+                        </div>
+                      )}
                     </td>
-                    {/* % */}
-                    <td style={{ padding:"10px 12px", color:"#9aa0b4", whiteSpace:"nowrap" }}>
-                      {item.pct ? `${item.pct}%` : "—"}
+                    {/* Description — editable */}
+                    <td style={{ padding:"8px 10px", maxWidth:200 }}>
+                      {isEditing ? (
+                        <input value={editRow.description} onChange={e => setEditRow({...editRow, description: e.target.value})}
+                          style={{ width:"100%", background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:4, padding:"4px 6px", fontSize:11 }} />
+                      ) : (
+                        <div style={{ fontSize:11, color: isCompleted ? "#3a4255" : "#9aa0b4", lineHeight:1.5, overflow:"hidden", textOverflow:"ellipsis", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>
+                          {item.description || "—"}
+                        </div>
+                      )}
                     </td>
-                    {/* Dates */}
-                    <td style={{ padding:"10px 12px", whiteSpace:"nowrap", minWidth:130 }}>
-                      {item.startDate || item.endDate ? (
-                        <div style={{ fontSize:11, lineHeight:1.8 }}>
-                          {item.startDate && <div style={{ color:"#8891a4" }}>▶ {item.startDate}</div>}
-                          {item.endDate && (
-                            <div style={{ color: isOverdue ? "#EF4444" : isNearDeadline ? "#f0c000" : "#8891a4", fontWeight: isNearDeadline||isOverdue ? 700 : 400 }}>
-                              ■ {item.endDate}
-                              {isNearDeadline && <span style={{ marginLeft:4, color:"#EF4444" }}>({daysLeft}日)</span>}
-                              {isOverdue && <span style={{ marginLeft:4, color:"#EF4444" }}>超期!</span>}
-                            </div>
-                          )}
+                    {/* Dates — editable */}
+                    <td style={{ padding:"8px 10px", whiteSpace:"nowrap", minWidth:130 }}>
+                      {isEditing ? (
+                        <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                          <input type="date" value={editRow.endDate} onChange={e => setEditRow({...editRow, endDate: e.target.value})}
+                            style={{ background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:4, padding:"3px 6px", fontSize:11 }} />
+                        </div>
+                      ) : item.endDate ? (
+                        <div style={{ fontSize:11, color: isOverdue ? "#EF4444" : isNearDeadline ? "#f0c000" : isCompleted ? "#3a4255" : "#8891a4", fontWeight: isNearDeadline||isOverdue ? 700 : 400 }}>
+                          ■ {item.endDate}
+                          {isNearDeadline && !isCompleted && <span style={{ marginLeft:4, color:"#EF4444" }}>({daysLeft}日)</span>}
+                          {isOverdue && !isCompleted && <span style={{ marginLeft:4, color:"#EF4444" }}>超期!</span>}
                         </div>
                       ) : <span style={{ color:"#3a4255" }}>—</span>}
                     </td>
-                    {/* Actions */}
-                    <td style={{ padding:"10px 12px", whiteSpace:"nowrap" }}>
-                      <div style={{ display:"flex", gap:4 }}>
-                        <button onClick={() => handleEditCF(item)}
-                          style={{ background:"none", border:"1px solid #f0c000", color:"#f0c000", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
-                          ✏️
-                        </button>
-                        <button onClick={() => generateInvoicePDF(item, {
-                          // Seed the Project autocomplete with every other CF row
-                          projectOptions: cfList
-                            .filter(c => c.ecName && c.id !== item.id)
-                            .map(c => ({
-                              ecName: c.ecName,
-                              description: c.description || "",
-                              contractValue: c.contractValue || c.amount || 0,
-                              pct: c.pct || "",
-                            })),
-                        })}
-                          style={{ background:"none", border:"1px solid #2a3045", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
-                          🖨️ PDF
-                        </button>
-                        {isNearDeadline && (
-                          <button onClick={() => sendCFDeadlineWhatsApp(item)}
-                            style={{ background:"#25D366", border:"none", color:"#fff", borderRadius:5, padding:"4px 8px", fontSize:11, cursor:"pointer" }}>
-                            📱
+                    {/* Actions: inline save/cancel when editing, normal buttons otherwise */}
+                    <td style={{ padding:"8px 10px", whiteSpace:"nowrap" }}>
+                      {isEditing ? (
+                        <div style={{ display:"flex", gap:4 }}>
+                          <button onClick={handleSaveInline} disabled={editSaving}
+                            style={{ background:"#22c55e", border:"none", color:"#0d0f12", borderRadius:5, padding:"4px 12px", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                            {editSaving ? "⏳" : "✅ 儲存"}
                           </button>
-                        )}
-                      </div>
+                          <button onClick={() => setEditingId(null)}
+                            style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#8891a4", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                          {!isCompleted && (
+                            <button onClick={() => handleEditCF(item)}
+                              style={{ background:"none", border:"1px solid #f0c000", color:"#f0c000", borderRadius:5, padding:"4px 8px", fontSize:11, cursor:"pointer" }}>
+                              ✏️
+                            </button>
+                          )}
+                          <button onClick={() => generateInvoicePDF(item, {
+                            projectOptions: cfList.filter(c => c.ecName && c.id !== item.id).map(c => ({ ecName: c.ecName, description: c.description || "", contractValue: c.contractValue || c.amount || 0, pct: c.pct || "" })),
+                          })}
+                            style={{ background:"none", border:"1px solid #2a3045", color:"#60a5fa", borderRadius:5, padding:"4px 8px", fontSize:11, cursor:"pointer" }}>
+                            🖨️
+                          </button>
+                          {item.status === "paid" && !isCompleted && (
+                            <button onClick={() => handleComplete(item)}
+                              title="標記為已完成（歸檔）"
+                              style={{ background:"rgba(96,165,250,0.1)", border:"1px solid #60a5fa", color:"#60a5fa", borderRadius:5, padding:"4px 8px", fontSize:10, fontWeight:700, cursor:"pointer" }}>
+                              📦 已完成
+                            </button>
+                          )}
+                          {isNearDeadline && !isCompleted && (
+                            <button onClick={() => sendCFDeadlineWhatsApp(item)}
+                              style={{ background:"#25D366", border:"none", color:"#fff", borderRadius:5, padding:"4px 8px", fontSize:11, cursor:"pointer" }}>
+                              📱
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                   );
