@@ -1895,6 +1895,30 @@ function Invoice({ showToast }) {
 
 function Payroll({ showToast, employees = EMPLOYEES }) {
   const [approvalSubmitted, setApprovalSubmitted] = useState(false);
+  const [signatures, setSignatures] = useState({});
+  const [viewSig, setViewSig] = useState(null); // employee sig to view in modal
+
+  useEffect(() => {
+    fetch(`${SUPABASE_URL}/rest/v1/payroll_signatures?order=signed_at.desc&limit=500`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    }).then(r => r.json()).then(d => {
+      if (!Array.isArray(d)) return;
+      const map = {};
+      d.forEach(s => { map[`${s.employee_id}_${s.payroll_month}`] = s; });
+      setSignatures(map);
+    }).catch(() => {});
+    const id = setInterval(() => {
+      fetch(`${SUPABASE_URL}/rest/v1/payroll_signatures?order=signed_at.desc&limit=500`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      }).then(r => r.json()).then(d => {
+        if (!Array.isArray(d)) return;
+        const map = {};
+        d.forEach(s => { map[`${s.employee_id}_${s.payroll_month}`] = s; });
+        setSignatures(map);
+      }).catch(() => {});
+    }, 15000);
+    return () => clearInterval(id);
+  }, []);
   const totalSalary = employees.reduce((a, e) => a + (e.days || 22) * (e.rate || 0), 0);
 
   const handleExportExcel = () => {
@@ -1982,7 +2006,7 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
         <div className="card-body" style={{ padding: 0 }}>
           <table className="data-table">
             <thead>
-              <tr><th>員工</th><th>職位</th><th>日薪</th><th>出勤天數</th><th>遲到扣薪</th><th>總薪酬</th><th>狀態</th></tr>
+              <tr><th>員工</th><th>職位</th><th>日薪</th><th>出勤天數</th><th>總薪酬</th><th>簽收狀態</th></tr>
             </thead>
             <tbody>
               {employees.map((e, i) => {
@@ -2000,12 +2024,20 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
                     <td style={{ color: (e.days || 22) < 20 ? "#d63030" : "#9aa0b4" }}>
                       {e.days || 22} 天 {(e.days || 22) < 20 && "⚠️"}
                     </td>
-                    <td style={{ color: "#3a4255" }}>–</td>
                     <td className="td-amount">HK${total.toLocaleString()}</td>
                     <td>
-                      <span className="badge yellow">
-                        <span className="badge-dot" />待審批
-                      </span>
+                      {(() => {
+                        const key = `${e.id}_2025年7月`;
+                        const sig = signatures[key];
+                        return sig ? (
+                          <button onClick={() => setViewSig(sig)}
+                            style={{ background: "rgba(34,197,94,0.1)", border: "1px solid #22c55e", color: "#22c55e", borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                            ✅ 已簽收
+                          </button>
+                        ) : (
+                          <span className="badge yellow"><span className="badge-dot" />待簽收</span>
+                        );
+                      })()}
                     </td>
                   </tr>
                 );
@@ -2037,6 +2069,32 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
             儲存規則
           </button>
         </div>
+
+        {/* Signature View Modal */}
+        {viewSig && (
+          <div onClick={() => setViewSig(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: "#13161c", border: "1.5px solid #22c55e", borderRadius: 14, padding: 24, maxWidth: 420 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#22c55e", marginBottom: 12, textAlign: "center" }}>✅ 薪酬簽收記錄</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14, fontSize: 12 }}>
+                <div><span style={{ color: "#555d6e" }}>月份：</span><span style={{ color: "#e8eaf0", fontWeight: 700 }}>{viewSig.payroll_month}</span></div>
+                <div><span style={{ color: "#555d6e" }}>簽署時間：</span><span style={{ color: "#e8eaf0" }}>{new Date(viewSig.signed_at).toLocaleString("zh-HK")}</span></div>
+                {viewSig.gps_lat && <div><span style={{ color: "#555d6e" }}>GPS：</span><span style={{ color: "#60a5fa", fontSize: 11 }}>{Number(viewSig.gps_lat).toFixed(5)}, {Number(viewSig.gps_lng).toFixed(5)}</span></div>}
+                {viewSig.gps_accuracy && <div><span style={{ color: "#555d6e" }}>精準度：</span><span style={{ color: "#60a5fa" }}>±{viewSig.gps_accuracy}m</span></div>}
+              </div>
+              {viewSig.signature_data && (
+                <div style={{ background: "#fff", borderRadius: 10, padding: 10, textAlign: "center", marginBottom: 14 }}>
+                  <img src={viewSig.signature_data} alt="簽名" style={{ maxWidth: "100%", maxHeight: 100 }} />
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: "#555d6e", textAlign: "center", marginBottom: 14, lineHeight: 1.6 }}>
+                「本人確認已收到上述全數薪金，並無異議。」
+              </div>
+              <button onClick={() => setViewSig(null)} className="btn btn-secondary" style={{ width: "100%" }}>關閉</button>
+            </div>
+          </div>
+        )}
 
         <div className="card">
           <div className="card-header"><div className="card-title">歷史薪酬記錄</div></div>
