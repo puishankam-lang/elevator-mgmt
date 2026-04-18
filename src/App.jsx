@@ -6329,9 +6329,26 @@ function LeaveApproval({ showToast, employees = [] }) {
             {f.label}
           </button>
         ))}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#22c55e" }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", animation: "pulse 2s infinite" }} />
-          即時更新
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={async () => {
+            if (!window.confirm(`刪除全部 ${requests.length} 條請假記錄？此操作無法復原。`)) return;
+            try {
+              for (const r of requests) {
+                await fetch(`${SUPABASE_URL}/rest/v1/leave_requests?id=eq.${r.id}`, {
+                  method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+                });
+              }
+              setRequests([]);
+              showToast(`✅ 已刪除 ${requests.length} 條記錄`);
+            } catch { showToast("❌ 失敗", "error"); }
+          }}
+            style={{ background: "rgba(214,48,48,0.1)", border: "1px solid rgba(214,48,48,0.3)", color: "#d63030", borderRadius: 6, padding: "5px 12px", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>
+            🗑 清除全部
+          </button>
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#22c55e" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", animation: "pulse 2s infinite" }} />
+            即時更新
+          </span>
         </div>
       </div>
 
