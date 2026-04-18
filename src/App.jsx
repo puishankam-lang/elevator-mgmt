@@ -533,6 +533,7 @@ const NAV_ITEMS = [
   { id: "leave", icon: "📝", label: "請假審批" },
   { id: "calendar", icon: "📅", label: "行事曆" },
   { id: "quotation", icon: "📄", label: "報價單" },
+  { id: "announce", icon: "📢", label: "發布通知" },
   { id: "dispatch", icon: "🚀", label: "派更管理" },
   { id: "subcontract", icon: "📋", label: "判頭合約" },
   { id: "profit", icon: "📈", label: "報價利潤試算" },
@@ -5366,6 +5367,154 @@ function QuotationPage({ showToast, projects = [] }) {
   );
 }
 
+// ── Announce Page (發布通知) ──────────────────────────────────────────────────
+function AnnouncePage({ showToast, employees = [] }) {
+  const [appUrl, setAppUrl] = useState("https://elevator-staff.vercel.app");
+  const [sent, setSent] = useState({});
+  const [sendingAll, setSendingAll] = useState(false);
+  const [allProgress, setAllProgress] = useState(0);
+
+  const validEmps = employees.filter(e => e.phone);
+  const noPhone = employees.filter(e => !e.phone);
+
+  const buildMsg = (emp) => {
+    const co = getCompany();
+    const pin = emp.pin || "0000";
+    return `${emp.name} 你好！👋
+
+${co.nameCN} 現已推行數碼化管理，以下係你嘅專屬手機APP：
+
+📱 連結：${appUrl}
+📞 登入電話：${emp.phone}
+🔑 PIN碼：${pin}
+
+由即日起，你需要透過呢個APP完成以下事項：
+
+✅ 每日簽到簽退（GPS定位打卡）
+✅ 填寫數碼日誌（每日工作進度）
+✅ 更新工程進度（確保項目準時完工）
+✅ 上載所需文件：
+　　• 平安咭（綠咭）
+　　• 身份證副本
+　　• 住址證明
+　　• 其他相關證書
+
+⚠️ 以上為公司新規定，請每日準時完成。
+如有疑問請聯絡管理員。多謝合作！💪`;
+  };
+
+  const sendOne = (emp) => {
+    const phone = emp.phone.replace(/\D/g, "");
+    const fullPhone = phone.length === 8 ? `852${phone}` : phone;
+    window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(buildMsg(emp))}`, "_blank");
+    setSent(prev => ({ ...prev, [emp.id]: true }));
+  };
+
+  const sendAll = () => {
+    if (validEmps.length === 0) { showToast("⚠️ 沒有員工有電話號碼", "error"); return; }
+    const unsent = validEmps.filter(e => !sent[e.id]);
+    if (unsent.length === 0) { showToast("✅ 所有員工已發送", "success"); return; }
+    const ok = window.confirm(`即將逐個開啟 WhatsApp 向 ${unsent.length} 名員工發送通知。\n\n每次開啟後請手動點擊發送，系統會每 1.5 秒開啟下一個。\n\n繼續？`);
+    if (!ok) return;
+    setSendingAll(true);
+    setAllProgress(0);
+    let i = 0;
+    const next = () => {
+      if (i >= unsent.length) { setSendingAll(false); showToast(`✅ 已完成 ${unsent.length} 名員工通知`); return; }
+      sendOne(unsent[i]);
+      setAllProgress(i + 1);
+      i++;
+      setTimeout(next, 1500);
+    };
+    next();
+  };
+
+  return (
+    <div>
+      {/* Header info */}
+      <div className="sign-card" style={{ marginBottom: 20, borderTop: "3px solid #f0c000" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div className="sign-title" style={{ marginBottom: 0 }}>📢 首次啟用 — 員工通知</div>
+          <span className="badge green"><span className="badge-dot" />WhatsApp 發送</span>
+        </div>
+        <div style={{ fontSize: 12, color: "#9aa0b4", lineHeight: 1.7, marginBottom: 14 }}>
+          向員工發送 WhatsApp 訊息，告知APP連結、PIN碼，並要求每日使用APP完成簽到簽退、數碼日誌、工程進度更新及文件上載。
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>APP 連結（可修改）</div>
+          <input value={appUrl} onChange={e => setAppUrl(e.target.value)} className="form-input" style={{ width: "100%" }} />
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={sendAll} disabled={sendingAll} className="btn btn-primary" style={{ flex: 1 }}>
+            {sendingAll ? `📤 發送中 (${allProgress}/${validEmps.filter(e => !sent[e.id]).length})...` : `🚀 一鍵通知全部 (${validEmps.filter(e => !sent[e.id]).length} 人)`}
+          </button>
+        </div>
+        {sendingAll && (
+          <div style={{ marginTop: 10, height: 4, background: "#1e2330", borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${(allProgress / validEmps.length) * 100}%`, background: "#f0c000", borderRadius: 2, transition: "width 0.3s" }} />
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: "#3a4255", marginTop: 10 }}>💡 每 1.5 秒開啟一個 WhatsApp 視窗，請逐個確認發送</div>
+      </div>
+
+      {noPhone.length > 0 && (
+        <div style={{ padding: "10px 14px", background: "rgba(214,48,48,0.06)", border: "1px solid rgba(214,48,48,0.25)", borderRadius: 8, marginBottom: 16, fontSize: 12, color: "#d63030" }}>
+          ⚠️ 以下 {noPhone.length} 名員工無電話號碼，無法發送：{noPhone.map(e => e.name).join("、")}
+        </div>
+      )}
+
+      {/* Worker list */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">👷 員工列表（{validEmps.length} 人）</div>
+          <div style={{ fontSize: 11, color: "#22c55e" }}>
+            ✅ 已發送：{Object.keys(sent).length} / {validEmps.length}
+          </div>
+        </div>
+        <div className="card-body" style={{ padding: 0 }}>
+          <table className="data-table">
+            <thead><tr><th>員工</th><th>電話</th><th>PIN</th><th>狀態</th><th>操作</th></tr></thead>
+            <tbody>
+              {validEmps.map(emp => (
+                <tr key={emp.id}>
+                  <td className="td-name">
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: emp.color || "#f0c000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#0d0f12" }}>{emp.name[0]}</div>
+                      {emp.name}
+                    </div>
+                  </td>
+                  <td style={{ fontSize: 12, color: "#c8d0e0" }}>{emp.phone}</td>
+                  <td><span style={{ fontFamily: "monospace", background: "#0d0f12", padding: "2px 8px", borderRadius: 4, fontSize: 13, color: "#f0c000", fontWeight: 700 }}>{emp.pin || "0000"}</span></td>
+                  <td>
+                    {sent[emp.id]
+                      ? <span className="badge green"><span className="badge-dot" />已發送</span>
+                      : <span className="badge" style={{ background: "rgba(136,145,164,0.1)", color: "#8891a4" }}>未發送</span>
+                    }
+                  </td>
+                  <td>
+                    <button onClick={() => sendOne(emp)} className="btn btn-primary" style={{ padding: "4px 12px", fontSize: 11 }}>
+                      {sent[emp.id] ? "📱 重發" : "📱 發送"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Message preview */}
+      <div className="sign-card" style={{ marginTop: 20 }}>
+        <div className="sign-title">👁️ 訊息預覽</div>
+        <pre style={{ fontSize: 12, color: "#c8d0e0", lineHeight: 1.7, whiteSpace: "pre-wrap", background: "#0d0f12", padding: 16, borderRadius: 8, border: "1px solid #1e2330", maxHeight: 400, overflowY: "auto" }}>
+          {validEmps.length > 0 ? buildMsg(validEmps[0]) : "（無員工資料）"}
+        </pre>
+        <div style={{ fontSize: 11, color: "#3a4255", marginTop: 8 }}>💡 以上為第一位員工的訊息範例，每位員工會自動替換姓名、電話及PIN碼</div>
+      </div>
+    </div>
+  );
+}
+
 // ── Dispatch Page (派更管理) ──────────────────────────────────────────────────
 function DispatchPage({ showToast, employees = [], projects = [] }) {
   const [assignments, setAssignments] = useState([]);
@@ -6965,6 +7114,7 @@ export default function App() {
     leave: { icon: "📝", title: "請假審批", sub: "員工請假申請 / 批核" },
     calendar: { icon: "📅", title: "行事曆", sub: "請假 / 工程完工 / 進度節點" },
     quotation: { icon: "📄", title: "報價單", sub: "報價管理 / 轉化為發票" },
+    announce: { icon: "📢", title: "發布通知", sub: "向員工發送 WhatsApp 啟用通知" },
     dispatch: { icon: "🚀", title: "派更管理", sub: "批次分配員工到工地" },
     subcontract: { icon: "📋", title: "判頭合約", sub: "分判合約 / 進度付款 / 保險" },
     settings: { icon: "⚙️", title: "系統設定", sub: "主題 / 通知 / 重設" },
@@ -7064,6 +7214,7 @@ export default function App() {
             {active === "leave" && <LeaveApproval showToast={showToast} employees={employees} />}
             {active === "calendar" && <CalendarPage employees={employees} projects={projects} />}
             {active === "quotation" && <QuotationPage showToast={showToast} projects={projects} />}
+            {active === "announce" && <AnnouncePage showToast={showToast} employees={employees} />}
             {active === "dispatch" && <DispatchPage showToast={showToast} employees={employees} projects={projects} />}
             {active === "subcontract" && <SubcontractPage showToast={showToast} projects={projects} />}
             {active === "settings" && <Settings showToast={showToast} theme={theme} setTheme={setTheme} waConfig={waConfig} setWaConfig={setWaConfig} safetyRules={safetyRules} setSafetyRules={setSafetyRules} />}
