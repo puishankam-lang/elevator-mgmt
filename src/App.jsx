@@ -1468,6 +1468,7 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, employees = [], onUp
   const [stageDesc, setStageDesc] = useState("");
   const [milestoneStatus, setMilestoneStatus] = useState("done"); // "done" | "in_progress"
   const [editChartId, setEditChartId] = useState(null); // project name being edited
+  const [chartPage, setChartPage] = useState(0); // 10 projects per page
   const [editForm, setEditForm] = useState({ pct: 0, plan: 0 });
   const [reports, setReports] = useState([]);
 
@@ -1762,9 +1763,17 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, employees = [], onUp
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="card-header">
               <div className="card-title">各項目進度 vs 計劃</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 11, color: "#555d6e" }}>第 {chartPage+1}/{Math.ceil(projects.filter(p=>p.phase==="active").length/10)||1} 頁</span>
+                <button onClick={() => setChartPage(p => Math.max(0, p-1))} disabled={chartPage===0}
+                  style={{ background: "#1e2330", border: "none", color: chartPage===0?"#3a4255":"#e8eaf0", borderRadius: 4, padding: "3px 8px", fontSize: 11, cursor: chartPage===0?"default":"pointer" }}>←</button>
+                <button onClick={() => setChartPage(p => Math.min(Math.ceil(projects.filter(x=>x.phase==="active").length/10)-1, p+1))}
+                  disabled={chartPage >= Math.ceil(projects.filter(x=>x.phase==="active").length/10)-1}
+                  style={{ background: "#1e2330", border: "none", color: chartPage>=Math.ceil(projects.filter(x=>x.phase==="active").length/10)-1?"#3a4255":"#e8eaf0", borderRadius: 4, padding: "3px 8px", fontSize: 11, cursor: "pointer" }}>→</button>
+              </div>
             </div>
             <div className="card-body">
-              {projects.filter(p => p.phase === "active").map((p, i) => (
+              {projects.filter(p => p.phase === "active").slice(chartPage*10, (chartPage+1)*10).map((p, i) => (
                 <div key={i} className="progress-item">
                   <div className="progress-header">
                     <div className="progress-name" style={{ fontSize: 12 }}>{p.name}</div>
