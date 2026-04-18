@@ -2110,6 +2110,56 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
               {savingRecord ? "⏳" : "💾"} 儲存
             </button>
             <button className="btn btn-secondary btn-sm" onClick={handleExportExcel}>📊 Excel</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => {
+              // Batch export all signed salary slips for the selected month
+              const signedEmps = employees.filter(e => signatures[`${e.id}_${payrollLabel}`]);
+              if (signedEmps.length === 0) { showToast("⚠️ 本月尚無員工簽收", "error"); return; }
+              const w = window.open("","_blank"); if(!w) return;
+              const mEq = r => (r||0)*26;
+              const mpf = r => mEq(r)<7100?0:Math.min(Math.min(mEq(r),30000)*0.05,1500);
+              w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>全部糧單 ${payrollLabel}</title>
+<style>@page{margin:10mm 12mm}body{font-family:Arial,'Microsoft JhengHei',sans-serif;padding:20px;font-size:11px;color:#000;-webkit-print-color-adjust:exact}
+.slip{page-break-after:always;max-width:700px;margin:0 auto 20px;padding:30px 40px;border:1px solid #ccc}
+.slip:last-child{page-break-after:auto}
+h1{text-align:center;font-size:16px;letter-spacing:2px;margin:0 0 2px}
+.sub{text-align:center;font-size:10px;color:#666;margin-bottom:12px}
+.header{border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;margin:8px 0}
+th{background:#eee;padding:6px 8px;text-align:left;font-size:9px;font-weight:700;border-bottom:2px solid #000;border-top:2px solid #000}
+td{padding:6px 8px;border-bottom:1px solid #ccc;font-size:10px}td.r{text-align:right}
+.total td{font-weight:700;background:#f5f5f5;font-size:12px;border-top:2px solid #000;border-bottom:2px solid #000}
+.noprint{position:fixed;top:10px;right:10px;z-index:100}
+@media print{.noprint{display:none!important}}</style></head><body>
+<button class="noprint" onclick="window.print()" style="padding:10px 20px;background:#000;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:700;font-size:14px">🖨️ 列印全部 ${signedEmps.length} 份糧單</button>
+${signedEmps.map(e => {
+                const sig = signatures[`${e.id}_${payrollLabel}`];
+                const total = (e.days||22)*(e.rate||0);
+                const empMpf = Math.round(mpf(e.rate));
+                const net = total - empMpf;
+                return `<div class="slip">
+<div class="header"><h1>俊輝電梯工程有限公司</h1><div class="sub">Chun Fai Lifts Engineering Company Ltd.</div>
+<div style="text-align:center;font-size:13px;font-weight:700;letter-spacing:2px;margin-top:6px">PAYROLL RECEIPT 薪酬收據</div></div>
+<table><tr><th style="width:35%">項目</th><th>詳情</th></tr>
+<tr><td>員工姓名</td><td><strong>${e.name}</strong></td></tr>
+<tr><td>職位</td><td>${e.role||"電梯技工"}</td></tr>
+<tr><td>薪酬月份</td><td><strong>${payrollLabel}</strong></td></tr>
+<tr><td>日薪</td><td class="r">HK$ ${e.rate||0}</td></tr>
+<tr><td>出勤天數</td><td class="r">${e.days||22} 天</td></tr>
+<tr><td>基本薪酬</td><td class="r">HK$ ${total.toLocaleString()}</td></tr>
+<tr><td>MPF 員工供款</td><td class="r" style="color:#c00">${mEq(e.rate)<7100?"豁免":"- HK$ "+empMpf.toLocaleString()}</td></tr>
+<tr class="total"><td>實際到手</td><td class="r">HK$ ${net.toLocaleString()}</td></tr></table>
+<div style="margin-top:16px;display:flex;justify-content:space-between;align-items:flex-end">
+<div><div style="font-size:9px;color:#666;margin-bottom:2px">員工簽署</div>
+${sig?.signature_data?`<div style="border:1px solid #ccc;border-radius:4px;background:#fff;padding:2px"><img src="${sig.signature_data}" style="max-width:160px;max-height:50px"/></div>`:""}
+<div style="font-size:9px;color:#666;margin-top:2px">${e.name} · ${sig?.signed_at?new Date(sig.signed_at).toLocaleString("zh-HK"):""}</div>
+${sig?.gps_lat?`<div style="font-size:8px;color:#999">GPS: ${Number(sig.gps_lat).toFixed(5)}, ${Number(sig.gps_lng).toFixed(5)}</div>`:""}</div>
+<div style="text-align:right"><div style="border-top:1px solid #000;width:160px;margin-left:auto;margin-top:40px;padding-top:3px;font-size:9px">授權簽署 / 公司印鑑</div></div></div>
+<div style="font-size:8px;color:#888;margin-top:12px;border-top:1px solid #ddd;padding-top:6px">本人確認已收到上述全數薪金，並無異議。此收據由系統自動生成。</div>
+</div>`;}).join("")}
+</body></html>`);
+              w.document.close();
+              showToast(`📄 已生成 ${signedEmps.length} 份簽收糧單`);
+            }}>📄 全部糧單</button>
             <button className="btn btn-primary btn-sm" onClick={handleSubmitApproval} disabled={approvalSubmitted}
               style={{ opacity: approvalSubmitted ? 0.6 : 1 }}>
               {approvalSubmitted ? "⏳ 審批中" : "✅ 提交審批"}
