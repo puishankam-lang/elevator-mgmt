@@ -1768,13 +1768,27 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, employees = [], onUp
                 <div key={i} className="progress-item">
                   <div className="progress-header">
                     <div className="progress-name" style={{ fontSize: 12 }}>{p.name}</div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <span style={{ fontSize: 11, color: "#555d6e" }}>計劃 {p.plan}%</span>
                       <div className="progress-pct">{p.pct}%</div>
                       {editChartId !== p.name && (
-                        <button onClick={() => handleStartEdit(p)}
-                          style={{ background: "none", border: "1px solid #2a3045", color: "#8891a4", borderRadius: 4, padding: "2px 8px", fontSize: 11, cursor: "pointer" }}
-                          title="編輯進度">✏️</button>
+                        <>
+                          <button onClick={() => handleStartEdit(p)}
+                            style={{ background: "none", border: "1px solid #2a3045", color: "#8891a4", borderRadius: 4, padding: "2px 6px", fontSize: 10, cursor: "pointer" }}
+                            title="編輯進度">✏️</button>
+                          {p.pct >= 100 && (
+                            <button onClick={async () => {
+                              if (!window.confirm(`標記「${p.name}」為已完工？`)) return;
+                              try {
+                                await sbUpdate("projects", p.id, { phase: "completed", progress_pct: 100 });
+                                onUpdateProgress?.(p.name, 100);
+                                showToast(`✅ ${p.name} 已標記為完工`);
+                              } catch(e) { showToast("❌ " + e.message, "error"); }
+                            }}
+                              style={{ background: "rgba(34,197,94,0.12)", border: "1px solid #22c55e", color: "#22c55e", borderRadius: 4, padding: "2px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}
+                              title="標記為已完工">📦 完工</button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -1803,6 +1817,36 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, employees = [], onUp
                   )}
                 </div>
               ))}
+              {/* Completed projects section */}
+              {projects.filter(p => p.phase === "completed").length > 0 && (
+                <div style={{ marginTop: 16, borderTop: "1px solid #1e2330", paddingTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#22c55e", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                    📦 已完工項目 ({projects.filter(p => p.phase === "completed").length})
+                  </div>
+                  {projects.filter(p => p.phase === "completed").map((p, i) => (
+                    <div key={i} className="progress-item" style={{ opacity: 0.5 }}>
+                      <div className="progress-header">
+                        <div className="progress-name" style={{ fontSize: 11, color: "#555d6e" }}>✅ {p.name}</div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <span className="badge green" style={{ fontSize: 10 }}><span className="badge-dot" />100% 完工</span>
+                          <button onClick={async () => {
+                            if (!window.confirm(`將「${p.name}」重新標記為進行中？`)) return;
+                            try {
+                              await sbUpdate("projects", p.id, { phase: "active" });
+                              showToast(`↩️ ${p.name} 已恢復為進行中`);
+                              setTimeout(() => window.location.reload(), 500);
+                            } catch(e) { showToast("❌ " + e.message, "error"); }
+                          }}
+                            style={{ background: "none", border: "1px solid #2a3045", color: "#8891a4", borderRadius: 4, padding: "2px 6px", fontSize: 9, cursor: "pointer" }}>↩️ 恢復</button>
+                        </div>
+                      </div>
+                      <div className="progress-bar-bg">
+                        <div className="progress-bar-fill" style={{ width: "100%", background: "#22c55e" }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
