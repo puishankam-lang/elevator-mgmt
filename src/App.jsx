@@ -849,9 +849,47 @@ function Safety({ showToast, employees = EMPLOYEES }) {
                   <div className="emp-role">{e.role}</div>
                 </div>
                 {signed[i] ? (
-                  <div style={{ textAlign: "right" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span className="badge green"><span className="badge-dot" /> 已簽署</span>
-                    <div style={{ fontSize: 10, color: "#3a4255", marginTop: 3 }}>08:15 – 08:23</div>
+                    <button onClick={() => {
+                      const today = new Date().toLocaleDateString("zh-HK", { year:"numeric", month:"long", day:"numeric", weekday:"short" });
+                      const timeNow = new Date().toLocaleTimeString("zh-HK", { hour:"2-digit", minute:"2-digit" });
+                      const w = window.open("","_blank"); if(!w) return;
+                      w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>安全簽署證明 ${e.name}</title>
+<style>@page{margin:12mm 14mm}body{font-family:Arial,'Microsoft JhengHei',sans-serif;padding:40px 52px;font-size:12px;color:#000;max-width:700px;margin:0 auto;line-height:1.6;-webkit-print-color-adjust:exact}h1{text-align:center;font-size:20px;letter-spacing:4px;margin:0 0 4px;font-weight:700}.sub{text-align:center;font-size:11px;color:#666;margin-bottom:20px}.header{border-bottom:2.5px solid #000;padding-bottom:12px;margin-bottom:18px}h2{font-size:14px;margin:16px 0 8px;border-left:4px solid #000;padding-left:8px}table{width:100%;border-collapse:collapse;margin:12px 0}th{background:#eee;padding:8px 10px;text-align:left;font-size:10px;font-weight:700;border-bottom:2px solid #000;border-top:2px solid #000}td{padding:8px 10px;border-bottom:1px solid #ccc;font-size:11px}.stamp{margin-top:30px;text-align:center;padding:16px;border:2px solid #22c55e;border-radius:10px;background:#f0fdf4}.noprint{position:fixed;top:10px;right:10px;z-index:100}@media print{.noprint{display:none!important}}</style></head><body>
+<button class="noprint" onclick="window.print()" style="padding:8px 16px;background:#000;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:700">🖨️ PDF</button>
+<div class="header"><h1>俊輝電梯工程有限公司</h1><div class="sub">Chun Fai Lifts Engineering Company Ltd.</div><div style="text-align:center;font-size:16px;font-weight:700;letter-spacing:3px;margin-top:10px">SAFETY DECLARATION CERTIFICATE<br/>安全守則簽署證明</div></div>
+<h2>員工資料</h2>
+<table><tr><th style="width:30%">項目</th><th>詳情</th></tr>
+<tr><td>員工姓名</td><td><strong>${e.name}</strong></td></tr>
+<tr><td>職位</td><td>${e.role || "電梯技工"}</td></tr>
+<tr><td>簽署日期</td><td>${today}</td></tr></table>
+<h2>已確認安全守則</h2>
+<p>本人已詳細閱讀並理解以下電梯施工安全守則，並同意遵守所有條款：</p>
+<ol style="margin:8px 0 12px 24px;line-height:2">
+<li><strong>個人防護裝備：</strong>全程佩戴安全帽、安全鞋及反光背心。電梯槽內作業配備安全繩及防墜落裝置。</li>
+<li><strong>電源管制：</strong>進行電氣工程前確認主電源已切斷並上鎖（LOTO程序）。</li>
+<li><strong>高空作業：</strong>超過2米高度使用認可升降台或搭棚架，不得單人作業。</li>
+<li><strong>危險品存放：</strong>潤滑油、清潔劑等存放於指定區域，遠離熱源。</li>
+<li><strong>緊急應變：</strong>熟悉緊急撤離路線及急救箱位置。發生意外即時通報主管。</li>
+</ol>
+<div class="stamp">
+<div style="font-size:18px;margin-bottom:6px">✅</div>
+<div style="font-size:14px;font-weight:700;color:#16a34a">本人確認已簽署上述安全守則</div>
+<div style="font-size:11px;color:#666;margin-top:4px">Confirmed — Safety declaration signed and acknowledged</div>
+</div>
+<div style="margin-top:30px;display:flex;justify-content:space-between">
+<div><div style="border-top:1px solid #000;width:180px;margin-top:40px;padding-top:4px;font-size:10px">員工簽署</div><div style="font-size:10px;color:#666;margin-top:2px">${e.name}</div></div>
+<div style="text-align:right"><div style="border-top:1px solid #000;width:180px;margin-top:40px;padding-top:4px;font-size:10px">安全主任 / 公司代表</div></div>
+</div>
+<div style="font-size:9px;color:#888;margin-top:20px;border-top:1px solid #ddd;padding-top:10px;line-height:1.6">
+此證明由俊輝電梯工程管理系統自動生成。如有查詢，請聯絡 Mr. Kam (5444 2099)。<br/>
+This certificate is system-generated. For enquiries, contact Mr. Kam at 5444 2099.
+</div></body></html>`);
+                      w.document.close();
+                    }}
+                      style={{ background: "none", border: "1px solid #2a3045", color: "#60a5fa", borderRadius: 4, padding: "2px 8px", fontSize: 10, cursor: "pointer" }}
+                      title="生成安全簽署證明 PDF">📄</button>
                   </div>
                 ) : (
                   <button className="btn btn-danger btn-sm" onClick={() => handleRemind(i)}>
