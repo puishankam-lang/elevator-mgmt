@@ -858,7 +858,7 @@ function Safety({ showToast, employees = EMPLOYEES }) {
                       w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>安全簽署證明 ${e.name}</title>
 <style>@page{margin:12mm 14mm}body{font-family:Arial,'Microsoft JhengHei',sans-serif;padding:40px 52px;font-size:12px;color:#000;max-width:700px;margin:0 auto;line-height:1.6;-webkit-print-color-adjust:exact}h1{text-align:center;font-size:20px;letter-spacing:4px;margin:0 0 4px;font-weight:700}.sub{text-align:center;font-size:11px;color:#666;margin-bottom:20px}.header{border-bottom:2.5px solid #000;padding-bottom:12px;margin-bottom:18px}h2{font-size:14px;margin:16px 0 8px;border-left:4px solid #000;padding-left:8px}table{width:100%;border-collapse:collapse;margin:12px 0}th{background:#eee;padding:8px 10px;text-align:left;font-size:10px;font-weight:700;border-bottom:2px solid #000;border-top:2px solid #000}td{padding:8px 10px;border-bottom:1px solid #ccc;font-size:11px}.stamp{margin-top:30px;text-align:center;padding:16px;border:2px solid #22c55e;border-radius:10px;background:#f0fdf4}.noprint{position:fixed;top:10px;right:10px;z-index:100}@media print{.noprint{display:none!important}}</style></head><body>
 <button class="noprint" onclick="window.print()" style="padding:8px 16px;background:#000;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:700">🖨️ PDF</button>
-<div class="header"><h1>俊輝電梯工程有限公司</h1><div class="sub">Chun Fai Lifts Engineering Company Ltd.</div><div style="text-align:center;font-size:16px;font-weight:700;letter-spacing:3px;margin-top:10px">SAFETY DECLARATION CERTIFICATE<br/>安全守則簽署證明</div></div>
+<div class="header"><h1>${getCompany().cn}</h1><div class="sub">${getCompany().en}</div><div style="text-align:center;font-size:16px;font-weight:700;letter-spacing:3px;margin-top:10px">SAFETY DECLARATION CERTIFICATE<br/>安全守則簽署證明</div></div>
 <h2>員工資料</h2>
 <table><tr><th style="width:30%">項目</th><th>詳情</th></tr>
 <tr><td>員工姓名</td><td><strong>${e.name}</strong></td></tr>
@@ -2015,8 +2015,8 @@ function Payroll({ showToast, employees = EMPLOYEES }) {
   .sig{border:none;padding-top:30px;font-size:11px;color:#666}
 </style></head><body>
 <table>
-  <tr><td class="title" colspan="7">Chun Fai Lifts Engineering Company Ltd.</td></tr>
-  <tr><td class="title" colspan="7">俊輝電梯工程有限公司</td></tr>
+  <tr><td class="title" colspan="7">${getCompany().en}</td></tr>
+  <tr><td class="title" colspan="7">${getCompany().cn}</td></tr>
   <tr><td class="sub" colspan="7">Payroll Report 薪酬報表 — ${payrollLabel}</td></tr>
   <tr><td class="sub" colspan="7">列印日期：${today}</td></tr>
   <tr><td colspan="7"></td></tr>
@@ -2137,7 +2137,7 @@ ${signedEmps.map(e => {
                 const empMpf = Math.round(mpf(e.rate));
                 const net = total - empMpf;
                 return `<div class="slip">
-<div class="header"><h1>俊輝電梯工程有限公司</h1><div class="sub">Chun Fai Lifts Engineering Company Ltd.</div>
+<div class="header"><h1>${getCompany().cn}</h1><div class="sub">${getCompany().en}</div>
 <div style="text-align:center;font-size:13px;font-weight:700;letter-spacing:2px;margin-top:6px">PAYROLL RECEIPT 薪酬收據</div></div>
 <table><tr><th style="width:35%">項目</th><th>詳情</th></tr>
 <tr><td>員工姓名</td><td><strong>${e.name}</strong></td></tr>
@@ -2207,7 +2207,7 @@ ${sig?.gps_lat?`<div style="font-size:8px;color:#999">GPS: ${Number(sig.gps_lat)
                               w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>糧單 ${e.name} ${payrollLabel}</title>
 <style>@page{margin:10mm 14mm}body{font-family:Arial,'Microsoft JhengHei',sans-serif;padding:36px 48px;font-size:12px;color:#000;max-width:700px;margin:0 auto;line-height:1.5;-webkit-print-color-adjust:exact}h1{text-align:center;font-size:18px;letter-spacing:3px;margin:0 0 4px;font-weight:700}.sub{text-align:center;font-size:11px;color:#666;margin-bottom:16px}.header{border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px}table{width:100%;border-collapse:collapse;margin:10px 0}th{background:#eee;padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;border-bottom:2px solid #000;border-top:2px solid #000}td{padding:8px 10px;border-bottom:1px solid #ccc;font-size:11px}td.r{text-align:right}.total td{font-weight:700;background:#f5f5f5;font-size:13px;border-top:2px solid #000;border-bottom:2px solid #000}.noprint{position:fixed;top:10px;right:10px;z-index:100}@media print{.noprint{display:none!important}}</style></head><body>
 <button class="noprint" onclick="window.print()" style="padding:8px 16px;background:#000;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:700">🖨️ PDF</button>
-<div class="header"><h1>俊輝電梯工程有限公司</h1><div class="sub">Chun Fai Lifts Engineering Company Ltd.</div><div style="text-align:center;font-size:14px;font-weight:700;letter-spacing:2px;margin-top:8px">PAYROLL RECEIPT 薪酬收據</div></div>
+<div class="header"><h1>${getCompany().cn}</h1><div class="sub">${getCompany().en}</div><div style="text-align:center;font-size:14px;font-weight:700;letter-spacing:2px;margin-top:8px">PAYROLL RECEIPT 薪酬收據</div></div>
 <table><tr><th style="width:35%">項目</th><th>詳情</th></tr>
 <tr><td>員工姓名</td><td><strong>${e.name}</strong></td></tr>
 <tr><td>職位</td><td>${e.role||"電梯技工"}</td></tr>
@@ -2428,7 +2428,7 @@ td{padding:9px 12px;border-bottom:1px solid #eee}
 .kpi-val{font-size:18px;font-weight:700}
 .profit-positive{color:#22c55e}.profit-negative{color:#d63030}
 @media print{.noprint{display:none}body{padding:18px}}</style></head><body>
-<div class="header"><div><div class="company">俊輝電梯工程有限公司</div><div style="font-size:12px;color:#666">報價利潤試算報表</div></div><div style="text-align:right;font-size:12px;color:#666">列印日期：${today}</div></div>
+<div class="header"><div><div class="company">${getCompany().cn}</div><div style="font-size:12px;color:#666">報價利潤試算報表</div></div><div style="text-align:right;font-size:12px;color:#666">列印日期：${today}</div></div>
 
 <h3>📊 當前報價試算</h3>
 <div class="kpi">
@@ -2738,6 +2738,23 @@ const INVOICE_COMPANIES = [
     email: "bigspreadltd@gmail.com",
   },
 ];
+
+// Active company helper — reads from the global set by App's company toggle.
+// Used by ALL document generators (invoices, contracts, salary slips, certificates).
+function getCompany() {
+  return window.__activeCompany || INVOICE_COMPANIES[0];
+}
+function companyHeaderHTML() {
+  const c = getCompany();
+  return `<h1 style="text-align:center;font-size:18px;letter-spacing:3px;margin:0 0 4px;font-weight:700">${c.cn}</h1>
+<div style="text-align:center;font-size:11px;color:#666;margin-bottom:6px">${c.en}</div>`;
+}
+function companyFooterHTML() {
+  const c = getCompany();
+  return `<div>Make all checks payable to <strong>${c.en}</strong></div>
+<div><strong>${c.cn}</strong></div>
+<div style="margin-top:6px">If you have any questions, contact Mr. Kam at ${c.phone}.</div>`;
+}
 
 // Default Bill-To client list — verified against real CF000364 invoice.
 // Admin can still type any new name; <datalist> is just autocomplete suggestions.
@@ -4002,7 +4019,7 @@ function EmployeeDocs({ showToast, employees = [] }) {
 .doc-hdr{display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;padding-bottom:8px;border-bottom:1px solid #eee;margin-bottom:6px}
 h3{margin:24px 0 14px;font-size:15px;color:#333}
 @media print{.noprint{display:none}body{padding:15px}}</style></head><body>
-<div class="header"><div><div class="company">俊輝電梯工程有限公司</div><div style="font-size:12px;color:#666">員工文件存檔 (一鍵匯總)</div></div><div style="text-align:right;font-size:12px;color:#666">列印日期：${today}</div></div>
+<div class="header"><div><div class="company">${getCompany().cn}</div><div style="font-size:12px;color:#666">員工文件存檔 (一鍵匯總)</div></div><div style="text-align:right;font-size:12px;color:#666">列印日期：${today}</div></div>
 <div class="emp-info"><div style="font-size:18px;font-weight:700">${emp.name}</div><div style="font-size:12px;color:#666;margin-top:4px">${emp.role || "電梯技工"} · 手機：${emp.phone || "–"}</div></div>
 <h3>📋 文件清單概覽</h3>
 <table class="summary"><thead><tr><th>文件類型</th><th>狀態</th><th>份數</th><th>最後上傳</th></tr></thead><tbody>${summaryRows}</tbody></table>
@@ -5650,7 +5667,7 @@ ${form.notes ? `<h2>附加條款</h2><p>${esc(form.notes).replace(/\n/g, "<br/>"
         w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>付款收據 ${c.contractor_name}</title>
 <style>@page{margin:10mm 14mm}body{font-family:Arial,'Microsoft JhengHei',sans-serif;padding:36px 48px;font-size:12px;color:#000;max-width:700px;margin:0 auto;line-height:1.5;-webkit-print-color-adjust:exact}h1{text-align:center;font-size:18px;letter-spacing:3px;margin:0 0 4px;font-weight:700}.sub{text-align:center;font-size:11px;color:#666;margin-bottom:16px}.header{border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px}table{width:100%;border-collapse:collapse;margin:10px 0}th{background:#eee;padding:8px 10px;text-align:left;font-size:10px;font-weight:700;border-bottom:2px solid #000;border-top:2px solid #000}td{padding:8px 10px;border-bottom:1px solid #ccc;font-size:11px}td.r{text-align:right}.total td{font-weight:700;background:#f5f5f5;font-size:13px;border-top:2px solid #000;border-bottom:2px solid #000}.noprint{position:fixed;top:10px;right:10px;z-index:100}@media print{.noprint{display:none!important}}</style></head><body>
 <button class="noprint" onclick="window.print()" style="padding:8px 16px;background:#000;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:700">🖨️ PDF</button>
-<div class="header"><h1>俊輝電梯工程有限公司</h1><div class="sub">Chun Fai Lifts Engineering Company Ltd.</div><div style="text-align:center;font-size:14px;font-weight:700;letter-spacing:2px;margin-top:8px">PAYMENT RECEIPT 付款收據</div></div>
+<div class="header"><h1>${getCompany().cn}</h1><div class="sub">${getCompany().en}</div><div style="text-align:center;font-size:14px;font-weight:700;letter-spacing:2px;margin-top:8px">PAYMENT RECEIPT 付款收據</div></div>
 <table><tr><th style="width:35%">項目</th><th>詳情</th></tr>
 <tr><td>分判商名稱</td><td><strong>${c.contractor_name}</strong></td></tr>
 <tr><td>工程名稱</td><td>${c.project_name || "—"}</td></tr>
@@ -6664,6 +6681,11 @@ function Settings({ showToast, theme, setTheme, waConfig, setWaConfig, safetyRul
 
 export default function App() {
   const [active, setActive] = useState("dashboard");
+  const [companyIdx, setCompanyIdx] = useState(0); // 0=俊輝, 1=巨揚
+  const activeCompany = INVOICE_COMPANIES[companyIdx] || INVOICE_COMPANIES[0];
+  // Make activeCompany accessible to all document generators at module scope
+  // so they don't need it passed as a prop.
+  window.__activeCompany = activeCompany;
   const [toast, setToast] = useState(null);
   const [projects, setProjectsState] = useState(INITIAL_PROJECTS);
   const [employees, setEmployees] = useState([]);
@@ -6889,6 +6911,10 @@ export default function App() {
               <div className="alert-btn">
                 🔔 <div className="alert-dot" />
               </div>
+              <select value={companyIdx} onChange={e => setCompanyIdx(Number(e.target.value))}
+                style={{ background: "#13161c", border: "1px solid #2a3045", color: "#f0c000", borderRadius: 6, padding: "4px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>
+                {INVOICE_COMPANIES.map((c, i) => <option key={i} value={i}>{c.cn}</option>)}
+              </select>
               <div className="avatar">Admin</div>
             </div>
           </div>
