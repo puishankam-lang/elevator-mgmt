@@ -5508,6 +5508,86 @@ ${form.notes ? `<h2>附加條款</h2><p>${esc(form.notes).replace(/\n/g, "<br/>"
     w.document.close();
   };
 
+  // Payment receipt + signature modal
+  const [paymentModal, setPaymentModal] = useState(null); // the contract being paid
+  const [payStage, setPayStage] = useState("第一期");
+  const [payAmount, setPayAmount] = useState("");
+  const [payDate, setPayDate] = useState(new Date().toISOString().split("T")[0]);
+  const [paySaving, setPaySaving] = useState(false);
+  const [payments, setPayments] = useState([]);
+
+  useEffect(() => {
+    fetch(`${SUPABASE_URL}/rest/v1/subcontractor_payments?order=created_at.desc&limit=200`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    }).then(r => r.json()).then(d => { if (Array.isArray(d)) setPayments(d); }).catch(() => {});
+  }, []);
+
+  const handleRecordPayment = async () => {
+    if (!payAmount || !paymentModal) return;
+    setPaySaving(true);
+    try {
+      // Get signature from canvas
+      const canvas = document.getElementById("paySignCanvas");
+      let sigData = null;
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let hasSig = false;
+        for (let i = 3; i < pixels.length; i += 4) { if (pixels[i] > 0) { hasSig = true; break; } }
+        if (hasSig) sigData = canvas.toDataURL("image/png");
+      }
+      const row = {
+        contract_id: paymentModal.id,
+        contractor_name: paymentModal.contractor_name,
+        project_name: paymentModal.project_name,
+        stage: payStage,
+        amount: Number(payAmount),
+        payment_date: payDate,
+        signature_data: sigData,
+        signed_at: sigData ? new Date().toISOString() : null,
+      };
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/subcontractor_payments`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(row),
+      });
+      const [saved] = await res.json();
+      setPayments(prev => [saved, ...prev]);
+      showToast(`✅ ${paymentModal.contractor_name} ${payStage} HK$${Number(payAmount).toLocaleString()} 已記錄`);
+
+      // Auto-generate payment receipt PDF
+      const c = paymentModal;
+      const w = window.open("", "_blank");
+      if (w) {
+        w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>付款收據 ${c.contractor_name}</title>
+<style>@page{margin:10mm 14mm}body{font-family:Arial,'Microsoft JhengHei',sans-serif;padding:36px 48px;font-size:12px;color:#000;max-width:700px;margin:0 auto;line-height:1.5;-webkit-print-color-adjust:exact}h1{text-align:center;font-size:18px;letter-spacing:3px;margin:0 0 4px;font-weight:700}.sub{text-align:center;font-size:11px;color:#666;margin-bottom:16px}.header{border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:14px}table{width:100%;border-collapse:collapse;margin:10px 0}th{background:#eee;padding:8px 10px;text-align:left;font-size:10px;font-weight:700;border-bottom:2px solid #000;border-top:2px solid #000}td{padding:8px 10px;border-bottom:1px solid #ccc;font-size:11px}td.r{text-align:right}.total td{font-weight:700;background:#f5f5f5;font-size:13px;border-top:2px solid #000;border-bottom:2px solid #000}.noprint{position:fixed;top:10px;right:10px;z-index:100}@media print{.noprint{display:none!important}}</style></head><body>
+<button class="noprint" onclick="window.print()" style="padding:8px 16px;background:#000;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:700">🖨️ PDF</button>
+<div class="header"><h1>俊輝電梯工程有限公司</h1><div class="sub">Chun Fai Lifts Engineering Company Ltd.</div><div style="text-align:center;font-size:14px;font-weight:700;letter-spacing:2px;margin-top:8px">PAYMENT RECEIPT 付款收據</div></div>
+<table><tr><th style="width:35%">項目</th><th>詳情</th></tr>
+<tr><td>分判商名稱</td><td><strong>${c.contractor_name}</strong></td></tr>
+<tr><td>工程名稱</td><td>${c.project_name || "—"}</td></tr>
+<tr><td>合約總金額</td><td class="r">HK$ ${Number(c.contract_sum||0).toLocaleString()}</td></tr>
+<tr><td>付款階段</td><td><strong>${payStage}</strong></td></tr>
+<tr><td>付款日期</td><td>${payDate}</td></tr>
+<tr class="total"><td>本次付款金額</td><td class="r">HK$ ${Number(payAmount).toLocaleString()}</td></tr></table>
+<div style="margin-top:24px;display:flex;justify-content:space-between;align-items:flex-end;gap:30px">
+<div><div style="font-size:10px;color:#666;margin-bottom:4px">分判商簽署</div>
+${sigData ? `<div style="border:1px solid #ccc;border-radius:4px;background:#fff;padding:4px"><img src="${sigData}" style="max-width:200px;max-height:60px"/></div>` : `<div style="border-top:1px solid #000;width:200px;margin-top:50px;padding-top:4px;font-size:10px">簽署</div>`}
+<div style="font-size:10px;color:#666;margin-top:4px">${c.contractor_name}</div>
+<div style="font-size:9px;color:#999">${new Date().toLocaleString("zh-HK")}</div></div>
+<div style="text-align:right"><div style="font-size:10px;color:#666">總承判商代表</div><div style="border-top:1px solid #000;width:200px;margin-left:auto;margin-top:50px;padding-top:4px;font-size:10px">授權簽署 / 公司印鑑</div></div></div>
+<div style="font-size:9px;color:#888;margin-top:16px;line-height:1.6;border-top:1px solid #ddd;padding-top:10px">本人確認已收到上述款項，並無異議。Receipt acknowledged — payment confirmed without dispute.</div>
+</body></html>`);
+        w.document.close();
+      }
+
+      setPaymentModal(null);
+      setPayAmount("");
+      setPayStage("第一期");
+    } catch (e) { showToast("❌ " + e.message, "error"); }
+    setPaySaving(false);
+  };
+
   const loadContract = (c) => {
     setForm({
       contractorName: c.contractor_name || "", contractorAddress: c.contractor_address || "",
@@ -5649,7 +5729,11 @@ ${form.notes ? `<h2>附加條款</h2><p>${esc(form.notes).replace(/\n/g, "<br/>"
                   <td style={{ fontFamily: "'Barlow Condensed'", fontWeight: 700, color: "#f0c000" }}>HK${Number(c.contract_sum||0).toLocaleString()}</td>
                   <td style={{ fontSize: 11, color: "#8891a4" }}>{c.created_at ? new Date(c.created_at).toLocaleDateString("zh-HK") : "—"}</td>
                   <td>
-                    <button onClick={() => loadContract(c)} style={{ background: "#1e2330", border: "none", color: "#60a5fa", borderRadius: 5, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>📂 載入</button>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button onClick={() => loadContract(c)} style={{ background: "#1e2330", border: "none", color: "#60a5fa", borderRadius: 5, padding: "4px 8px", fontSize: 10, cursor: "pointer" }}>📂</button>
+                      <button onClick={() => handlePrint()} style={{ background: "none", border: "1px solid #2a3045", color: "#60a5fa", borderRadius: 5, padding: "4px 8px", fontSize: 10, cursor: "pointer" }}>🖨️</button>
+                      <button onClick={() => setPaymentModal(c)} style={{ background: "rgba(34,197,94,0.1)", border: "1px solid #22c55e", color: "#22c55e", borderRadius: 5, padding: "4px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>💰 付款</button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -5657,6 +5741,75 @@ ${form.notes ? `<h2>附加條款</h2><p>${esc(form.notes).replace(/\n/g, "<br/>"
           </table>}
         </div>
       </div>
+      {/* Payment receipt modal with signature pad */}
+      {paymentModal && (
+        <div onClick={() => setPaymentModal(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: "#13161c", border: "1.5px solid #22c55e", borderRadius: 14, padding: 24, width: "100%", maxWidth: 480 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#22c55e", marginBottom: 4 }}>💰 記錄付款 — {paymentModal.contractor_name}</div>
+            <div style={{ fontSize: 11, color: "#555d6e", marginBottom: 14 }}>{paymentModal.project_name} · 合約 HK${Number(paymentModal.contract_sum||0).toLocaleString()}</div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>付款階段</div>
+                <select value={payStage} onChange={e => setPayStage(e.target.value)}
+                  className="form-select" style={{ background: "#0d0f12" }}>
+                  <option value="第一期">第一期（按金）</option>
+                  <option value="第二期">第二期（進度）</option>
+                  <option value="第三期">第三期（保留金）</option>
+                  <option value="其他">其他</option>
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>金額 (HK$)</div>
+                <input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)}
+                  placeholder="50000" className="form-input" style={{ background: "#0d0f12" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>日期</div>
+                <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
+                  className="form-input" style={{ background: "#0d0f12" }} />
+              </div>
+            </div>
+
+            <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>分判商簽署（可選 — 如分判商在場）</div>
+            <div style={{ background: "#fff", borderRadius: 8, overflow: "hidden", marginBottom: 8, border: "1px solid #2a3045" }}>
+              <canvas id="paySignCanvas" width="340" height="80"
+                style={{ width: "100%", height: 80, touchAction: "none", cursor: "crosshair" }}
+                onPointerDown={(e) => {
+                  const c = e.currentTarget; const ctx = c.getContext("2d");
+                  c.setPointerCapture(e.pointerId);
+                  ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#000";
+                  const rect = c.getBoundingClientRect();
+                  ctx.beginPath(); ctx.moveTo((e.clientX-rect.left)*(c.width/rect.width), (e.clientY-rect.top)*(c.height/rect.height));
+                  c.dataset.drawing = "1";
+                }}
+                onPointerMove={(e) => {
+                  const c = e.currentTarget; if (c.dataset.drawing !== "1") return;
+                  const ctx = c.getContext("2d"); const rect = c.getBoundingClientRect();
+                  ctx.lineTo((e.clientX-rect.left)*(c.width/rect.width), (e.clientY-rect.top)*(c.height/rect.height)); ctx.stroke();
+                }}
+                onPointerUp={(e) => { e.currentTarget.dataset.drawing = "0"; }}
+                onPointerLeave={(e) => { e.currentTarget.dataset.drawing = "0"; }}
+              />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ fontSize: 9, color: "#555d6e" }}>本人確認已收到上述款項，並無異議。</div>
+              <button onClick={() => { const c = document.getElementById("paySignCanvas"); if(c){c.getContext("2d").clearRect(0,0,c.width,c.height);} }}
+                style={{ background: "#1e2330", border: "1px solid #2a3045", color: "#8891a4", borderRadius: 6, padding: "3px 10px", fontSize: 10, cursor: "pointer" }}>↺ 清除</button>
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={handleRecordPayment} disabled={paySaving || !payAmount}
+                className="btn btn-primary" style={{ flex: 1 }}>
+                {paySaving ? "⏳ 儲存中..." : "✅ 確認付款並生成收據"}
+              </button>
+              <button onClick={() => setPaymentModal(null)} className="btn btn-secondary">取消</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
