@@ -2675,77 +2675,67 @@ function generateInvoicePDF(inv, opts = {}) {
 
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Invoice ${esc(invNo)}</title>
 <style>
-  /* ── Professional Invoice/Quotation Stylesheet ── */
-  @page { margin: 0; } /* Remove browser headers/footers (date, URL, page#) */
-
+  /* ── Professional Invoice/Quotation — Final Precision ── */
+  @page { margin: 12mm 14mm; }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
   body {
     font-family: Arial, Helvetica, 'Microsoft JhengHei', sans-serif;
-    padding: 48px 56px;
+    padding: 36px 48px;
     font-size: 12px;
     color: #1a1a1a;
-    max-width: 820px;
+    max-width: 780px;
     margin: 0 auto;
     background: #fff;
-    line-height: 1.5;
+    line-height: 1.45;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-
-  /* ── Company header ── */
-  .header { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 2px solid #333; }
-  .co-en { font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
-  .co-cn { font-size: 15px; font-weight: 700; margin-top: 2px; }
-  .co-addr { font-size: 11px; color: #555; line-height: 1.7; margin-top: 6px; }
-
-  /* ── Bill-To + Invoice-Meta two-column ── */
-  .bill-section { display: flex; justify-content: space-between; align-items: flex-start; gap: 30px; margin: 18px 0 14px; }
-  .bill-left { flex: 1; min-width: 0; }
-  .bill-label { font-weight: 700; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; color: #333; margin-bottom: 6px; }
-  .bill-right { text-align: right; font-size: 12px; min-width: 240px; }
-  .invoice-title { font-size: 22px; font-weight: 700; letter-spacing: 3px; margin-bottom: 8px; }
-
-  /* ── Items table ── */
-  table { width: 100%; border-collapse: collapse; margin: 16px 0 8px; }
+  /* ── Header ── */
+  .header { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2.5px solid #000; }
+  /* ── Bill-To + Invoice-Meta ── */
+  .bill-section { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin: 14px 0 12px; }
+  .bill-left { flex: 1; min-width: 0; font-size: 12px; line-height: 1.6; }
+  .bill-label { font-weight: 700; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #000; margin-bottom: 4px; }
+  .bill-right { text-align: right; font-size: 12px; min-width: 220px; line-height: 1.8; }
+  .invoice-title { font-size: 20px; font-weight: 700; letter-spacing: 3px; margin-bottom: 6px; }
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 6px; }
   th {
-    background: #f0f0f0; color: #333; padding: 10px 12px;
-    text-align: left; font-size: 11px; font-weight: 700;
+    background: #eee; color: #000; padding: 8px 10px;
+    text-align: left; font-size: 10px; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.5px;
-    border-bottom: 2px solid #333; border-top: 2px solid #333;
+    border-bottom: 2px solid #000; border-top: 2px solid #000;
   }
   th.r { text-align: right; }
-  td { padding: 10px 12px; border-bottom: 1px solid #ddd; vertical-align: top; font-size: 12px; }
+  td { padding: 8px 10px; border-bottom: 1px solid #ccc; vertical-align: top; font-size: 11px; }
   td.r { text-align: right; } td.c { text-align: center; }
   .total-row td {
-    font-weight: 700; background: #f8f8f8; font-size: 16px;
-    border-top: 2px solid #333; border-bottom: 2px solid #333;
-    padding: 12px;
+    font-weight: 700; background: #f5f5f5; font-size: 14px;
+    border-top: 2.5px solid #000; border-bottom: 2.5px solid #000;
+    padding: 10px;
   }
-
   /* ── Footer ── */
-  .footer { line-height: 2; margin-top: 28px; font-size: 11px; border-top: 1px solid #ccc; padding-top: 16px; color: #444; }
-  .co { font-weight: 700; color: #1a1a1a; }
-
-  /* ── Editable inputs (screen only) ── */
+  .footer { margin-top: 20px; font-size: 11px; border-top: 1px solid #999; padding-top: 12px; color: #333; line-height: 1.8; }
+  .co { font-weight: 700; color: #000; }
+  /* ── Editable inputs (screen) ── */
   input.e, textarea.e {
     font: inherit; color: inherit; background: transparent;
     border: 1px dashed #cdd5e0; border-radius: 2px;
-    padding: 2px 4px; width: 100%; box-sizing: border-box; outline: none;
+    padding: 1px 3px; width: 100%; box-sizing: border-box; outline: none;
   }
   input.e:focus, textarea.e:focus { border-color: #FF6B1A; background: #fff8f0; }
-  textarea.e { resize: none; min-height: 32px; font-family: inherit; }
+  textarea.e { resize: none; min-height: 28px; font-family: inherit; }
   input.num { text-align: right; }
-
-  /* ── Controls (screen only) ── */
-  .controls { position: fixed; top: 14px; right: 14px; display: flex; gap: 8px; z-index: 100; }
-  .btn { padding: 9px 18px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 700; font-family: inherit; }
+  /* Hide calendar icon on date inputs */
+  input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; width: 0; }
+  input[type="date"]::-webkit-inner-spin-button { display: none; }
+  /* ── Controls (screen) ── */
+  .controls { position: fixed; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 100; }
+  .btn { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: 700; font-family: inherit; }
   .btn-print { background: #1a1a1a; color: #fff; }
   .btn-reset { background: #fff; color: #666; border: 1px solid #ccc; }
-
-  /* ── Print: clean document, no form artifacts ── */
+  /* ── Print: pure document ── */
   @media print {
-    @page { margin: 10mm 12mm; }
     body { padding: 0; max-width: none; }
     .controls, .company-picker, .no-print { display: none !important; }
     input.e, textarea.e, select.e {
@@ -2753,12 +2743,11 @@ function generateInvoicePDF(inv, opts = {}) {
       padding: 0 !important; margin: 0 !important;
       -webkit-appearance: none; appearance: none;
       resize: none !important; overflow: visible !important;
-      min-height: auto !important;
+      min-height: auto !important; height: auto !important;
     }
     select.e { background-image: none !important; }
-    /* Ensure table backgrounds print */
-    th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .total-row td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    input[type="date"]::-webkit-calendar-picker-indicator { display: none !important; }
+    th, .total-row td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
 </style></head><body>
 
@@ -2872,10 +2861,10 @@ function generateInvoicePDF(inv, opts = {}) {
 </table>
 
 <div class="footer">
-  <div>Make all checks payable to <span class="co">Chun Fai Lifts Engineering Company Ltd.</span></div>
-  <div class="co">俊輝電梯工程有限公司</div>
-  <div style="margin-top:8px">If you have any questions concerning this invoice, contact Mr. Kam at 5444 2099.</div>
-  <div style="margin-top:14px;font-weight:bold;letter-spacing:1px">THANK YOU FOR YOUR BUSINESS!</div>
+  <div>Make all checks payable to <span class="co" id="footerCoEN">${esc(INVOICE_COMPANIES[0].en)}</span></div>
+  <div class="co" id="footerCoCN">${esc(INVOICE_COMPANIES[0].cn)}</div>
+  <div style="margin-top:6px">If you have any questions concerning this invoice, contact Mr. Kam at <span id="footerPhone">${esc(INVOICE_COMPANIES[0].phone)}</span>.</div>
+  <div style="margin-top:12px;font-weight:700;letter-spacing:1px">THANK YOU FOR YOUR BUSINESS!</div>
 </div>
 
 <script>
@@ -2910,7 +2899,7 @@ function generateInvoicePDF(inv, opts = {}) {
   const MILESTONE_DB = ${JSON.stringify(MILESTONE_PRESETS)};
   const COMPANY_DB = ${JSON.stringify(INVOICE_COMPANIES)};
 
-  // Company picker → swaps issuing company info (俊輝 ↔ 巨揚)
+  // Company picker → swaps issuing company info (俊輝 ↔ 巨揚) + footer
   document.getElementById("companyPicker").addEventListener("change", e => {
     const c = COMPANY_DB.find(x => x.id === e.target.value);
     if (!c) return;
@@ -2919,6 +2908,10 @@ function generateInvoicePDF(inv, opts = {}) {
     document.getElementById("coAddr").value  = c.addr;
     document.getElementById("coPhone").value = c.phone;
     document.getElementById("coEmail").value = c.email;
+    // Sync footer to match header company
+    document.getElementById("footerCoEN").innerText = c.en;
+    document.getElementById("footerCoCN").innerText = c.cn;
+    document.getElementById("footerPhone").innerText = c.phone;
   });
 
   // Milestone preset → fills Details + pct + recalcs
