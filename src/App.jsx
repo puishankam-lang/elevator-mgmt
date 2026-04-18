@@ -556,12 +556,22 @@ function Dashboard({ projects = INITIAL_PROJECTS, setActive, employees = EMPLOYE
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/invoices?select=amount,status,stage&limit=2000`,
-          { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
-        );
-        const data = await res.json();
-        if (!Array.isArray(data)) return;
+        // Paginate to get ALL invoices (Supabase caps at 1000 per request)
+        const allData = [];
+        let offset = 0;
+        while (true) {
+          const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/invoices?select=amount,status,stage&limit=1000&offset=${offset}`,
+            { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+          );
+          const page = await res.json();
+          if (!Array.isArray(page)) break;
+          allData.push(...page);
+          if (page.length < 1000) break;
+          offset += 1000;
+        }
+        const data = allData;
+        if (data.length === 0) return;
         const paid = data.filter(r => r.status === "paid");
         const unpaid = data.filter(r => r.status !== "paid");
         const ecSet = new Set(data.map(r => (r.stage||"").match(/^CF\d+/)?.[0]).filter(Boolean));
