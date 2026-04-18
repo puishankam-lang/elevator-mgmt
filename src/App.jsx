@@ -1565,13 +1565,68 @@ function Progress({ showToast, projects = INITIAL_PROJECTS, employees = [], onUp
   return (
     <div>
       {alertProjects.length > 0 && (
-        <div className="alert-strip">
-          <div className="alert-icon">🚨</div>
-          <div className="alert-text">
-            <strong style={{color:'#e8a0a0'}}>系統預警 ({alertProjects.length})：</strong>
-            {alertProjects.map(p => `「${p.name}」實際 ${p.pct}% 低於計劃 ${p.plan}%`).join('　')}
+        <div style={{ background: "rgba(214,48,48,0.06)", border: "1.5px solid rgba(214,48,48,0.4)", borderLeft: "4px solid #EF4444", borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 20 }}>🚨</span>
+            <div style={{ fontSize: 14, fontWeight: 800, color: "#EF4444" }}>工程延誤預警 — {alertProjects.length} 個項目落後</div>
           </div>
-          <span className="badge red" style={{ flexShrink: 0 }}><span className="badge-dot" /> 需跟進</span>
+          {alertProjects.map(p => {
+            const gap = p.plan - p.pct;
+            return (
+              <div key={p.id || p.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(214,48,48,0.15)", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#e8eaf0" }}>{p.name}</div>
+                  <div style={{ fontSize: 11, color: "#9aa0b4", marginTop: 2 }}>
+                    實際 <span style={{ color: "#EF4444", fontWeight: 700 }}>{p.pct}%</span> · 計劃 {p.plan}% · 落後 <span style={{ color: "#EF4444", fontWeight: 700 }}>{gap}%</span>
+                  </div>
+                </div>
+                <button onClick={async () => {
+                  // Fetch workers assigned to this project
+                  try {
+                    const today = new Date().toISOString().split("T")[0];
+                    const res = await fetch(
+                      `${SUPABASE_URL}/rest/v1/project_assignments?site_name=eq.${encodeURIComponent(p.name)}&start_date=lte.${today}&end_date=gte.${today}`,
+                      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+                    );
+                    const assignments = await res.json();
+                    if (!Array.isArray(assignments) || assignments.length === 0) {
+                      // No dispatch — warn via generic message
+                      const msg = `⚠️ 工程延誤通知\n工程：${p.name}\n實際進度：${p.pct}%\n計劃進度：${p.plan}%\n落後：${gap}%\n\n請加快進度，確保按時完工。\n— ${getCompany().cn}`;
+                      sendWhatsApp("", msg);
+                      showToast("⚠️ 未有分配工人到此工地，請先在「派更管理」分配", "error");
+                      return;
+                    }
+                    // Get employee phones
+                    const empIds = [...new Set(assignments.map(a => a.employee_id))];
+                    const empRes = await fetch(
+                      `${SUPABASE_URL}/rest/v1/employees?id=in.(${empIds.join(",")})&select=id,name,phone`,
+                      { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+                    );
+                    const workers = await empRes.json();
+                    if (!Array.isArray(workers) || workers.length === 0) {
+                      showToast("⚠️ 找不到工人資料", "error"); return;
+                    }
+                    // Send WhatsApp to each worker
+                    let sent = 0;
+                    for (const w of workers) {
+                      if (!w.phone) continue;
+                      const msg = `⚠️ 工程延誤通知\n\n${w.name} 您好，\n\n工程「${p.name}」目前進度 ${p.pct}% 落後於計劃 ${p.plan}%（差距 ${gap}%）。\n\n請加快施工進度，確保按時完工。如有困難請即時通報。\n\n— ${getCompany().cn}`;
+                      sendWhatsApp(w.phone, msg);
+                      sent++;
+                      await new Promise(r => setTimeout(r, 800)); // delay between opens
+                    }
+                    showToast(`📱 已開啟 ${sent} 個 WhatsApp 通知（${workers.map(w=>w.name).join("、")}）`);
+                  } catch(e) {
+                    showToast("❌ " + e.message, "error");
+                  }
+                }}
+                  style={{ background: "rgba(239,68,68,0.15)", border: "1px solid #EF4444", color: "#EF4444", borderRadius: 6, padding: "6px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  📱 通知工人
+                </button>
+              </div>
+            );
+          })}
+          <div style={{ fontSize: 10, color: "#555d6e", marginTop: 8 }}>💡 點擊「通知工人」會透過 WhatsApp 向該工程的指派工人發送延誤警告</div>
         </div>
       )}
 
