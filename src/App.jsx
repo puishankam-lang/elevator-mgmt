@@ -5733,6 +5733,16 @@ ${sigData ? `<div style="border:1px solid #ccc;border-radius:4px;background:#fff
                       <button onClick={() => loadContract(c)} style={{ background: "#1e2330", border: "none", color: "#60a5fa", borderRadius: 5, padding: "4px 8px", fontSize: 10, cursor: "pointer" }}>📂</button>
                       <button onClick={() => handlePrint()} style={{ background: "none", border: "1px solid #2a3045", color: "#60a5fa", borderRadius: 5, padding: "4px 8px", fontSize: 10, cursor: "pointer" }}>🖨️</button>
                       <button onClick={() => setPaymentModal(c)} style={{ background: "rgba(34,197,94,0.1)", border: "1px solid #22c55e", color: "#22c55e", borderRadius: 5, padding: "4px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>💰 付款</button>
+                      <button onClick={async () => {
+                        if (!window.confirm(`刪除 ${c.contractor_name} 的合約？`)) return;
+                        try {
+                          await fetch(`${SUPABASE_URL}/rest/v1/subcontractor_contracts?id=eq.${c.id}`, {
+                            method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+                          });
+                          setSaved(prev => prev.filter(x => x.id !== c.id));
+                          showToast("✅ 已刪除");
+                        } catch { showToast("❌ 失敗", "error"); }
+                      }} style={{ background: "rgba(214,48,48,0.1)", border: "none", color: "#d63030", borderRadius: 5, padding: "4px 8px", fontSize: 10, cursor: "pointer" }}>🗑</button>
                     </div>
                   </td>
                 </tr>
