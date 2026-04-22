@@ -530,6 +530,7 @@ const NAV_ITEMS = [
   { id: "invoice", icon: "💰", label: "自動化請款" },
   { id: "payroll", icon: "💼", label: "薪酬核算" },
   { id: "empdocs", icon: "📁", label: "員工文件" },
+  { id: "subworkers", icon: "👷", label: "判頭管理" },
   { id: "workorder", icon: "📝", label: "每日工序" },
   { id: "leave", icon: "🏖️", label: "請假審批" },
   { id: "calendar", icon: "📅", label: "行事曆" },
@@ -5135,6 +5136,198 @@ const mapEmployee = e => ({
   days: 22, signed: true, lat: "22.3193", lng: "114.1694",
 });
 
+// ── Sub-contractor Worker Management (判頭管理) ──────────────────────────────
+function SubWorkerManagement({ showToast }) {
+  const [workers, setWorkers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [form, setForm] = useState({ name:"", role:"判頭技工", phone:"", pin:"", rate:850, color:"#FF6B1A", contractor_name:"" });
+  const [pinVisible, setPinVisible] = useState({});
+
+  const ROLES = ["判頭技工","判頭主管","判頭助理","焊接工","紮鐵工","水電工","雜工"];
+  const COLORS = ["#FF6B1A","#22C55E","#60A5FA","#A78BFA","#FB923C","#F43F5E","#06B6D4","#84CC16","#E879F9","#F0C000"];
+
+  const genPin = () => Math.floor(1000+Math.random()*9000).toString();
+  const resetForm = () => setForm({ name:"", role:"判頭技工", phone:"", pin:genPin(), rate:850, color:"#FF6B1A", contractor_name:"" });
+
+  useEffect(() => {
+    fetch(`${SUPABASE_URL}/rest/v1/subcontractor_workers?order=created_at.desc`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    }).then(r => r.json()).then(d => { if (Array.isArray(d)) setWorkers(d); })
+      .catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { if (showAdd && !editId) setForm(f => ({ ...f, pin: genPin() })); }, [showAdd]);
+
+  const handleSave = async () => {
+    if (!form.name || !form.phone) { showToast("⚠️ 請填寫姓名及電話", "error"); return; }
+    if (form.pin.length !== 4 || !/^\d{4}$/.test(form.pin)) { showToast("⚠️ PIN 必須係4位數字", "error"); return; }
+    try {
+      if (editId) {
+        await sbUpdate("subcontractor_workers", editId, { name:form.name, role:form.role, phone:form.phone, pin:form.pin, daily_rate:Number(form.rate), color:form.color, contractor_name:form.contractor_name });
+        setWorkers(prev => prev.map(w => w.id===editId ? {...w, name:form.name, role:form.role, phone:form.phone, pin:form.pin, daily_rate:Number(form.rate), color:form.color, contractor_name:form.contractor_name} : w));
+        showToast("✅ 判頭員工已更新！");
+      } else {
+        const res = await sbInsert("subcontractor_workers", { name:form.name, role:form.role, phone:form.phone, pin:form.pin, daily_rate:Number(form.rate), color:form.color, contractor_name:form.contractor_name });
+        setWorkers(prev => [res[0], ...prev]);
+        showToast(`✅ ${form.name} 已加入！PIN: ${form.pin}`);
+      }
+      setShowAdd(false); setEditId(null); resetForm();
+    } catch(e) { showToast("❌ 儲存失敗: " + e.message, "error"); }
+  };
+
+  const handleDelete = async (id, name) => {
+    if (!window.confirm(`確定刪除 ${name}？`)) return;
+    try {
+      await sbDelete("subcontractor_workers", id);
+      setWorkers(prev => prev.filter(w => w.id!==id));
+      showToast(`🗑️ ${name} 已移除`);
+    } catch(e) { showToast("❌ 刪除失敗", "error"); }
+  };
+
+  const contractors = [...new Set(workers.map(w => w.contractor_name).filter(Boolean))];
+
+  return (
+    <div>
+      {/* Stats */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:16 }}>
+        {[
+          { label:"判頭員工總數", value:workers.length, color:"#FF6B1A" },
+          { label:"判頭公司", value:contractors.length, color:"#60a5fa" },
+          { label:"判頭技工", value:workers.filter(w=>w.role==="判頭技工").length, color:"#22c55e" },
+        ].map((k,i) => (
+          <div key={i} style={{ background:"#13161c", border:"1px solid #1e2330", borderRadius:10, padding:"12px 16px" }}>
+            <div style={{ fontSize:10, color:"#3a4255", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>{k.label}</div>
+            <div style={{ fontFamily:"'Barlow Condensed'", fontSize:28, fontWeight:800, color:k.color }}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
+        <button className="btn btn-primary" onClick={() => { resetForm(); setEditId(null); setShowAdd(!showAdd); }}>
+          {showAdd && !editId ? "✕ 收起" : "+ 新增判頭員工"}
+        </button>
+      </div>
+
+      {/* Add/Edit form */}
+      {showAdd && (
+        <div style={{ background:"#13161c", border:"1px solid #FF6B1A", borderRadius:10, padding:16, marginBottom:16 }}>
+          <div style={{ fontFamily:"'Barlow Condensed'", fontSize:16, fontWeight:700, color:"#FF6B1A", marginBottom:12 }}>
+            {editId ? "✏️ 編輯判頭員工" : "👷 新增判頭員工"}
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>姓名 *</div>
+              <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="form-input" placeholder="判頭員工姓名" />
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>電話 *</div>
+              <input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} className="form-input" placeholder="香港手機號碼" />
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>所屬判頭</div>
+              <input value={form.contractor_name} onChange={e=>setForm({...form,contractor_name:e.target.value})} className="form-input" placeholder="判頭公司名稱" list="contractor-list" />
+              <datalist id="contractor-list">
+                {contractors.map(c => <option key={c} value={c} />)}
+              </datalist>
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>職位</div>
+              <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}
+                style={{ width:"100%", background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 10px", fontSize:13 }}>
+                {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>日薪 (HK$)</div>
+              <input type="number" value={form.rate} onChange={e=>setForm({...form,rate:e.target.value})} className="form-input" />
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>登入 PIN（4位數字）</div>
+              <div style={{ display:"flex", gap:6 }}>
+                <input type="text" maxLength={4} value={form.pin} onChange={e=>setForm({...form,pin:e.target.value.replace(/\D/g,"")})}
+                  className="form-input" placeholder="0000" style={{ flex:1, letterSpacing:4, fontWeight:800 }} />
+                <button onClick={() => setForm({...form,pin:genPin()})}
+                  style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#FF6B1A", borderRadius:6, padding:"6px 12px", cursor:"pointer", fontSize:12, whiteSpace:"nowrap" }}>
+                  🔀 隨機
+                </button>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>顏色標記</div>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                {COLORS.map(c => (
+                  <div key={c} onClick={()=>setForm({...form,color:c})}
+                    style={{ width:24, height:24, borderRadius:"50%", background:c, cursor:"pointer", border:form.color===c?"2px solid #fff":"2px solid transparent" }} />
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button className="btn btn-primary" onClick={handleSave} style={{ flex:1 }}>💾 儲存</button>
+            <button className="btn btn-secondary" onClick={() => { setShowAdd(false); setEditId(null); }}>取消</button>
+          </div>
+        </div>
+      )}
+
+      {/* Worker list */}
+      <div className="card" style={{ padding:0 }}>
+        {loading ? <div style={{ textAlign:"center", padding:30, color:"#555d6e" }}>載入中...</div>
+        : <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+          <thead>
+            <tr style={{ background:"#13161c", borderBottom:"2px solid #1e2330" }}>
+              {["員工","所屬判頭","職位","電話","日薪","PIN","操作"].map(h => (
+                <th key={h} style={{ padding:"10px 14px", textAlign:"left", fontSize:11, color:"#3a4255", textTransform:"uppercase", letterSpacing:0.8 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {workers.map((w, idx) => (
+              <tr key={w.id} style={{ borderBottom:"1px solid #0d0f12", background:idx%2===0?"rgba(255,255,255,0.01)":"transparent" }}>
+                <td style={{ padding:"10px 14px" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ width:28, height:28, borderRadius:"50%", background:w.color||"#FF6B1A", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#0d0f12", fontSize:12 }}>{(w.name||"?")[0]}</div>
+                    <span style={{ fontWeight:700 }}>{w.name}</span>
+                  </div>
+                </td>
+                <td style={{ padding:"10px 14px", color:"#FF6B1A", fontWeight:600 }}>{w.contractor_name||"–"}</td>
+                <td style={{ padding:"10px 14px", color:"#9aa0b4" }}>{w.role||"判頭技工"}</td>
+                <td style={{ padding:"10px 14px", color:"#9aa0b4" }}>{w.phone||"–"}</td>
+                <td style={{ padding:"10px 14px", color:"#FF6B1A", fontWeight:700 }}>HK${w.daily_rate||850}</td>
+                <td style={{ padding:"10px 14px" }}>
+                  <span style={{ background:"#1e2330", borderRadius:6, padding:"3px 10px", fontFamily:"monospace", fontSize:14, fontWeight:800, letterSpacing:2, color:"#FF6B1A" }}>
+                    {pinVisible[w.id] ? (w.pin||"????") : "••••"}
+                  </span>
+                  <button onClick={() => setPinVisible(p=>({...p,[w.id]:!p[w.id]}))}
+                    style={{ background:"none", border:"none", color:"#555d6e", cursor:"pointer", fontSize:12, marginLeft:4 }}>
+                    {pinVisible[w.id]?"🙈":"👁️"}
+                  </button>
+                </td>
+                <td style={{ padding:"10px 14px" }}>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                    <button onClick={() => { setForm({name:w.name,role:w.role||"判頭技工",phone:w.phone||"",pin:w.pin||"",rate:w.daily_rate||850,color:w.color||"#FF6B1A",contractor_name:w.contractor_name||""}); setEditId(w.id); setShowAdd(true); }}
+                      style={{ background:"#1e2330", border:"none", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>✏️</button>
+                    <button onClick={() => handleDelete(w.id, w.name)}
+                      style={{ background:"rgba(214,48,48,0.1)", border:"none", color:"#d63030", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>🗑️</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {workers.length === 0 && (
+              <tr><td colSpan={7} style={{ textAlign:"center", padding:40, color:"#555d6e" }}>未有判頭員工資料，請點「新增判頭員工」</td></tr>
+            )}
+          </tbody>
+        </table>}
+      </div>
+
+      <div style={{ marginTop:12, background:"rgba(255,107,26,0.06)", border:"1px solid rgba(255,107,26,0.15)", borderRadius:8, padding:"12px 16px", fontSize:12, color:"#9aa0b4" }}>
+        💡 判頭員工使用同一個 Employee App 登入，電話 + PIN 即可使用所有功能（簽到、工序申報、文件上載等）
+      </div>
+    </div>
+  );
+}
+
 // ── Work Order Page (每日工序申報) ────────────────────────────────────────────
 function WorkOrderPage({ showToast, employees = [] }) {
   const [orders, setOrders] = useState([]);
@@ -7338,6 +7531,7 @@ export default function App() {
     empdocs: { icon: "📁", title: "員工文件", sub: "綠卡 / ID / 住址證明" },
     profit: { icon: "📈", title: "報價利潤", sub: "試算工具" },
     tax: { icon: "🧾", title: "老闆稅務", sub: "計算器（香港有限公司）" },
+    subworkers: { icon: "👷", title: "判頭管理", sub: "判頭員工資料 / 登入PIN / 工地分配" },
     workorder: { icon: "📝", title: "每日工序申報", sub: "員工每日工作日誌 / GPS 定位 / 異常跟進" },
     leave: { icon: "🏖️", title: "請假審批", sub: "員工請假申請 / 批核" },
     calendar: { icon: "📅", title: "行事曆", sub: "請假 / 工程完工 / 進度節點" },
@@ -7439,6 +7633,7 @@ export default function App() {
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
             {active === "profit" && <ProfitCalc showToast={showToast} />}
             {active === "tax" && <TaxCalc showToast={showToast} />}
+            {active === "subworkers" && <SubWorkerManagement showToast={showToast} />}
             {active === "workorder" && <WorkOrderPage showToast={showToast} employees={employees} />}
             {active === "leave" && <LeaveApproval showToast={showToast} employees={employees} />}
             {active === "calendar" && <CalendarPage employees={employees} projects={projects} />}
