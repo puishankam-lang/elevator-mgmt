@@ -4356,25 +4356,47 @@ function StaffManagement({ employees, setEmployees, showToast }) {
     } catch (e) { showToast("❌ 排序失敗", "error"); }
   };
 
+  const [search, setSearch] = useState("");
+  const [filterRole, setFilterRole] = useState("all");
+  const allRoles = [...new Set(empList.map(e => e.role).filter(Boolean))];
+  const filtered = empList.filter(e => {
+    if (search && !e.name?.includes(search) && !e.phone?.includes(search)) return false;
+    if (filterRole !== "all" && e.role !== filterRole) return false;
+    return true;
+  });
+  const totalSalary = empList.reduce((s, e) => s + (e.salaryType === "monthly" ? (e.rate || 0) : (e.rate || 850) * 22), 0);
+
   return (
     <div>
       {/* Stats */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:16 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:16 }}>
         {[
-          { label:"員工總數", value:empList.length, color:"#f0c000" },
-          { label:"技術主管", value:empList.filter(e=>e.role==="技術主管").length, color:"#60a5fa" },
-          { label:"電梯技工", value:empList.filter(e=>e.role==="電梯技工").length, color:"#22c55e" },
+          { label:"員工總數", value:empList.length, icon:"👷", color:"#f0c000" },
+          { label:"日薪員工", value:empList.filter(e=>e.salaryType!=="monthly").length, icon:"📅", color:"#22c55e" },
+          { label:"月薪員工", value:empList.filter(e=>e.salaryType==="monthly").length, icon:"📆", color:"#60a5fa" },
+          { label:"每月薪酬估算", value:`$${Math.round(totalSalary/1000)}K`, icon:"💰", color:"#f0c000" },
         ].map((k,i) => (
-          <div key={i} style={{ background:"#13161c", border:"1px solid #1e2330", borderRadius:10, padding:"12px 16px" }}>
-            <div style={{ fontSize:10, color:"#3a4255", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>{k.label}</div>
-            <div style={{ fontFamily:"'Barlow Condensed'", fontSize:28, fontWeight:800, color:k.color }}>{k.value}</div>
+          <div key={i} style={{ background:"#13161c", border:"1px solid #1e2330", borderRadius:10, padding:"12px 16px", textAlign:"center" }}>
+            <div style={{ fontSize:20, marginBottom:4 }}>{k.icon}</div>
+            <div style={{ fontFamily:"'Barlow Condensed'", fontSize:24, fontWeight:800, color:k.color }}>{k.value}</div>
+            <div style={{ fontSize:10, color:"#3a4255", marginTop:2 }}>{k.label}</div>
           </div>
         ))}
       </div>
 
-      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
-        <button className="btn btn-primary" onClick={() => { resetForm(); setEditId(null); setShowAdd(!showAdd); }}>
-          {showAdd && !editId ? "✕ 收起" : "+ 新增員工"}
+      {/* Search + Filter + Add */}
+      <div style={{ display:"flex", gap:10, marginBottom:14, alignItems:"center", flexWrap:"wrap" }}>
+        <div style={{ flex:1, minWidth:180, position:"relative" }}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} className="form-input"
+            placeholder="🔍 搜尋姓名或電話..." style={{ paddingLeft:12 }} />
+        </div>
+        <select value={filterRole} onChange={e=>setFilterRole(e.target.value)}
+          style={{ background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 12px", fontSize:12 }}>
+          <option value="all">全部職位</option>
+          {allRoles.map(r => <option key={r} value={r}>{r} ({empList.filter(e=>e.role===r).length})</option>)}
+        </select>
+        <button className="btn btn-primary" onClick={() => { resetForm(); setEditId(null); setShowAdd(true); }}>
+          + 新增員工
         </button>
       </div>
 
@@ -4446,71 +4468,69 @@ function StaffManagement({ employees, setEmployees, showToast }) {
         </div>
       )}
 
-      {/* Employee list */}
-      <div className="card" style={{ padding:0 }}>
-        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
-          <thead>
-            <tr style={{ background:"#13161c", borderBottom:"2px solid #1e2330" }}>
-              {["#","員工","職位","電話","薪酬","PIN","操作"].map(h => (
-                <th key={h} style={{ padding:"10px 14px", textAlign:"left", fontSize:11, color:"#3a4255", textTransform:"uppercase", letterSpacing:0.8 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {empList.map((emp, idx) => (
-              <tr key={emp.id} style={{ borderBottom:"1px solid #0d0f12", background:idx%2===0?"rgba(255,255,255,0.01)":"transparent" }}>
-                <td style={{ padding:"6px 8px", textAlign:"center" }}>
-                  <div style={{ display:"flex", flexDirection:"column", gap:2, alignItems:"center" }}>
-                    <button onClick={()=>handleMove(idx,-1)} disabled={idx===0}
-                      style={{ background:"none", border:"none", color:idx===0?"#1e2330":"#555d6e", cursor:idx===0?"default":"pointer", fontSize:10, padding:0, lineHeight:1 }}>▲</button>
-                    <span style={{ fontSize:10, color:"#3a4255" }}>{idx+1}</span>
-                    <button onClick={()=>handleMove(idx,1)} disabled={idx===empList.length-1}
-                      style={{ background:"none", border:"none", color:idx===empList.length-1?"#1e2330":"#555d6e", cursor:idx===empList.length-1?"default":"pointer", fontSize:10, padding:0, lineHeight:1 }}>▼</button>
-                  </div>
-                </td>
-                <td style={{ padding:"10px 14px" }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <div style={{ width:28, height:28, borderRadius:"50%", background:emp.color||"#f0c000", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#0d0f12", fontSize:12 }}>{(emp.name||"?")[0]}</div>
-                    <span style={{ fontWeight:700 }}>{emp.name}</span>
-                  </div>
-                </td>
-                <td style={{ padding:"10px 14px", color:"#9aa0b4" }}>{emp.role||"電梯技工"}</td>
-                <td style={{ padding:"10px 14px", color:"#9aa0b4" }}>{emp.phone||"–"}</td>
-                <td style={{ padding:"10px 14px", color:"#f0c000", fontWeight:700 }}>HK${emp.rate||850}<span style={{ fontSize:9, color:"#555d6e", marginLeft:2 }}>{emp.salaryType==="monthly"?"/月":"/日"}</span></td>
-                <td style={{ padding:"10px 14px" }}>
-                  <span style={{ background:"#1e2330", borderRadius:6, padding:"3px 10px", fontFamily:"monospace", fontSize:14, fontWeight:800, letterSpacing:2, color:"#f0c000" }}>
-                    {pinVisible[emp.id] ? (emp.pin||"????") : "••••"}
-                  </span>
-                  <button onClick={() => setPinVisible(p=>({...p,[emp.id]:!p[emp.id]}))}
-                    style={{ background:"none", border:"none", color:"#555d6e", cursor:"pointer", fontSize:12, marginLeft:4 }}>
-                    {pinVisible[emp.id]?"🙈":"👁️"}
-                  </button>
-                </td>
-                <td style={{ padding:"10px 14px" }}>
-                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    <button onClick={() => { setForm({name:emp.name,role:emp.role||"電梯技工",phone:emp.phone||"",pin:emp.pin||"",rate:emp.rate||850,color:emp.color||"#f0c000",salaryType:emp.salaryType||"daily"}); setEditId(emp.id); setShowAdd(true); }}
-                      style={{ background:"#1e2330", border:"none", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>✏️</button>
-                    <button onClick={() => handleResetPin(emp)}
-                      style={{ background:"#1e2330", border:"none", color:"#f0c000", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>🔐 PIN</button>
-                    <button onClick={() => generateEmploymentContract(emp)}
-                      title="生成僱傭合約 PDF"
-                      style={{ background:"#1e2330", border:"none", color:"#22c55e", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>📄 合約</button>
-                    <button onClick={() => handleDelete(emp.id, emp.name)}
-                      style={{ background:"rgba(214,48,48,0.1)", border:"none", color:"#d63030", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>🗑️</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {empList.length === 0 && (
-              <tr><td colSpan={6} style={{ textAlign:"center", padding:40, color:"#555d6e" }}>未有員工資料，請點「新增員工」</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* Employee cards */}
+      {filtered.length === 0 ? (
+        <div style={{ textAlign:"center", padding:40, color:"#555d6e" }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+          {search || filterRole !== "all" ? "沒有符合條件的員工" : "未有員工資料，請點「新增員工」"}
+        </div>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:12 }}>
+          {filtered.map((emp) => {
+            const realIdx = empList.indexOf(emp);
+            return (
+            <div key={emp.id} style={{ background:"#13161c", border:"1px solid #1e2330", borderRadius:12, padding:16, position:"relative" }}>
+              <div style={{ position:"absolute", top:8, right:8, display:"flex", gap:2 }}>
+                <button onClick={()=>handleMove(realIdx,-1)} disabled={realIdx===0}
+                  style={{ background:"none", border:"none", color:realIdx===0?"#1e2330":"#3a4255", cursor:realIdx===0?"default":"pointer", fontSize:11, padding:"2px 4px" }}>▲</button>
+                <button onClick={()=>handleMove(realIdx,1)} disabled={realIdx===empList.length-1}
+                  style={{ background:"none", border:"none", color:realIdx===empList.length-1?"#1e2330":"#3a4255", cursor:realIdx===empList.length-1?"default":"pointer", fontSize:11, padding:"2px 4px" }}>▼</button>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+                <div style={{ width:40, height:40, borderRadius:"50%", background:emp.color||"#f0c000", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:"#0d0f12", fontSize:16, flexShrink:0 }}>{(emp.name||"?")[0]}</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:800, fontSize:15 }}>{emp.name}</div>
+                  <div style={{ fontSize:11, color:"#9aa0b4" }}>{emp.role||"電梯技工"}</div>
+                </div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10 }}>
+                <div style={{ background:"#0d0f12", borderRadius:8, padding:"8px 10px" }}>
+                  <div style={{ fontSize:9, color:"#3a4255", marginBottom:2 }}>電話</div>
+                  <div style={{ fontSize:13, color:"#c8d0e0", fontWeight:600 }}>{emp.phone||"–"}</div>
+                </div>
+                <div style={{ background:"#0d0f12", borderRadius:8, padding:"8px 10px" }}>
+                  <div style={{ fontSize:9, color:"#3a4255", marginBottom:2 }}>{emp.salaryType==="monthly"?"月薪":"日薪"}</div>
+                  <div style={{ fontSize:13, color:"#f0c000", fontWeight:700 }}>HK${(emp.rate||850).toLocaleString()}</div>
+                </div>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12, background:"#0d0f12", borderRadius:8, padding:"6px 10px" }}>
+                <span style={{ fontSize:9, color:"#3a4255" }}>PIN</span>
+                <span style={{ fontFamily:"monospace", fontSize:16, fontWeight:800, letterSpacing:3, color:"#f0c000", flex:1 }}>
+                  {pinVisible[emp.id] ? (emp.pin||"????") : "• • • •"}
+                </span>
+                <button onClick={() => setPinVisible(p=>({...p,[emp.id]:!p[emp.id]}))}
+                  style={{ background:"none", border:"none", color:"#555d6e", cursor:"pointer", fontSize:14 }}>
+                  {pinVisible[emp.id]?"🙈":"👁️"}
+                </button>
+              </div>
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={() => { setForm({name:emp.name,role:emp.role||"電梯技工",phone:emp.phone||"",pin:emp.pin||"",rate:emp.rate||850,color:emp.color||"#f0c000",salaryType:emp.salaryType||"daily"}); setEditId(emp.id); setShowAdd(true); }}
+                  style={{ flex:1, background:"#1e2330", border:"none", color:"#60a5fa", borderRadius:6, padding:"7px 0", fontSize:11, cursor:"pointer", fontWeight:600 }}>✏️ 編輯</button>
+                <button onClick={() => handleResetPin(emp)}
+                  style={{ flex:1, background:"#1e2330", border:"none", color:"#f0c000", borderRadius:6, padding:"7px 0", fontSize:11, cursor:"pointer", fontWeight:600 }}>🔐 PIN</button>
+                <button onClick={() => generateEmploymentContract(emp)}
+                  style={{ flex:1, background:"#1e2330", border:"none", color:"#22c55e", borderRadius:6, padding:"7px 0", fontSize:11, cursor:"pointer", fontWeight:600 }}>📄 合約</button>
+                <button onClick={() => handleDelete(emp.id, emp.name)}
+                  style={{ background:"rgba(214,48,48,0.1)", border:"none", color:"#d63030", borderRadius:6, padding:"7px 8px", fontSize:11, cursor:"pointer" }}>🗑️</button>
+              </div>
+            </div>
+          );})}
+        </div>
+      )}
 
-      {/* PIN update note */}
-      <div style={{ marginTop:12, background:"rgba(96,165,250,0.06)", border:"1px solid rgba(96,165,250,0.15)", borderRadius:8, padding:"12px 16px", fontSize:12, color:"#9aa0b4" }}>
-        💡 員工亦可以喺 Employee App 登入後自行更改 PIN 碼
+      <div style={{ marginTop:14, display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:11, color:"#3a4255" }}>
+        <span>顯示 {filtered.length} / {empList.length} 名員工</span>
+        <span>💡 員工可在 App 自行更改 PIN 碼</span>
       </div>
     </div>
   );
