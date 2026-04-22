@@ -734,7 +734,7 @@ function Dashboard({ projects = INITIAL_PROJECTS, setActive, employees = EMPLOYE
   );
 }
 
-function Safety({ showToast, employees = EMPLOYEES }) {
+function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
   const [checked, setChecked] = useState(false);
   const [signed, setSigned] = useState(() => employees.map(() => false));
   useEffect(() => {
@@ -803,12 +803,8 @@ function Safety({ showToast, employees = EMPLOYEES }) {
       <div className="grid-2">
         <div className="sign-card">
           <div className="sign-title">📋 電梯施工安全守則</div>
-          <div className="safety-clause">
-            <p><strong>第一條 — 個人防護裝備：</strong>所有進入施工現場人員必須全程佩戴安全帽、安全鞋及反光背心。電梯槽內作業必須配備安全繩及防墜落裝置。</p>
-            <p><strong>第二條 — 電源管制：</strong>進行任何電氣工程前，必須確認主電源已切斷並上鎖（LOTO程序），並在配電箱貼上警告標示。</p>
-            <p><strong>第三條 — 高空作業：</strong>超過2米高度作業必須使用獲認可之升降台或搭棚架，不得單人作業，必須保持通話聯絡。</p>
-            <p><strong>第四條 — 危險品存放：</strong>潤滑油、清潔劑等危險品須存放於指定區域，遠離熱源，並確保通風良好。</p>
-            <p><strong>第五條 — 緊急應變：</strong>熟悉緊急撤離路線及急救箱位置。發生意外須即時通報主管並填寫事故報告表。</p>
+          <div className="safety-clause" style={{ maxHeight: 400, overflowY: "auto", whiteSpace: "pre-wrap", fontSize: 12, lineHeight: 1.7, padding: "14px 16px" }}>
+            {safetyRules || "（未載入守則內容，請於系統設定頁面編輯）"}
           </div>
           <div className="sign-confirm-row">
             <div
@@ -8108,7 +8104,7 @@ PPE 包括：
             )}
             {active === "staff"   && <StaffManagement employees={employees} setEmployees={setEmployees} showToast={showToast} />}
             {active === "empdocs" && <EmployeeDocs showToast={showToast} employees={employees} />}
-            {active === "safety" && <Safety showToast={showToast} employees={employees} />}
+            {active === "safety" && <Safety showToast={showToast} employees={employees} safetyRules={safetyRules} />}
             {active === "attendance" && <Attendance showToast={showToast} employees={employees} projects={projects} setProjects={setProjectsState} />}
             {active === "progress" && <Progress showToast={showToast} projects={projects} employees={employees} onUpdateProgress={(projName, newPct) => setProjectsState(prev => prev.map(p => p.name === projName ? { ...p, pct: newPct } : p))} />}
             {active === "invoice" && <Invoice showToast={showToast} />}
