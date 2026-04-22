@@ -7645,7 +7645,17 @@ export default function App() {
   });
   const [safetyRules, setSafetyRules] = useState(() => {
     try {
-      return localStorage.getItem("safetyRules") || `安全健康工作安排
+      const saved = localStorage.getItem("safetyRules");
+      const version = localStorage.getItem("safetyRulesVersion");
+      // Force upgrade old cached rules to new EMSD version
+      if (saved && version !== "emsd-2026-04") {
+        localStorage.removeItem("safetyRules");
+        localStorage.setItem("safetyRulesVersion", "emsd-2026-04");
+      } else if (saved) {
+        return saved;
+      }
+      localStorage.setItem("safetyRulesVersion", "emsd-2026-04");
+      return `安全健康工作安排
 《升降機工程公司｜安全培訓及承諾書》
 
 一、目的
