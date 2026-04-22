@@ -771,14 +771,16 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
     return () => clearInterval(id);
   }, []);
 
-  // Get today's signings for a given employee
-  const getTodaySignedSites = (empId) => {
-    const today = new Date().toISOString().split("T")[0];
-    return [...new Set(
-      ackRecords
-        .filter(a => a.employee_id === empId && a.signed_at?.startsWith(today) && a.site)
-        .map(a => a.site)
-    )];
+  // Get sites this employee has a VALID (not expired) signature for, keyed by site
+  const getValidSiteAcks = (empId) => {
+    const now = new Date();
+    const out = {};
+    ackRecords
+      .filter(a => a.employee_id === empId && a.site && a.valid_until && new Date(a.valid_until) >= now)
+      .forEach(a => {
+        if (!out[a.site] || new Date(a.signed_at) > new Date(out[a.site].signed_at)) out[a.site] = a;
+      });
+    return out;
   };
   // Get today's assigned sites for a given employee
   const getAssignedSites = (empId) => {
@@ -1021,7 +1023,7 @@ This certificate is system-generated. For enquiries, contact Mr. Kam at 5444 209
       {/* Today per-site signing vs dispatch */}
       <div className="card" style={{ marginTop: 4, marginBottom: 4 }}>
         <div className="card-header">
-          <div className="card-title">📍 今日工地簽署狀態（與派更對比）</div>
+          <div className="card-title">📍 工地簽署狀態（派更 vs 有效簽署，每6個月）</div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#22c55e" }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", animation: "pulse 2s infinite" }} />
             即時更新
@@ -1029,20 +1031,18 @@ This certificate is system-generated. For enquiries, contact Mr. Kam at 5444 209
         </div>
         <div className="card-body" style={{ padding: "12px 20px" }}>
           {(() => {
-            // Build list of employees with assignments or signings today
-            const activeEmps = employees.filter(e => getAssignedSites(e.id).length > 0 || getTodaySignedSites(e.id).length > 0);
+            const activeEmps = employees.filter(e => getAssignedSites(e.id).length > 0 || Object.keys(getValidSiteAcks(e.id)).length > 0);
             if (activeEmps.length === 0) return (
               <div style={{ textAlign: "center", padding: 30, color: "#555d6e" }}>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>📭</div>
-                <div style={{ fontSize: 13 }}>今日尚無派更或簽署記錄</div>
+                <div style={{ fontSize: 13 }}>今日尚無派更或有效簽署</div>
                 <div style={{ fontSize: 11, color: "#3a4255", marginTop: 4 }}>可到「派更管理」分配員工到工地</div>
               </div>
             );
             return activeEmps.map(emp => {
               const assigned = getAssignedSites(emp.id);
-              const signedToday = getTodaySignedSites(emp.id);
-              const missingSigns = assigned.filter(s => !signedToday.includes(s));
-              const extraSigns = signedToday.filter(s => !assigned.includes(s));
+              const validAcks = getValidSiteAcks(emp.id);
+              const missingSigns = assigned.filter(s => !validAcks[s]);
               return (
                 <div key={emp.id} style={{ background: "#0d0f12", border: `1px solid ${missingSigns.length > 0 ? "#d63030" : "#1e2330"}`, borderRadius: 10, padding: "10px 14px", marginBottom: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
@@ -1050,14 +1050,14 @@ This certificate is system-generated. For enquiries, contact Mr. Kam at 5444 209
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 700, fontSize: 13 }}>{emp.name}</div>
                       <div style={{ fontSize: 10, color: "#555d6e" }}>
-                        派更 {assigned.length} · 已簽 {signedToday.length}
+                        今日派更 {assigned.length} · 有效簽署 {Object.keys(validAcks).length}
                         {missingSigns.length > 0 && <span style={{ color: "#d63030", fontWeight: 700, marginLeft: 6 }}>⚠️ 缺 {missingSigns.length} 份</span>}
                       </div>
                     </div>
                     {missingSigns.length > 0 && emp.phone && (
                       <button onClick={() => {
                         const list = missingSigns.map((s, i) => `  ${i + 1}. ${s}`).join("\n");
-                        const msg = `${emp.name} 您好，\n您今日被派更至以下工地，但尚未簽署安全守則，請即使用員工 App 簽署：\n${list}\n\nhttps://elevator-staff.vercel.app`;
+                        const msg = `${emp.name} 您好，\n您被派更至以下工地，但尚未簽署安全守則，請即使用員工 App 簽署：\n${list}\n\nhttps://elevator-staff.vercel.app`;
                         const r = sendWhatsApp(emp.phone, msg);
                         if (r.ok) showToast(`📱 已開啟 WhatsApp 催簽 ${emp.name}`, "success");
                       }}
@@ -1066,18 +1066,31 @@ This certificate is system-generated. For enquiries, contact Mr. Kam at 5444 209
                   </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                     {assigned.map(s => {
-                      const isSigned = signedToday.includes(s);
+                      const ack = validAcks[s];
+                      if (ack) {
+                        const daysLeft = Math.ceil((new Date(ack.valid_until) - new Date()) / 86400000);
+                        return (
+                          <span key={s} title={`簽於 ${new Date(ack.signed_at).toLocaleDateString("zh-HK")}，有效至 ${new Date(ack.valid_until).toLocaleDateString("zh-HK")}`}
+                            style={{ fontSize: 11, padding: "4px 10px", borderRadius: 12, fontWeight: 600, background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid #22c55e" }}>
+                            ✅ {s} (剩{daysLeft}日)
+                          </span>
+                        );
+                      }
                       return (
-                        <span key={s} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 12, fontWeight: 600, background: isSigned ? "rgba(34,197,94,0.1)" : "rgba(214,48,48,0.1)", color: isSigned ? "#22c55e" : "#d63030", border: `1px solid ${isSigned ? "#22c55e" : "#d63030"}` }}>
-                          {isSigned ? "✅" : "⚠️"} {s}
+                        <span key={s} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 12, fontWeight: 600, background: "rgba(214,48,48,0.1)", color: "#d63030", border: "1px solid #d63030" }}>
+                          ⚠️ {s}
                         </span>
                       );
                     })}
-                    {extraSigns.map(s => (
-                      <span key={s} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 12, fontWeight: 600, background: "rgba(96,165,250,0.1)", color: "#60a5fa", border: "1px solid #60a5fa" }}>
-                        ℹ️ {s}（額外）
-                      </span>
-                    ))}
+                    {Object.entries(validAcks).filter(([s]) => !assigned.includes(s)).map(([s, ack]) => {
+                      const daysLeft = Math.ceil((new Date(ack.valid_until) - new Date()) / 86400000);
+                      return (
+                        <span key={s} title={`簽於 ${new Date(ack.signed_at).toLocaleDateString("zh-HK")}`}
+                          style={{ fontSize: 11, padding: "4px 10px", borderRadius: 12, fontWeight: 600, background: "rgba(96,165,250,0.1)", color: "#60a5fa", border: "1px solid #60a5fa" }}>
+                          ℹ️ {s} (剩{daysLeft}日)
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               );
