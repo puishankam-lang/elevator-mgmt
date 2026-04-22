@@ -854,14 +854,16 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
     const emp = employees[i];
     if (!emp) return;
     if (!emp.phone) { showToast(`⚠️ ${emp.name} 未設定電話號碼`, "error"); return; }
+    const co = getCompany();
     const s = getSafetyStatus(emp.id);
+    const appUrl = "https://elevator-staff.vercel.app";
     let msg;
     if (s.status === "expired") {
-      msg = `${emp.name} 您好，\n\n⚠️ 您的安全守則簽署已於 ${new Date(s.ack.valid_until).toLocaleDateString("zh-HK")} 過期。\n\n根據公司政策，每 6 個月須重新簽署一次安全守則。請即使用員工 App 重新簽署：\nhttps://elevator-staff.vercel.app\n\n謝謝合作！`;
+      msg = `【${co.cn}】\n安全守則重簽通知\n\n${emp.name} 您好，\n\n━━━━━━━━━━━━━━\n⚠️ 重要：您的安全守則已過期\n過期日：${new Date(s.ack.valid_until).toLocaleDateString("zh-HK")}\n━━━━━━━━━━━━━━\n\n按公司政策，安全守則需每 6 個月重新簽署一次。\n為符合勞保合規及工程安全要求，請盡快完成。\n\n🔗 簽署連結\n${appUrl}\n\n如有疑問請聯絡管理部。\n\n— ${co.cn} 管理部`;
     } else if (s.status === "expiring") {
-      msg = `${emp.name} 您好，\n\n⏰ 您的安全守則將於 ${s.daysLeft} 日後（${new Date(s.ack.valid_until).toLocaleDateString("zh-HK")}）過期。\n\n請盡早用員工 App 重新簽署：\nhttps://elevator-staff.vercel.app\n\n謝謝合作！`;
+      msg = `【${co.cn}】\n安全守則到期提醒\n\n${emp.name} 您好，\n\n━━━━━━━━━━━━━━\n⏰ 您的安全守則將於 ${s.daysLeft} 日後到期\n到期日：${new Date(s.ack.valid_until).toLocaleDateString("zh-HK")}\n━━━━━━━━━━━━━━\n\n為避免影響工作安排，建議盡早完成續簽。\n\n🔗 簽署連結\n${appUrl}\n\n— ${co.cn} 管理部`;
     } else {
-      msg = `${emp.name} 您好，\n\n請用員工 App 簽署最新安全守則（每半年一次）：\nhttps://elevator-staff.vercel.app\n\n謝謝合作！`;
+      msg = `【${co.cn}】\n\n${emp.name} 您好，\n\n請透過員工 App 簽署最新安全守則（每半年一次）：\n\n🔗 ${appUrl}\n\n— ${co.cn} 管理部`;
     }
     const r = sendWhatsApp(emp.phone, msg);
     if (r.ok) showToast(`📱 WhatsApp 已開啟 — 請按發送鍵寄給 ${emp.name}`, "success");
@@ -5607,19 +5609,37 @@ function SubWorkerManagement({ showToast }) {
     const link = `${STAFF_APP_URL}?upload_token=${token}`;
     const phone = (worker.phone || "").replace(/\D/g, "");
     const fullPhone = phone.length === 8 ? `852${phone}` : phone;
-    const msg = `${worker.name} 你好！
+    const co = getCompany();
+    const msg = `【${co.cn}】
 
-請透過以下連結上傳所需文件（免登入，直接開連結即可）：
+${worker.name} 您好，
 
-📱 連結：${link}
+為配合工程管理及合規要求，煩請上載以下文件：
 
-請上載：
-• 平安咭（綠咭）*必須
-• 身份證副本 *必須
-• 住址證明 *必須
-• 其他專業證書（如有）
+━━━━━━━━━━━━━━
+📌 必須文件（3 份）
+━━━━━━━━━━━━━━
+1. 平安咭（綠咭）
+2. 身份證副本
+3. 住址證明
 
-所有文件上傳後，管理員會自動收到通知。謝謝合作！`;
+📎 選擇性文件
+• 專業證書 / 牌照
+
+━━━━━━━━━━━━━━
+🔗 上載連結（免登入）
+${link}
+━━━━━━━━━━━━━━
+
+📱 使用方法：
+1. 點擊上方連結
+2. 逐項拍照或選檔案上載
+3. 完成即可，系統會自動通知我們
+
+⏱ 建議於 3 日內完成
+如有疑問請即時聯絡。
+
+— ${co.cn} 管理部`;
     if (!phone) { showToast("⚠️ 此員工沒有電話號碼", "error"); return; }
     window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(msg)}`, "_blank");
     showToast(`📱 已開啟 WhatsApp 發送予 ${worker.name}`);
@@ -6044,14 +6064,16 @@ function GeneralSafetyPage({ showToast, employees = [], safetyRules = "" }) {
 
   const handleRemind = (emp) => {
     if (!emp.phone) { showToast(`⚠️ ${emp.name} 未設定電話號碼`, "error"); return; }
+    const co = getCompany();
     const s = getStatus(emp.id);
+    const appUrl = "https://elevator-staff.vercel.app";
     let msg;
     if (s.status === "expired") {
-      msg = `${emp.name} 您好，\n\n⚠️ 您的《公司通用版安全守則》簽署已於 ${new Date(s.ack.valid_until).toLocaleDateString("zh-HK")} 過期。\n\n根據公司政策，每 6 個月須重新簽署一次。請即使用員工 App 重新簽署：\nhttps://elevator-staff.vercel.app\n\n呢份係勞保合規必要文件，請盡快完成。`;
+      msg = `【${co.cn}】\n內部安全守則重簽通知\n\n${emp.name} 您好，\n\n━━━━━━━━━━━━━━\n⚠️ 您的公司通用版安全守則已過期\n過期日：${new Date(s.ack.valid_until).toLocaleDateString("zh-HK")}\n━━━━━━━━━━━━━━\n\n此為勞工保險合規必要文件，每 6 個月需重新簽署一次。\n請即透過員工 App 完成簽署。\n\n🔗 ${appUrl}\n\n如有疑問請聯絡管理部。\n\n— ${co.cn} 管理部`;
     } else if (s.status === "expiring") {
-      msg = `${emp.name} 您好，\n\n⏰ 您的《公司通用版安全守則》將於 ${s.daysLeft} 日後（${new Date(s.ack.valid_until).toLocaleDateString("zh-HK")}）過期。\n\n請盡早用員工 App 重新簽署：\nhttps://elevator-staff.vercel.app`;
+      msg = `【${co.cn}】\n安全守則到期提醒\n\n${emp.name} 您好，\n\n━━━━━━━━━━━━━━\n⏰ 公司通用版安全守則將於 ${s.daysLeft} 日後到期\n到期日：${new Date(s.ack.valid_until).toLocaleDateString("zh-HK")}\n━━━━━━━━━━━━━━\n\n建議盡早完成續簽，避免影響合規狀態。\n\n🔗 ${appUrl}\n\n— ${co.cn} 管理部`;
     } else {
-      msg = `${emp.name} 您好，\n\n請用員工 App 簽署《公司通用版安全守則》（每半年一次，勞保合規必要）：\nhttps://elevator-staff.vercel.app`;
+      msg = `【${co.cn}】\n\n${emp.name} 您好，\n\n請透過員工 App 簽署《公司通用版安全守則》（每半年一次，勞保合規必要）：\n\n🔗 ${appUrl}\n\n— ${co.cn} 管理部`;
     }
     const r = sendWhatsApp(emp.phone, msg);
     if (r.ok) showToast(`📱 已催簽 ${emp.name}`, "success");
@@ -7026,31 +7048,45 @@ function AnnouncePage({ showToast, employees = [] }) {
   const buildMsg = (emp) => {
     const co = getCompany();
     const pin = emp.pin || "0000";
-    return `${emp.name} 你好！👋
+    return `【${co.nameCN || co.cn}】
+員工手機 App 正式啟用通知
 
-${co.nameCN} 現已推行數碼化管理，以下係你嘅專屬手機APP：
+${emp.name} 您好，
 
-📱 連結：${appUrl}
-📞 登入電話：${emp.phone}
-🔑 PIN碼：${pin}
+公司已推出專屬員工手機 App，請即啟用並按步驟完成日常工作記錄。
 
-由即日起，你需要透過呢個APP完成以下事項：
+━━━━━━━━━━━━━━
+🔐 您的登入資料
+━━━━━━━━━━━━━━
+手機號碼：${emp.phone}
+PIN 碼：${pin}
 
-✅ 每日簽到簽退（GPS定位打卡）
-✅ 填寫數碼日誌（每日工作進度）
-✅ 更新工程進度（確保項目準時完工）
-✅ 上載所需文件：
-　　• 平安咭（綠咭）
-　　• 身份證副本
-　　• 住址證明
-　　• 其他相關證書
+🔗 登入連結
+${appUrl}
 
-📌 加到手機主畫面（方便日後使用）：
-iPhone：用 Safari 開啟連結 → 按底部「分享」按鈕 → 選「加入主畫面」
-Android：用 Chrome 開啟連結 → 按右上角「⋮」→ 選「加至主畫面」
+━━━━━━━━━━━━━━
+📋 每日必做事項
+━━━━━━━━━━━━━━
+• GPS 簽到 / 簽退
+• 填寫每日工序申報
+• 更新工程進度
 
-⚠️ 以上為公司新規定，請每日準時完成。
-如有疑問請聯絡管理員。多謝合作！💪`;
+📁 首次登入後請上載
+• 平安咭（綠咭）
+• 身份證副本
+• 住址證明
+• 其他相關證書（如有）
+
+━━━━━━━━━━━━━━
+💡 加到主畫面（更方便）
+━━━━━━━━━━━━━━
+iPhone：Safari → 分享 → 加入主畫面
+Android：Chrome → ⋮ → 加至主畫面
+
+如有任何疑問，請聯絡管理部。
+多謝合作！
+
+— ${co.nameCN || co.cn}`;
   };
 
   const sendOne = (emp) => {
