@@ -532,6 +532,7 @@ const NAV_ITEMS = [
   { id: "empdocs", icon: "📁", label: "員工文件" },
   { id: "subworkers", icon: "👷", label: "判頭管理" },
   { id: "workorder", icon: "📝", label: "每日工序" },
+  { id: "archive", icon: "📦", label: "文件歸檔" },
   { id: "leave", icon: "🏖️", label: "請假審批" },
   { id: "calendar", icon: "📅", label: "行事曆" },
   { id: "quotation", icon: "📄", label: "報價單" },
@@ -5873,6 +5874,318 @@ h3{margin:24px 0 14px;font-size:15px;color:#333}
   );
 }
 
+// ── Project Archive (文件歸檔 / 一鍵上繳) ─────────────────────────────────────
+function ProjectArchive({ showToast, employees = [], projects = [] }) {
+  const today = new Date().toISOString().split("T")[0];
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
+  const [selProj, setSelProj] = useState("");
+  const [startDate, setStartDate] = useState(sevenDaysAgo);
+  const [endDate, setEndDate] = useState(today);
+  const [loading, setLoading] = useState(false);
+  const [records, setRecords] = useState({ safety_signs: [], safety_acks: [], work_orders: [], progress: [], attendance: [] });
+
+  const empName = (id) => employees.find(e => e.id === id)?.name || `員工#${id}`;
+  const activeProjects = projects.filter(p => p.phase === "active" || p.phase === "pending");
+
+  const fetchAll = async () => {
+    if (!selProj) { showToast("⚠️ 請選擇工地", "error"); return; }
+    setLoading(true);
+    try {
+      const dateFilter = `work_date=gte.${startDate}&work_date=lte.${endDate}`;
+      const [signsR, acksR, progR, attR] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/safety_signs?site=eq.${encodeURIComponent(selProj)}&${dateFilter}&order=submitted_at.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
+        fetch(`${SUPABASE_URL}/rest/v1/safety_acknowledgments?site=eq.${encodeURIComponent(selProj)}&signed_at=gte.${startDate}T00:00:00&signed_at=lte.${endDate}T23:59:59&order=signed_at.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
+        fetch(`${SUPABASE_URL}/rest/v1/progress_reports?project=eq.${encodeURIComponent(selProj)}&submitted_at=gte.${startDate}T00:00:00&submitted_at=lte.${endDate}T23:59:59&order=submitted_at.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
+        fetch(`${SUPABASE_URL}/rest/v1/attendance?site=eq.${encodeURIComponent(selProj)}&date=gte.${startDate}&date=lte.${endDate}&order=check_in.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
+      ]);
+      setRecords({
+        safety_signs: Array.isArray(signsR) ? signsR : [],
+        safety_acks: Array.isArray(acksR) ? acksR : [],
+        work_orders: Array.isArray(signsR) ? signsR : [],
+        progress: Array.isArray(progR) ? progR : [],
+        attendance: Array.isArray(attR) ? attR : [],
+      });
+      showToast(`✅ 已載入 ${(signsR?.length||0)+(acksR?.length||0)+(progR?.length||0)+(attR?.length||0)} 份記錄`);
+    } catch (e) { showToast("❌ 載入失敗：" + e.message, "error"); }
+    setLoading(false);
+  };
+
+  useEffect(() => { if (selProj) fetchAll(); }, [selProj]);
+
+  const fmtDate = (d) => new Date(d).toISOString().split("T")[0].replace(/-/g, "");
+  const cleanName = (s) => String(s || "unknown").replace(/[\\/:*?"<>|\s]/g, "");
+  const projCode = (s) => {
+    const m = String(s || "").match(/EC[-\s]?\d+/i);
+    return m ? m[0].replace(/\s/g, "") : cleanName(s).slice(0, 20);
+  };
+
+  const buildFilename = (type, record) => {
+    const emp = empName(record.employee_id);
+    let dateStr;
+    if (type === "SafetySign") dateStr = fmtDate(record.submitted_at || record.date);
+    else if (type === "SafetyAck") dateStr = fmtDate(record.signed_at);
+    else if (type === "Progress") dateStr = fmtDate(record.submitted_at);
+    else if (type === "Attendance") dateStr = fmtDate(record.check_in || record.date);
+    else dateStr = fmtDate(new Date());
+    return `${dateStr}_${projCode(selProj)}_${cleanName(emp)}_${type}.pdf`;
+  };
+
+  const totalCount = records.safety_acks.length + records.safety_signs.length + records.progress.length + records.attendance.length;
+
+  const generateSubmissionPackage = () => {
+    if (totalCount === 0) { showToast("⚠️ 沒有記錄可打包", "error"); return; }
+    const co = getCompany();
+    const w = window.open("", "_blank"); if (!w) return;
+    const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    const ackSection = records.safety_acks.length === 0 ? "" : `
+<h2 style="page-break-before:always">📋 安全守則簽署記錄 (${records.safety_acks.length})</h2>
+<table class="tbl"><thead><tr><th>日期</th><th>員工</th><th>工地</th><th>有效期至</th><th>檔名</th></tr></thead><tbody>
+${records.safety_acks.map(r => `<tr><td>${new Date(r.signed_at).toLocaleString("zh-HK")}</td><td>${esc(empName(r.employee_id))}</td><td>${esc(r.site)}</td><td>${r.valid_until || "—"}</td><td class="fn">${buildFilename("SafetyAck", r)}</td></tr>`).join("")}
+</tbody></table>`;
+
+    const signSection = records.safety_signs.length === 0 ? "" : `
+<h2 style="page-break-before:always">📝 每日工序申報 (${records.safety_signs.length})</h2>
+${records.safety_signs.map(r => `
+<div class="record">
+  <div class="rec-hdr"><span>${new Date(r.submitted_at || r.work_date).toLocaleString("zh-HK")} · ${esc(empName(r.employee_id))}</span><span class="fn">${buildFilename("SafetySign", r)}</span></div>
+  <table class="kv">
+    <tr><td>工地</td><td>${esc(r.site || "—")}</td></tr>
+    <tr><td>升降機編號</td><td>${esc(r.lift_no || "—")}</td></tr>
+    <tr><td>工作類別</td><td>${esc(r.work_category || "—")}</td></tr>
+    <tr><td>工序細項</td><td>${esc(r.tasks || "—")}</td></tr>
+    <tr><td>RWL 負責人</td><td>${esc(r.rlw || "—")}</td></tr>
+    <tr><td>在場員工</td><td>${esc(r.workers || "—")}</td></tr>
+    <tr><td>PPE</td><td>${esc(r.safety_ppe || "—")}</td></tr>
+    <tr><td>安全措施</td><td>${esc(r.safety_measures || "—")}</td></tr>
+    <tr><td>安全部件</td><td>${esc(r.components || "—")}</td></tr>
+    ${r.abnormal ? `<tr><td>⚠️ 異常</td><td style="color:#d63030;font-weight:700">${esc(r.abnormal_desc || "")}</td></tr>` : ""}
+    ${r.gps_lat ? `<tr><td>GPS</td><td>${r.gps_lat}, ${r.gps_lng} (±${Math.round(r.gps_accuracy || 0)}m)</td></tr>` : ""}
+    ${r.remarks ? `<tr><td>備註</td><td>${esc(r.remarks)}</td></tr>` : ""}
+  </table>
+</div>`).join("")}`;
+
+    const progSection = records.progress.length === 0 ? "" : `
+<h2 style="page-break-before:always">📊 工程進度回報 (${records.progress.length})</h2>
+<table class="tbl"><thead><tr><th>日期</th><th>員工</th><th>進度</th><th>狀態</th><th>備註</th><th>檔名</th></tr></thead><tbody>
+${records.progress.map(r => `<tr><td>${new Date(r.submitted_at).toLocaleString("zh-HK")}</td><td>${esc(empName(r.employee_id))}</td><td>${r.pct || 0}%</td><td>${esc(r.status === "in_progress" ? "進行中" : "已完成")}</td><td>${esc(r.note || "")}</td><td class="fn">${buildFilename("Progress", r)}</td></tr>`).join("")}
+</tbody></table>`;
+
+    const attSection = records.attendance.length === 0 ? "" : `
+<h2 style="page-break-before:always">📍 GPS 考勤記錄 (${records.attendance.length})</h2>
+<table class="tbl"><thead><tr><th>日期</th><th>員工</th><th>簽到</th><th>簽退</th><th>GPS</th><th>檔名</th></tr></thead><tbody>
+${records.attendance.map(r => `<tr><td>${r.date}</td><td>${esc(empName(r.employee_id))}</td><td>${r.check_in ? new Date(r.check_in).toLocaleTimeString("zh-HK") : "—"}</td><td>${r.check_out ? new Date(r.check_out).toLocaleTimeString("zh-HK") : "—"}</td><td>${r.check_in_lat ? `${Number(r.check_in_lat).toFixed(4)},${Number(r.check_in_lng).toFixed(4)}` : "—"}</td><td class="fn">${buildFilename("Attendance", r)}</td></tr>`).join("")}
+</tbody></table>`;
+
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>上繳文件包 — ${esc(selProj)}</title>
+<style>
+@page { size: A4; margin: 12mm 14mm; }
+body { font-family: 'Microsoft JhengHei','Noto Sans TC',Arial,sans-serif; color: #000; max-width: 900px; margin: 0 auto; padding: 20px 28px; font-size: 11px; line-height: 1.6; -webkit-print-color-adjust: exact; }
+.header { border-bottom: 3px solid #f0c000; padding-bottom: 12px; margin-bottom: 16px; }
+.co-cn { font-size: 18px; font-weight: 900; }
+.co-en { font-size: 10px; color: #666; }
+.title { font-size: 22px; font-weight: 800; margin: 12px 0 6px; color: #f0c000; }
+.meta { background: #f9f9f9; padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 11px; line-height: 1.8; }
+.meta strong { display: inline-block; width: 90px; color: #555; }
+h2 { font-size: 14px; background: #1a1a1a; color: #fff; padding: 8px 12px; margin: 20px 0 10px; border-radius: 4px; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 10px; }
+.tbl th { background: #333; color: #fff; padding: 6px 8px; text-align: left; }
+.tbl td { padding: 5px 8px; border-bottom: 1px solid #ddd; }
+.record { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 10px 14px; margin-bottom: 10px; page-break-inside: avoid; }
+.rec-hdr { display: flex; justify-content: space-between; font-weight: 700; font-size: 11px; padding-bottom: 6px; border-bottom: 1px solid #eee; margin-bottom: 6px; }
+.kv { width: 100%; font-size: 10px; }
+.kv td:first-child { color: #666; width: 90px; padding: 2px 4px; font-weight: 600; }
+.kv td:last-child { padding: 2px 4px; color: #000; }
+.fn { font-family: monospace; font-size: 9px; color: #888; }
+.summary-box { background: #fff7d6; border: 2px solid #f0c000; padding: 12px 16px; border-radius: 6px; margin: 14px 0; }
+.summary-box h3 { margin: 0 0 6px; font-size: 13px; }
+.footer { margin-top: 24px; border-top: 1px solid #ddd; padding-top: 10px; font-size: 9px; color: #888; text-align: center; }
+.noprint { position: fixed; top: 12px; right: 12px; z-index: 100; }
+@media print { .noprint { display: none !important; } }
+</style></head><body>
+<button class="noprint" onclick="window.print()" style="padding:10px 20px;background:#f0c000;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:800;font-size:14px">🖨️ 列印 / 儲存 PDF</button>
+
+<div class="header">
+  <div class="co-cn">${esc(co.cn)}</div>
+  <div class="co-en">${esc(co.en)}</div>
+</div>
+<div class="title">📦 獨立地盤上繳文件包</div>
+<div class="meta">
+  <div><strong>地盤：</strong>${esc(selProj)}</div>
+  <div><strong>地盤編號：</strong>${projCode(selProj)}</div>
+  <div><strong>日期範圍：</strong>${startDate} 至 ${endDate}</div>
+  <div><strong>生成時間：</strong>${new Date().toLocaleString("zh-HK")}</div>
+  <div><strong>出單公司：</strong>${esc(co.cn)} (${esc(co.en)})</div>
+</div>
+
+<div class="summary-box">
+  <h3>📋 文件摘要</h3>
+  <table class="tbl" style="background:#fff">
+    <thead><tr><th>類別</th><th>數量</th><th>涉及日期</th></tr></thead>
+    <tbody>
+      <tr><td>📋 安全守則簽署（半年）</td><td>${records.safety_acks.length}</td><td>${records.safety_acks[0] ? new Date(records.safety_acks[records.safety_acks.length-1].signed_at).toLocaleDateString("zh-HK") + " – " + new Date(records.safety_acks[0].signed_at).toLocaleDateString("zh-HK") : "—"}</td></tr>
+      <tr><td>📝 每日工序申報</td><td>${records.safety_signs.length}</td><td>${records.safety_signs[0] ? new Date(records.safety_signs[records.safety_signs.length-1].submitted_at || records.safety_signs[records.safety_signs.length-1].work_date).toLocaleDateString("zh-HK") + " – " + new Date(records.safety_signs[0].submitted_at || records.safety_signs[0].work_date).toLocaleDateString("zh-HK") : "—"}</td></tr>
+      <tr><td>📊 工程進度回報</td><td>${records.progress.length}</td><td>${records.progress[0] ? new Date(records.progress[records.progress.length-1].submitted_at).toLocaleDateString("zh-HK") + " – " + new Date(records.progress[0].submitted_at).toLocaleDateString("zh-HK") : "—"}</td></tr>
+      <tr><td>📍 GPS 考勤</td><td>${records.attendance.length}</td><td>${records.attendance[0] ? records.attendance[records.attendance.length-1].date + " – " + records.attendance[0].date : "—"}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+${ackSection}
+${signSection}
+${progSection}
+${attSection}
+
+<div class="footer">
+  此文件包由 ${esc(co.cn)} 管理系統自動生成 · 生成時間 ${new Date().toLocaleString("zh-HK")}<br/>
+  檔案命名格式：[YYYYMMDD]_[ProjectCode]_[WorkerName]_[RecordType].pdf
+</div>
+</body></html>`);
+    w.document.close();
+    showToast(`✅ 已生成 ${totalCount} 份記錄的上繳文件包`);
+  };
+
+  return (
+    <div>
+      {/* Selector */}
+      <div className="sign-card" style={{ marginBottom: 16, borderTop: "3px solid #f0c000" }}>
+        <div className="sign-title">📦 獨立地盤文件歸檔 — 選擇工地 & 日期範圍</div>
+        <div style={{ fontSize: 12, color: "#9aa0b4", marginBottom: 12, lineHeight: 1.6 }}>
+          系統會自動整合該工地在選定日期內的所有安全簽署、工序申報、進度回報及 GPS 考勤記錄，<br/>
+          一鍵生成專業嘅上繳文件包（PDF 格式，統一命名）。
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
+          <div>
+            <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>工地／工程 *</div>
+            <select value={selProj} onChange={e => setSelProj(e.target.value)} className="form-select" style={{ background: "#0d0f12", width: "100%" }}>
+              <option value="">── 選擇工地 ──</option>
+              {activeProjects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>開始日期</div>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="form-input" style={{ background: "#0d0f12" }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>結束日期</div>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="form-input" style={{ background: "#0d0f12" }} />
+          </div>
+          <button onClick={fetchAll} disabled={loading || !selProj} className="btn btn-primary" style={{ height: 38 }}>
+            {loading ? "載入中..." : "🔍 搜尋"}
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <button onClick={() => { setStartDate(new Date(Date.now() - 7*86400000).toISOString().split("T")[0]); setEndDate(today); }}
+            style={{ background: "#1e2330", border: "1px solid #2a3045", color: "#8891a4", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>最近 7 日</button>
+          <button onClick={() => { setStartDate(new Date(Date.now() - 30*86400000).toISOString().split("T")[0]); setEndDate(today); }}
+            style={{ background: "#1e2330", border: "1px solid #2a3045", color: "#8891a4", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>最近 30 日</button>
+          <button onClick={() => { const d = new Date(); setStartDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`); setEndDate(today); }}
+            style={{ background: "#1e2330", border: "1px solid #2a3045", color: "#8891a4", borderRadius: 6, padding: "4px 10px", fontSize: 11, cursor: "pointer" }}>本月</button>
+        </div>
+      </div>
+
+      {/* Summary */}
+      {selProj && !loading && (
+        <div className="grid-4" style={{ marginBottom: 16 }}>
+          {[
+            { label: "📋 安全簽署", value: records.safety_acks.length, color: "#22c55e" },
+            { label: "📝 工序申報", value: records.safety_signs.length, color: "#f0c000" },
+            { label: "📊 進度回報", value: records.progress.length, color: "#60a5fa" },
+            { label: "📍 考勤記錄", value: records.attendance.length, color: "#a78bfa" },
+          ].map((s, i) => (
+            <div key={i} className="sign-card" style={{ marginBottom: 0, textAlign: "center" }}>
+              <div style={{ fontSize: 28, fontWeight: 800, color: s.color }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: "#555d6e", marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Export button */}
+      {selProj && totalCount > 0 && (
+        <div className="sign-card" style={{ marginBottom: 16, borderTop: "3px solid #22c55e" }}>
+          <div className="sign-title" style={{ color: "#22c55e" }}>📦 一鍵打包上繳文件</div>
+          <div style={{ fontSize: 12, color: "#9aa0b4", marginBottom: 12 }}>
+            將以上 <strong style={{ color: "#22c55e" }}>{totalCount}</strong> 份記錄整合成一份專業 PDF（含公司 Header、摘要表、詳細內容、統一命名）。<br/>
+            適合 Email、WhatsApp 直接上繳俾大判或政府機關。
+          </div>
+          <button onClick={generateSubmissionPackage} className="btn btn-primary" style={{ width: "100%", background: "#22c55e", color: "#0d0f12", fontWeight: 800 }}>
+            📦 生成上繳文件包 PDF（{totalCount} 份記錄）
+          </button>
+          <div style={{ fontSize: 10, color: "#3a4255", marginTop: 8, textAlign: "center" }}>
+            📎 檔名格式：[YYYYMMDD]_{projCode(selProj)}_[WorkerName]_[RecordType].pdf
+          </div>
+        </div>
+      )}
+
+      {/* File list preview */}
+      {selProj && totalCount > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">📁 文件清單預覽</div>
+            <div style={{ fontSize: 11, color: "#555d6e" }}>統一命名格式，方便上繳</div>
+          </div>
+          <div className="card-body" style={{ padding: 0, maxHeight: 400, overflowY: "auto" }}>
+            <table className="data-table">
+              <thead><tr><th>日期</th><th>員工</th><th>類型</th><th>標準檔名</th></tr></thead>
+              <tbody>
+                {records.safety_acks.map(r => (
+                  <tr key={`ack-${r.id}`}>
+                    <td style={{ fontSize: 11 }}>{new Date(r.signed_at).toLocaleDateString("zh-HK")}</td>
+                    <td className="td-name">{empName(r.employee_id)}</td>
+                    <td><span className="badge green"><span className="badge-dot" />安全簽署</span></td>
+                    <td style={{ fontFamily: "monospace", fontSize: 10, color: "#60a5fa" }}>{buildFilename("SafetyAck", r)}</td>
+                  </tr>
+                ))}
+                {records.safety_signs.map(r => (
+                  <tr key={`sign-${r.id}`}>
+                    <td style={{ fontSize: 11 }}>{new Date(r.submitted_at || r.work_date).toLocaleDateString("zh-HK")}</td>
+                    <td className="td-name">{empName(r.employee_id)}</td>
+                    <td><span className="badge yellow"><span className="badge-dot" />工序申報</span></td>
+                    <td style={{ fontFamily: "monospace", fontSize: 10, color: "#60a5fa" }}>{buildFilename("SafetySign", r)}</td>
+                  </tr>
+                ))}
+                {records.progress.map(r => (
+                  <tr key={`prog-${r.id}`}>
+                    <td style={{ fontSize: 11 }}>{new Date(r.submitted_at).toLocaleDateString("zh-HK")}</td>
+                    <td className="td-name">{empName(r.employee_id)}</td>
+                    <td><span className="badge" style={{ background: "rgba(96,165,250,0.1)", color: "#60a5fa" }}><span className="badge-dot" />進度</span></td>
+                    <td style={{ fontFamily: "monospace", fontSize: 10, color: "#60a5fa" }}>{buildFilename("Progress", r)}</td>
+                  </tr>
+                ))}
+                {records.attendance.map(r => (
+                  <tr key={`att-${r.id}`}>
+                    <td style={{ fontSize: 11 }}>{r.date}</td>
+                    <td className="td-name">{empName(r.employee_id)}</td>
+                    <td><span className="badge" style={{ background: "rgba(167,139,250,0.1)", color: "#a78bfa" }}><span className="badge-dot" />考勤</span></td>
+                    <td style={{ fontFamily: "monospace", fontSize: 10, color: "#60a5fa" }}>{buildFilename("Attendance", r)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {selProj && totalCount === 0 && !loading && (
+        <div style={{ textAlign: "center", padding: 40, color: "#555d6e", background: "#13161c", borderRadius: 10, border: "1px solid #1e2330" }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
+          <div style={{ fontSize: 14 }}>該日期範圍內沒有記錄</div>
+          <div style={{ fontSize: 11, color: "#3a4255", marginTop: 4 }}>請嘗試擴大日期範圍</div>
+        </div>
+      )}
+
+      {!selProj && (
+        <div style={{ textAlign: "center", padding: 40, color: "#555d6e", background: "#13161c", borderRadius: 10, border: "1px solid #1e2330" }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>📦</div>
+          <div style={{ fontSize: 14, marginBottom: 6 }}>請先選擇工地</div>
+          <div style={{ fontSize: 11, color: "#3a4255" }}>系統會自動搜尋該地盤嘅所有合規記錄</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Work Order Page (每日工序申報) ────────────────────────────────────────────
 function WorkOrderPage({ showToast, employees = [] }) {
   const [orders, setOrders] = useState([]);
@@ -8299,6 +8612,7 @@ PPE 包括：
     tax: { icon: "🧾", title: "老闆稅務", sub: "計算器（香港有限公司）" },
     subworkers: { icon: "👷", title: "判頭管理", sub: "判頭員工資料 / 登入PIN / 工地分配" },
     workorder: { icon: "📝", title: "每日工序申報", sub: "員工每日工作日誌 / GPS 定位 / 異常跟進" },
+    archive: { icon: "📦", title: "文件歸檔", sub: "按地盤歸檔 / 一鍵上繳打包 / 獨立盤合規" },
     leave: { icon: "🏖️", title: "請假審批", sub: "員工請假申請 / 批核" },
     calendar: { icon: "📅", title: "行事曆", sub: "請假 / 工程完工 / 進度節點" },
     quotation: { icon: "📄", title: "報價單", sub: "報價管理 / 轉化為發票" },
@@ -8401,6 +8715,7 @@ PPE 包括：
             {active === "tax" && <TaxCalc showToast={showToast} />}
             {active === "subworkers" && <SubWorkerManagement showToast={showToast} />}
             {active === "workorder" && <WorkOrderPage showToast={showToast} employees={employees} />}
+            {active === "archive" && <ProjectArchive showToast={showToast} employees={employees} projects={projects} />}
             {active === "leave" && <LeaveApproval showToast={showToast} employees={employees} />}
             {active === "calendar" && <CalendarPage employees={employees} projects={projects} />}
             {active === "quotation" && <QuotationPage showToast={showToast} projects={projects} />}
