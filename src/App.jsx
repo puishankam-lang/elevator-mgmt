@@ -5638,49 +5638,129 @@ body { font-family: 'Microsoft JhengHei','Noto Sans TC',Arial,sans-serif; color:
                 style={{ background:"none", border:"none", color:"#555d6e", fontSize:20, cursor:"pointer" }}>✕</button>
             </div>
             {(() => {
+              const DOC_SLOTS = [
+                { id: "greencard", label: "綠卡（建造業工人安全卡）", icon: "🟢", required: true },
+                { id: "id",        label: "香港身份證",              icon: "🪪", required: true },
+                { id: "address",   label: "住址證明",                icon: "🏠", required: true },
+                { id: "license",   label: "專業證書 / 牌照",         icon: "📋", required: false },
+                { id: "other",     label: "其他證明",                icon: "📄", required: false },
+              ];
               const wDocs = allDocs.filter(d => d.contractor_id === viewDocsFor.id);
-              if (wDocs.length === 0) return (
-                <div style={{ textAlign:"center", padding:40, color:"#555d6e" }}>
-                  <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
-                  尚未上傳任何文件<br/>
-                  <button onClick={() => handleRequestDocs(viewDocsFor)}
-                    style={{ marginTop:12, background:"#22c55e", color:"#fff", border:"none", borderRadius:8, padding:"8px 16px", fontWeight:700, cursor:"pointer" }}>
-                    📤 發送 WhatsApp 請求上傳
-                  </button>
-                </div>
-              );
+              const requiredDone = DOC_SLOTS.filter(s => s.required && wDocs.some(d => d.doc_type === s.id)).length;
+              const requiredTotal = DOC_SLOTS.filter(s => s.required).length;
+
               return (
-                <div style={{ display:"grid", gap:10 }}>
-                  {wDocs.map(doc => {
-                    const label = ({greencard:"🪪 平安咭（綠咭）",id:"🆔 身份證副本",address:"🏠 住址證明",license:"📜 專業證書",other:"📄 其他證書"})[doc.doc_type] || doc.doc_type;
-                    const statusColor = doc.status === "approved" ? "#22c55e" : doc.status === "rejected" ? "#d63030" : "#f0c000";
-                    const statusLabel = ({pending_review:"待審核",approved:"✅ 已審核",rejected:"❌ 已拒絕"})[doc.status] || doc.status;
+                <>
+                  {/* Progress bar */}
+                  <div style={{ background:"#0d0f12", borderRadius:10, padding:"12px 14px", marginBottom:14, border:"1px solid #1e2330" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                      <span style={{ fontSize:12, fontWeight:700, color:"#c8d0e0" }}>必須文件進度</span>
+                      <span style={{ fontSize:14, fontWeight:800, color: requiredDone === requiredTotal ? "#22c55e" : "#f0c000" }}>
+                        {requiredDone}/{requiredTotal}
+                      </span>
+                    </div>
+                    <div style={{ height:6, background:"#1e2330", borderRadius:3, overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${(requiredDone/requiredTotal)*100}%`, background: requiredDone === requiredTotal ? "#22c55e" : "#f0c000", transition:"width 0.3s" }} />
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div style={{ display:"flex", gap:8, marginBottom:14 }}>
+                    <button onClick={() => handleRequestDocs(viewDocsFor)}
+                      style={{ flex:1, background:"rgba(34,197,94,0.1)", border:"1px solid #22c55e", color:"#22c55e", borderRadius:8, padding:"8px 12px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                      📤 WhatsApp 請求補交
+                    </button>
+                    <button onClick={() => {
+                      const co = getCompany();
+                      const w = window.open("", "_blank"); if (!w) return;
+                      const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                      const summaryRows = DOC_SLOTS.map(dt => {
+                        const dList = wDocs.filter(d => d.doc_type === dt.id);
+                        const last = dList.sort((a,b) => new Date(b.created_at) - new Date(a.created_at))[0];
+                        return `<tr><td>${dt.icon} ${esc(dt.label)}${dt.required?' <span style="font-size:10px;color:#ef4444">必須</span>':''}</td><td style="color:${dList.length>0?"#22c55e":"#ef4444"};font-weight:600">${dList.length>0?"✅ 已上傳":"❌ 待補交"}</td><td>${dList.length} 份</td><td>${last?new Date(last.created_at).toLocaleDateString("zh-HK"):"–"}</td></tr>`;
+                      }).join("");
+                      const docSections = DOC_SLOTS.map(dt => {
+                        const dList = wDocs.filter(d => d.doc_type === dt.id);
+                        if (dList.length === 0) return `<div class="doc-section"><div class="doc-hdr"><span>${dt.icon} ${esc(dt.label)}</span><span style="color:#ef4444;font-weight:700">❌ 待補交</span></div><div style="color:#aaa;font-size:12px;padding:10px 0">尚未上傳任何文件</div></div>`;
+                        const items = dList.map(d => `<div style="margin-top:10px"><div style="font-size:11px;color:#666;margin-bottom:4px">📄 ${esc(d.file_name)} · ${new Date(d.created_at).toLocaleString("zh-HK")}</div>${d.file_url ? `<img src="${d.file_url}" style="max-width:100%;max-height:320px;border:1px solid #ddd;border-radius:4px;display:block"/>` : ""}</div>`).join("");
+                        return `<div class="doc-section"><div class="doc-hdr"><span>${dt.icon} ${esc(dt.label)}</span><span style="color:#22c55e;font-weight:700">✅ ${dList.length} 份</span></div>${items}</div>`;
+                      }).join("");
+                      w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(viewDocsFor.name)} 判頭文件存檔</title>
+<style>body{font-family:Arial,'Microsoft JhengHei',sans-serif;padding:30px;font-size:13px;max-width:900px;margin:0 auto;color:#1a1a1a}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:12px;border-bottom:3px solid #FF6B1A}
+.company{font-size:20px;font-weight:700}
+.emp-info{background:#fff5ec;padding:14px 18px;border-radius:8px;margin-bottom:20px;border-left:4px solid #FF6B1A}
+.summary{width:100%;border-collapse:collapse;margin-bottom:24px;font-size:12px}
+.summary th{background:#1a1a1a;color:#fff;padding:9px 12px;text-align:left}
+.summary td{padding:9px 12px;border-bottom:1px solid #eee}
+.doc-section{border:1px solid #ddd;border-radius:8px;padding:14px 18px;margin-bottom:14px;page-break-inside:avoid;background:#fff}
+.doc-hdr{display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;padding-bottom:8px;border-bottom:1px solid #eee;margin-bottom:6px}
+h3{margin:24px 0 14px;font-size:15px;color:#333}
+@media print{.noprint{display:none}body{padding:15px}}</style></head><body>
+<div class="header"><div><div class="company">${esc(co.cn)}</div><div style="font-size:12px;color:#666">判頭文件存檔 — Sub-contractor Document Archive</div></div><div style="text-align:right;font-size:12px;color:#666">列印日期：${new Date().toLocaleDateString("zh-HK")}</div></div>
+<div class="emp-info"><div style="font-size:18px;font-weight:700">${esc(viewDocsFor.name)}</div><div style="font-size:12px;color:#666;margin-top:4px">${esc(viewDocsFor.role || "判頭技工")} · 手機：${esc(viewDocsFor.phone || "–")}${viewDocsFor.contractor_name ? ` · 所屬判頭：${esc(viewDocsFor.contractor_name)}` : ""}</div></div>
+<h3>📋 文件清單概覽</h3>
+<table class="summary"><thead><tr><th>文件類型</th><th>狀態</th><th>份數</th><th>最後上傳</th></tr></thead><tbody>${summaryRows}</tbody></table>
+<h3>📎 文件詳情</h3>${docSections}
+<div class="noprint" style="margin-top:30px;text-align:center"><button onclick="window.print()" style="padding:10px 24px;background:#FF6B1A;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700">🖨️ 列印 / 儲存 PDF</button></div>
+</body></html>`);
+                      w.document.close();
+                    }}
+                      style={{ flex:1, background:"rgba(240,192,0,0.1)", border:"1px solid #f0c000", color:"#f0c000", borderRadius:8, padding:"8px 12px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                      🖨️ 匯出全部 PDF
+                    </button>
+                  </div>
+
+                  {/* Doc slots */}
+                  {DOC_SLOTS.map(slot => {
+                    const existing = wDocs.filter(d => d.doc_type === slot.id);
+                    const hasFiles = existing.length > 0;
                     return (
-                      <div key={doc.id} style={{ background:"#0d0f12", border:"1px solid #1e2330", borderRadius:10, padding:12, display:"flex", gap:12, alignItems:"center" }}>
-                        {doc.file_url && <img src={doc.file_url} alt="" style={{ width:60, height:60, objectFit:"cover", borderRadius:6, background:"#1e2330" }} />}
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:13, fontWeight:700 }}>{label}</div>
-                          <div style={{ fontSize:10, color:"#555d6e" }}>{doc.file_name} · {new Date(doc.created_at).toLocaleString("zh-HK")}</div>
-                          <div style={{ fontSize:10, color:statusColor, fontWeight:600, marginTop:3 }}>{statusLabel}</div>
+                      <div key={slot.id} style={{ marginBottom:14, padding:"14px 16px", background:"#0d0f12", borderRadius:10, border:`1.5px solid ${hasFiles?"#22c55e":slot.required?"#d63030":"#1e2330"}` }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:hasFiles?10:0 }}>
+                          <div>
+                            <span style={{ fontSize:18, marginRight:8 }}>{slot.icon}</span>
+                            <span style={{ fontWeight:700, fontSize:14 }}>{slot.label}</span>
+                            {slot.required && <span style={{ marginLeft:8, fontSize:10, color:"#d63030", fontWeight:700 }}>必須</span>}
+                          </div>
+                          <span style={{ fontSize:12, color:hasFiles?"#22c55e":"#d63030", fontWeight:700 }}>
+                            {hasFiles ? `✅ ${existing.length} 份` : "❌ 待補交"}
+                          </span>
                         </div>
-                        <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                          <button onClick={() => window.open(doc.file_url, "_blank")}
-                            style={{ background:"#1e2330", border:"none", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:10, cursor:"pointer" }}>👁️ 查看</button>
-                          <button onClick={() => handleGeneratePDF(doc, viewDocsFor)}
-                            style={{ background:"#1e2330", border:"none", color:"#f0c000", borderRadius:5, padding:"4px 10px", fontSize:10, cursor:"pointer" }}>📄 PDF</button>
-                          {doc.status === "pending_review" && (
-                            <>
-                              <button onClick={() => handleUpdateDocStatus(doc.id, "approved")}
-                                style={{ background:"rgba(34,197,94,0.1)", border:"none", color:"#22c55e", borderRadius:5, padding:"4px 10px", fontSize:10, cursor:"pointer" }}>✅ 審核</button>
-                              <button onClick={() => handleUpdateDocStatus(doc.id, "rejected")}
-                                style={{ background:"rgba(214,48,48,0.1)", border:"none", color:"#d63030", borderRadius:5, padding:"4px 10px", fontSize:10, cursor:"pointer" }}>❌ 拒絕</button>
-                            </>
-                          )}
-                        </div>
+                        {existing.map(d => {
+                          const statusColor = d.status === "approved" ? "#22c55e" : d.status === "rejected" ? "#d63030" : "#f0c000";
+                          const statusLabel = ({pending_review:"⏳ 待審核",approved:"✅ 已審核",rejected:"❌ 已拒絕"})[d.status] || d.status;
+                          return (
+                            <div key={d.id} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, padding:"8px 10px", background:"#13161c", borderRadius:6 }}>
+                              {d.file_url && <img src={d.file_url} alt="" style={{ width:40, height:40, objectFit:"cover", borderRadius:4, background:"#1e2330" }} />}
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontSize:12, color:"#e8eaf0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{d.file_name}</div>
+                                <div style={{ fontSize:10, color:"#3a4255" }}>{new Date(d.created_at).toLocaleString("zh-HK")} · <span style={{ color:statusColor }}>{statusLabel}</span></div>
+                              </div>
+                              <button onClick={() => window.open(d.file_url, "_blank")}
+                                style={{ background:"none", border:"1px solid #2a3045", color:"#60a5fa", borderRadius:4, padding:"3px 8px", fontSize:10, cursor:"pointer" }}>👁️</button>
+                              <button onClick={() => handleGeneratePDF(d, viewDocsFor)}
+                                style={{ background:"none", border:"1px solid #2a3045", color:"#f0c000", borderRadius:4, padding:"3px 8px", fontSize:10, cursor:"pointer" }}>📄</button>
+                              {d.status === "pending_review" && (
+                                <>
+                                  <button onClick={() => handleUpdateDocStatus(d.id, "approved")}
+                                    style={{ background:"rgba(34,197,94,0.1)", border:"none", color:"#22c55e", borderRadius:4, padding:"3px 8px", fontSize:10, cursor:"pointer" }}>✅</button>
+                                  <button onClick={() => handleUpdateDocStatus(d.id, "rejected")}
+                                    style={{ background:"rgba(214,48,48,0.1)", border:"none", color:"#d63030", borderRadius:4, padding:"3px 8px", fontSize:10, cursor:"pointer" }}>❌</button>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {!hasFiles && (
+                          <div style={{ fontSize:11, color:"#555d6e", textAlign:"center", padding:"6px 0", fontStyle:"italic" }}>
+                            {slot.required ? "尚未收到此必須文件" : "尚未上傳（可選）"}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
-                </div>
+                </>
               );
             })()}
           </div>
