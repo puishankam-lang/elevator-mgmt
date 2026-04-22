@@ -4337,7 +4337,24 @@ function StaffManagement({ employees, setEmployees, showToast }) {
     showToast(`🔐 已產生新 PIN: ${newPin}，請按儲存確認`);
   };
 
-  const empList = employees.length > 0 ? employees : [];
+  const empList = (employees.length > 0 ? [...employees] : []).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+  const handleMove = async (idx, dir) => {
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= empList.length) return;
+    const a = empList[idx], b = empList[swapIdx];
+    const aOrder = a.sortOrder || idx, bOrder = b.sortOrder || swapIdx;
+    try {
+      await Promise.all([
+        sbUpdate("employees", a.id, { sort_order: bOrder }),
+        sbUpdate("employees", b.id, { sort_order: aOrder }),
+      ]);
+      setEmployees(prev => prev.map(e =>
+        e.id === a.id ? { ...e, sortOrder: bOrder } :
+        e.id === b.id ? { ...e, sortOrder: aOrder } : e
+      ));
+    } catch (e) { showToast("❌ 排序失敗", "error"); }
+  };
 
   return (
     <div>
@@ -4433,7 +4450,7 @@ function StaffManagement({ employees, setEmployees, showToast }) {
         <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
           <thead>
             <tr style={{ background:"#13161c", borderBottom:"2px solid #1e2330" }}>
-              {["員工","職位","電話","薪酬","PIN","操作"].map(h => (
+              {["#","員工","職位","電話","薪酬","PIN","操作"].map(h => (
                 <th key={h} style={{ padding:"10px 14px", textAlign:"left", fontSize:11, color:"#3a4255", textTransform:"uppercase", letterSpacing:0.8 }}>{h}</th>
               ))}
             </tr>
@@ -4441,6 +4458,15 @@ function StaffManagement({ employees, setEmployees, showToast }) {
           <tbody>
             {empList.map((emp, idx) => (
               <tr key={emp.id} style={{ borderBottom:"1px solid #0d0f12", background:idx%2===0?"rgba(255,255,255,0.01)":"transparent" }}>
+                <td style={{ padding:"6px 8px", textAlign:"center" }}>
+                  <div style={{ display:"flex", flexDirection:"column", gap:2, alignItems:"center" }}>
+                    <button onClick={()=>handleMove(idx,-1)} disabled={idx===0}
+                      style={{ background:"none", border:"none", color:idx===0?"#1e2330":"#555d6e", cursor:idx===0?"default":"pointer", fontSize:10, padding:0, lineHeight:1 }}>▲</button>
+                    <span style={{ fontSize:10, color:"#3a4255" }}>{idx+1}</span>
+                    <button onClick={()=>handleMove(idx,1)} disabled={idx===empList.length-1}
+                      style={{ background:"none", border:"none", color:idx===empList.length-1?"#1e2330":"#555d6e", cursor:idx===empList.length-1?"default":"pointer", fontSize:10, padding:0, lineHeight:1 }}>▼</button>
+                  </div>
+                </td>
                 <td style={{ padding:"10px 14px" }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                     <div style={{ width:28, height:28, borderRadius:"50%", background:emp.color||"#f0c000", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#0d0f12", fontSize:12 }}>{(emp.name||"?")[0]}</div>
@@ -5164,7 +5190,7 @@ const mapProject = p => ({
 const mapEmployee = e => ({
   id: e.id, name: e.name, role: e.role, phone: e.phone, pin: e.pin,
   rate: e.daily_rate, site: e.site, color: e.color || "#f0c000",
-  salaryType: e.salary_type || "daily",
+  salaryType: e.salary_type || "daily", sortOrder: e.sort_order || 0,
   days: 22, signed: true, lat: "22.3193", lng: "114.1694",
 });
 
