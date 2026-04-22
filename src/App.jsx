@@ -3441,6 +3441,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
         startDate: inv.start_date || "",
         endDate: inv.end_date || "",
         contactPhone: inv.contact_phone || "",
+        company: inv.company || "",
         cf_num: inv.cf_num,
       }));
       setCfList(flat);
@@ -3580,6 +3581,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
       startDate: item.startDate || "",
       endDate: item.endDate || "",
       contactPhone: item.contactPhone || "",
+      company: item.company || "",
     });
   };
 
@@ -3596,11 +3598,12 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
         end_date: editRow.endDate || null,
         contact_phone: editRow.contactPhone || null,
         cf_num: parseInt(editRow.cfNo.replace(/[^0-9]/g, "")) || null,
+        company: editRow.company || null,
       });
       setCfList(prev => prev.map(c => c.id === editingId ? {
         ...c, cfNo: editRow.cfNo, ecName: editRow.ecName, amount: Number(editRow.amount) || 0,
         description: editRow.description, startDate: editRow.startDate,
-        endDate: editRow.endDate, contactPhone: editRow.contactPhone,
+        endDate: editRow.endDate, contactPhone: editRow.contactPhone, company: editRow.company,
       } : c));
       showToast("✅ 已更新！");
       setEditingId(null);
@@ -3848,7 +3851,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
                 <tr style={{ background:"#13161c", borderBottom:"2px solid #1e2330" }}>
-                  {["✅","CF 號碼","EC 工程名稱","發票金額","工程描述","到期日","操作"].map(h => (
+                  {["✅","CF 號碼","EC 工程名稱","公司","發票金額","工程描述","到期日","操作"].map(h => (
                     <th key={h} style={{ padding:"10px 12px", textAlign:"left", fontSize:10, color:"#3a4255", textTransform:"uppercase", letterSpacing:0.8, whiteSpace:"nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -3882,6 +3885,14 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
                     {/* EC Name */}
                     <td style={{ padding:"8px 10px", maxWidth:220 }}>
                       <div style={{ fontSize:12, color: isCompleted ? "#555d6e" : "#e8eaf0", lineHeight:1.4 }}>{item.ecName}</div>
+                    </td>
+                    {/* Company */}
+                    <td style={{ padding:"8px 10px" }}>
+                      {item.company ? (
+                        <span style={{ fontSize:10, padding:"2px 8px", borderRadius:10, fontWeight:700, background: item.company === "chunfai" ? "rgba(240,192,0,0.1)" : "rgba(96,165,250,0.1)", color: item.company === "chunfai" ? "#f0c000" : "#60a5fa" }}>
+                          {INVOICE_COMPANIES.find(c => c.id === item.company)?.cn?.slice(0,2) || item.company}
+                        </span>
+                      ) : <span style={{ fontSize:10, color:"#3a4255" }}>–</span>}
                     </td>
                     {/* Amount */}
                     <td style={{ padding:"8px 10px", whiteSpace:"nowrap" }}>
@@ -4007,6 +4018,14 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
               <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>EC 工程名稱</div>
               <input value={editRow.ecName} onChange={e => setEditRow({ ...editRow, ecName: e.target.value })}
                 className="form-input" style={{ background:"#0d0f12" }} />
+            </div>
+            <div style={{ marginBottom:10 }}>
+              <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>所屬公司</div>
+              <select value={editRow.company || ""} onChange={e => setEditRow({...editRow, company: e.target.value})}
+                style={{ width:"100%", background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"10px 12px", fontSize:13 }}>
+                <option value="">── 選擇公司 ──</option>
+                {INVOICE_COMPANIES.map(c => <option key={c.id} value={c.id}>{c.cn}</option>)}
+              </select>
             </div>
             <div style={{ marginBottom:10 }}>
               <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>工程描述</div>
