@@ -1107,7 +1107,10 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
   const totalCheckedIn = checkedIn.filter(Boolean).length;
 
   const focusSite = selectedSiteView || empSite.find(s => s) || activeProjects[0]?.name;
-  const focusGPS = siteCoords[focusSite] || { lat: "22.3193", lng: "114.1694" };
+  const focusProj = projects.find(p => p.name === focusSite);
+  const focusGPS = focusProj?.lat && focusProj?.lng
+    ? { lat: String(focusProj.lat), lng: String(focusProj.lng), radius: focusProj.radius || 150 }
+    : siteCoords[focusSite] || null;
   const focusCount = focusSite ? (siteGroups[focusSite]?.length || 0) : 0;
 
   return (
@@ -1297,12 +1300,12 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
               <div className="map-circle" />
               <div className="map-dot" />
               <div className="map-label">{focusSite || "請選擇地盤"}</div>
-              <div className="map-coords">{focusGPS.lat}°N {focusGPS.lng}°E</div>
+              <div className="map-coords">{focusGPS ? `${focusGPS.lat}°N ${focusGPS.lng}°E` : "未設定 GPS 座標"}</div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
               <div style={{ background: "#0d0f12", borderRadius: 8, padding: "10px 14px", border: "1px solid #1e2330" }}>
                 <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>容許半徑</div>
-                <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 20, fontWeight: 700, color: "#f0c000" }}>{siteCoords[focusSite]?.radius || 150} m</div>
+                <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 20, fontWeight: 700, color: "#f0c000" }}>{focusGPS?.radius || focusProj?.radius || 150} m</div>
               </div>
               <div style={{ background: "#0d0f12", borderRadius: 8, padding: "10px 14px", border: "1px solid #1e2330" }}>
                 <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>此地盤人數</div>
