@@ -803,28 +803,26 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
 
   const handleExportInternal = () => {
     if (internalSigns.length === 0) { showToast("⚠️ 尚無公司內部聲明記錄", "error"); return; }
-    const headers = ["簽署日期", "簽署時間", "員工姓名", "身體健康", "PPE 檢查", "同意內部指引", "工地"];
-    const rows = internalSigns.map(s => {
+    const now = new Date();
+    const co = getCompany();
+    const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const pad = (n) => String(n).padStart(2, "0");
+    const fmtDT = (d) => { const dt = new Date(d); return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`; };
+    const mapped = internalSigns.map(s => {
       const emp = employees.find(e => e.id === s.employee_id);
-      return [
-        s.sign_date,
-        new Date(s.signed_at).toLocaleTimeString("zh-HK"),
-        emp?.name || `員工#${s.employee_id}`,
-        s.health_ok ? "✅" : "❌",
-        s.ppe_ok ? "✅" : "❌",
-        s.agree_internal ? "✅" : "❌",
-        s.site || "—",
-      ];
+      return { signDate: s.sign_date, signedAt: fmtDT(s.signed_at), name: emp?.name || `員工#${s.employee_id}`, health: s.health_ok, ppe: s.ppe_ok, agree: s.agree_internal, site: s.site || "—" };
     });
-    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const allOK = mapped.filter(r => r.health && r.ppe && r.agree).length;
+    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>內部開工聲明</x:Name></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--><style>body{font-family:'Microsoft JhengHei','Noto Sans TC',Arial,sans-serif}table{border-collapse:collapse}.brand{background:#60a5fa;color:#fff;font-size:18pt;font-weight:900;padding:10px 16px}.brand-en{background:#eff6ff;color:#1e40af;font-size:10pt;padding:4px 16px;border-bottom:3px solid #1e40af}.title{background:#1a1a1a;color:#fff;font-size:14pt;font-weight:700;padding:10px 16px;letter-spacing:2px}.meta{background:#f9f9f9;padding:8px 16px;font-size:10pt;color:#333;border-bottom:1px solid #ddd}th{background:#1e40af;color:#fff;padding:10px 14px;font-size:10pt;font-weight:700;border:1px solid #172554;text-align:left}td{padding:8px 14px;font-size:10pt;border:1px solid #ccc;background:#fff}tr:nth-child(even) td{background:#f8f9fa}.ok{color:#16a34a;font-weight:700;text-align:center}.no{color:#d63030;font-weight:700;text-align:center}.footer{background:#1a1a1a;color:#888;padding:8px 16px;font-size:9pt;text-align:center}</style></head><body><table><tr><td colspan="8" class="brand">${esc(co.cn)}</td></tr><tr><td colspan="8" class="brand-en">${esc(co.en)}</td></tr><tr><td colspan="8" class="title">🏢 公司內部開工聲明記錄 Internal Daily Declaration</td></tr><tr><td colspan="8" class="meta"><strong>匯出日期：</strong>${fmtDT(now)}　｜　<strong>記錄總數：</strong>${mapped.length} 份　｜　<strong>全部合規：</strong>${allOK} 份　｜　<strong>用途：</strong>勞工保險 / 公司管理責任</td></tr><tr><th style="width:40px;text-align:center">#</th><th style="width:110px">員工姓名</th><th style="width:110px">簽署日期</th><th style="width:150px">簽署日期時間</th><th style="width:90px;text-align:center">身體健康</th><th style="width:90px;text-align:center">PPE 檢查</th><th style="width:100px;text-align:center">同意指引</th><th style="width:220px">首個工地</th></tr>${mapped.map((r, i) => `<tr><td style="text-align:center;color:#888">${i + 1}</td><td style="font-weight:700">${esc(r.name)}</td><td style="font-family:Consolas,monospace">${r.signDate}</td><td style="font-family:Consolas,monospace">${r.signedAt}</td><td class="${r.health ? 'ok' : 'no'}">${r.health ? '✅' : '❌'}</td><td class="${r.ppe ? 'ok' : 'no'}">${r.ppe ? '✅' : '❌'}</td><td class="${r.agree ? 'ok' : 'no'}">${r.agree ? '✅' : '❌'}</td><td>${esc(r.site)}</td></tr>`).join("")}<tr><td colspan="8" class="footer">此報告由 ${esc(co.cn)} 管理系統於 ${fmtDT(now)} 自動生成 · 每位員工每日簽署一次 · 用於勞工保險索償及公司管理責任證明</td></tr></table></body></html>`;
+    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `公司內部開工聲明_${new Date().toLocaleDateString("zh-HK").replace(/\//g,"-")}.csv`;
+    const stamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;
+    a.href = url; a.download = `公司內部開工聲明_${stamp}.xls`;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast(`📊 已匯出 ${internalSigns.length} 份內部聲明記錄！`, "success");
+    showToast(`📊 已匯出 ${mapped.length} 份專業 Excel 報告！`, "success");
   };
 
   // Returns { status: "valid"|"expiring"|"expired"|"never", daysLeft, ack }
@@ -880,15 +878,33 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
       const st = vu ? (vu < now ? "已過期" : `有效（剩 ${Math.ceil((vu - now) / 86400000)} 日）`) : "—";
       return [new Date(r.signed_at).toLocaleString("zh-HK"), r.valid_until || "—", emp?.name || `員工#${r.employee_id}`, r.site || "—", r.document_version || "—", st];
     });
-    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+    // Generate professional Excel file with styling
+    const co = getCompany();
+    const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const pad = (n) => String(n).padStart(2, "0");
+    const fmtDT = (d) => { const dt = new Date(d); return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`; };
+    const fmtD = (d) => { if (!d) return "—"; const dt = new Date(d); return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`; };
+    const xlsRows = ackRecords.map(r => {
+      const emp = employees.find(e => e.id === r.employee_id);
+      const vu = r.valid_until ? new Date(r.valid_until) : null;
+      const days = vu ? Math.ceil((vu - now) / 86400000) : null;
+      const cls = vu ? (vu < now ? "expired" : days <= 30 ? "expiring" : "valid") : "unknown";
+      const txt = vu ? (vu < now ? `❌ 已過期 ${Math.abs(days)} 日` : days <= 30 ? `⏰ 將到期（剩 ${days} 日）` : `✅ 有效（剩 ${days} 日）`) : "—";
+      return { name: emp?.name || `員工#${r.employee_id}`, signedAt: fmtDT(r.signed_at), validUntil: fmtD(r.valid_until), site: r.site || "—", ackType: r.ack_type || "site", version: r.document_version || "—", cls, txt };
+    });
+    const validCount = xlsRows.filter(x => x.cls === "valid").length;
+    const expiringCount = xlsRows.filter(x => x.cls === "expiring").length;
+    const expiredCount = xlsRows.filter(x => x.cls === "expired").length;
+    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>安全簽署記錄</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--><style>body{font-family:'Microsoft JhengHei','Noto Sans TC',Arial,sans-serif}table{border-collapse:collapse}.brand{background:#f0c000;color:#000;font-size:18pt;font-weight:900;padding:10px 16px}.brand-en{background:#fff7d6;color:#666;font-size:10pt;padding:4px 16px;border-bottom:3px solid #000}.title{background:#1a1a1a;color:#fff;font-size:14pt;font-weight:700;padding:10px 16px;letter-spacing:2px}.meta{background:#f9f9f9;padding:8px 16px;font-size:10pt;color:#333;border-bottom:1px solid #ddd}.summary{background:#fef9e7;padding:8px 16px;font-size:10pt;border-bottom:1px solid #ddd}th{background:#2c3e50;color:#fff;padding:10px 14px;font-size:10pt;font-weight:700;border:1px solid #1a252f;text-align:left}td{padding:8px 14px;font-size:10pt;border:1px solid #ccc;background:#fff;vertical-align:middle}tr:nth-child(even) td{background:#f8f9fa}.valid{color:#16a34a;background-color:#f0fdf4}.expiring{color:#b8870a;background-color:#fef9e7}.expired{color:#d63030;background-color:#fef2f2}.badge-site{background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700}.badge-general{background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:9pt;font-weight:700}.footer{background:#1a1a1a;color:#888;padding:8px 16px;font-size:9pt;text-align:center}.c-idx{width:40px;text-align:center;color:#888}.c-date{width:150px;font-family:'Consolas',monospace}.c-until{width:110px;font-family:'Consolas',monospace;font-weight:600}.c-name{width:110px;font-weight:700}.c-site{width:260px}.c-type{width:90px;text-align:center}.c-ver{width:90px;text-align:center;color:#666;font-size:9pt}.c-status{width:170px;font-weight:700}</style></head><body><table><tr><td colspan="8" class="brand">${esc(co.cn)}</td></tr><tr><td colspan="8" class="brand-en">${esc(co.en)}</td></tr><tr><td colspan="8" class="title">🛡️ 安全守則簽署記錄 Safety Acknowledgment Report</td></tr><tr><td colspan="8" class="meta"><strong>匯出日期：</strong>${fmtDT(now)}　｜　<strong>記錄總數：</strong>${xlsRows.length} 份</td></tr><tr><td colspan="8" class="summary">✅ 有效：<strong style="color:#16a34a">${validCount}</strong>　｜　⏰ 將到期(30日)：<strong style="color:#b8870a">${expiringCount}</strong>　｜　❌ 已過期：<strong style="color:#d63030">${expiredCount}</strong></td></tr><tr><th class="c-idx">#</th><th class="c-name">員工姓名</th><th class="c-date">簽署日期時間</th><th class="c-until">有效期至</th><th class="c-site">工地 / 範圍</th><th class="c-type">類型</th><th class="c-ver">文件版本</th><th class="c-status">狀態</th></tr>${xlsRows.map((r, i) => `<tr><td class="c-idx">${i + 1}</td><td class="c-name">${esc(r.name)}</td><td class="c-date">${r.signedAt}</td><td class="c-until">${r.validUntil}</td><td class="c-site">${r.site === "__COMPANY_GENERAL__" ? "<em style='color:#1e40af'>（公司通用版）</em>" : esc(r.site)}</td><td class="c-type"><span class="${r.ackType === 'general' ? 'badge-general' : 'badge-site'}">${r.ackType === "general" ? "通用版" : "地盤版"}</span></td><td class="c-ver">${esc(r.version)}</td><td class="c-status ${r.cls}">${r.txt}</td></tr>`).join("")}<tr><td colspan="8" class="footer">此報告由 ${esc(co.cn)} 管理系統於 ${fmtDT(now)} 自動生成 · 有效期 6 個月 · 可用於勞工保險及合規審計</td></tr></table></body></html>`;
+    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `安全簽署記錄_${new Date().toLocaleDateString("zh-HK").replace(/\//g,"-")}.csv`;
+    const stamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;
+    a.href = url; a.download = `安全簽署記錄_${stamp}.xls`;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast(`📊 已匯出 ${ackRecords.length} 份安全簽署記錄！`, "success");
+    showToast(`📊 已匯出 ${xlsRows.length} 份專業 Excel 報告！`, "success");
   };
 
   return (
@@ -975,7 +991,7 @@ h1 { font-size:18px; letter-spacing:3px; margin:18px 0 10px; border-left:5px sol
         <div className="card">
           <div className="card-header">
             <div className="card-title">員工安全簽署狀態（每 6 個月）</div>
-            <div className="card-action" style={{ cursor: "pointer" }} onClick={handleExportHistory}>導出記錄 →</div>
+            <div className="card-action" style={{ cursor: "pointer" }} onClick={handleExportHistory}>導出 Excel →</div>
           </div>
           {/* Summary stats */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, padding: "12px 20px 0" }}>
@@ -1072,7 +1088,7 @@ This certificate is system-generated. For enquiries, contact Mr. Kam at 5444 209
           <div className="card-title">🏢 公司內部開工聲明（每日一次，勞保／公司記錄）</div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <div style={{ fontSize: 10, color: "#60a5fa" }}>總記錄 {internalSigns.length}</div>
-            <button onClick={handleExportInternal} className="card-action" style={{ cursor: "pointer", background: "none", border: "none" }}>匯出 CSV →</button>
+            <button onClick={handleExportInternal} className="card-action" style={{ cursor: "pointer", background: "none", border: "none" }}>匯出 Excel →</button>
           </div>
         </div>
         <div className="card-body" style={{ padding: "12px 20px" }}>
@@ -6036,21 +6052,32 @@ function GeneralSafetyPage({ showToast, employees = [], safetyRules = "" }) {
   const handleExportCSV = () => {
     if (acks.length === 0) { showToast("⚠️ 尚無通用守則簽署記錄", "error"); return; }
     const now = new Date();
-    const headers = ["簽署日期", "有效至", "員工姓名", "文件版本", "狀態"];
+    const co = getCompany();
+    const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const pad = (n) => String(n).padStart(2, "0");
+    const fmtDT = (d) => { const dt = new Date(d); return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`; };
+    const fmtD = (d) => { if (!d) return "—"; const dt = new Date(d); return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`; };
     const rows = acks.map(r => {
       const emp = employees.find(e => e.id === r.employee_id);
       const vu = r.valid_until ? new Date(r.valid_until) : null;
-      const st = vu ? (vu < now ? "已過期" : `有效（剩 ${Math.ceil((vu - now) / 86400000)} 日）`) : "—";
-      return [new Date(r.signed_at).toLocaleString("zh-HK"), r.valid_until || "—", emp?.name || `員工#${r.employee_id}`, r.document_version || "—", st];
+      const days = vu ? Math.ceil((vu - now) / 86400000) : null;
+      const cls = vu ? (vu < now ? "expired" : days <= 30 ? "expiring" : "valid") : "unknown";
+      const txt = vu ? (vu < now ? `❌ 已過期 ${Math.abs(days)} 日` : days <= 30 ? `⏰ 將到期（剩 ${days} 日）` : `✅ 有效（剩 ${days} 日）`) : "—";
+      return { name: emp?.name || `員工#${r.employee_id}`, signedAt: fmtDT(r.signed_at), validUntil: fmtD(r.valid_until), version: r.document_version || "—", cls, txt };
     });
-    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const valid = rows.filter(r => r.cls === "valid").length;
+    const expiring = rows.filter(r => r.cls === "expiring").length;
+    const expired = rows.filter(r => r.cls === "expired").length;
+    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>通用守則記錄</x:Name></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--><style>body{font-family:'Microsoft JhengHei','Noto Sans TC',Arial,sans-serif}table{border-collapse:collapse}.brand{background:#60a5fa;color:#fff;font-size:18pt;font-weight:900;padding:10px 16px}.brand-en{background:#eff6ff;color:#1e40af;font-size:10pt;padding:4px 16px;border-bottom:3px solid #1e40af}.title{background:#1a1a1a;color:#fff;font-size:14pt;font-weight:700;padding:10px 16px;letter-spacing:2px}.meta{background:#f9f9f9;padding:8px 16px;font-size:10pt;color:#333;border-bottom:1px solid #ddd}.summary{background:#eff6ff;padding:8px 16px;font-size:10pt;border-bottom:1px solid #ddd}th{background:#1e40af;color:#fff;padding:10px 14px;font-size:10pt;font-weight:700;border:1px solid #172554;text-align:left}td{padding:8px 14px;font-size:10pt;border:1px solid #ccc;background:#fff}tr:nth-child(even) td{background:#f8f9fa}.valid{color:#16a34a;background-color:#f0fdf4;font-weight:700}.expiring{color:#b8870a;background-color:#fef9e7;font-weight:700}.expired{color:#d63030;background-color:#fef2f2;font-weight:700}.footer{background:#1a1a1a;color:#888;padding:8px 16px;font-size:9pt;text-align:center}</style></head><body><table><tr><td colspan="6" class="brand">${esc(co.cn)}</td></tr><tr><td colspan="6" class="brand-en">${esc(co.en)}</td></tr><tr><td colspan="6" class="title">🛡️ 內部員工電梯施工安全守則記錄 General Safety Acknowledgment</td></tr><tr><td colspan="6" class="meta"><strong>匯出日期：</strong>${fmtDT(now)}　｜　<strong>記錄總數：</strong>${rows.length} 份　｜　<strong>用途：</strong>勞工保險 / 公司管理責任 / 入職安全培訓</td></tr><tr><td colspan="6" class="summary">✅ 有效：<strong style="color:#16a34a">${valid}</strong>　｜　⏰ 將到期：<strong style="color:#b8870a">${expiring}</strong>　｜　❌ 已過期：<strong style="color:#d63030">${expired}</strong></td></tr><tr><th style="width:40px;text-align:center">#</th><th style="width:120px">員工姓名</th><th style="width:160px">簽署日期時間</th><th style="width:120px">有效期至</th><th style="width:110px;text-align:center">文件版本</th><th style="width:180px">狀態</th></tr>${rows.map((r, i) => `<tr><td style="text-align:center;color:#888">${i + 1}</td><td style="font-weight:700">${esc(r.name)}</td><td style="font-family:Consolas,monospace">${r.signedAt}</td><td style="font-family:Consolas,monospace;font-weight:600">${r.validUntil}</td><td style="text-align:center;color:#666;font-size:9pt">${esc(r.version)}</td><td class="${r.cls}">${r.txt}</td></tr>`).join("")}<tr><td colspan="6" class="footer">此報告由 ${esc(co.cn)} 管理系統於 ${fmtDT(now)} 自動生成 · 公司內部通用版 · 每 6 個月簽署一次 · 勞保合規</td></tr></table></body></html>`;
+    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `通用守則簽署記錄_${new Date().toLocaleDateString("zh-HK").replace(/\//g,"-")}.csv`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    const stamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;
+    a.href = url; a.download = `通用守則記錄_${stamp}.xls`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast(`📊 已匯出 ${acks.length} 份記錄`, "success");
+    showToast(`📊 已匯出 ${rows.length} 份專業 Excel 報告！`, "success");
   };
 
   const handleGeneratePDF = (emp, ack) => {
@@ -6145,7 +6172,7 @@ h2 { font-size:14px; margin:14px 0 8px; padding-left:8px; border-left:4px solid 
       <div className="card">
         <div className="card-header">
           <div className="card-title">👷 員工通用守則狀態</div>
-          <button onClick={handleExportCSV} className="card-action" style={{ cursor: "pointer", background: "none", border: "none" }}>匯出 CSV →</button>
+          <button onClick={handleExportCSV} className="card-action" style={{ cursor: "pointer", background: "none", border: "none" }}>匯出 Excel →</button>
         </div>
         <div className="card-body" style={{ padding: "12px 20px" }}>
           {loading ? <div style={{ textAlign: "center", padding: 24, color: "#555d6e" }}>載入中...</div>
