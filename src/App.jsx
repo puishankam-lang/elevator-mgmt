@@ -855,7 +855,50 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
             >
               ✍️ 確認簽署
             </button>
-            <button className="btn btn-secondary">📄 列印守則</button>
+            <button className="btn btn-secondary" onClick={() => {
+              const co = getCompany();
+              const w = window.open("", "_blank"); if (!w) return;
+              const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+              w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>電梯施工安全守則 — ${esc(co.cn)}</title>
+<style>
+@page { size: A4; margin: 14mm 16mm; }
+body { font-family: 'Microsoft JhengHei','Noto Sans TC',Arial,sans-serif; color:#000; max-width:780px; margin:0 auto; padding:28px 32px; font-size:12px; line-height:1.8; -webkit-print-color-adjust:exact; }
+.header { border-bottom:3px solid #f0c000; padding-bottom:14px; margin-bottom:18px; }
+.co-cn { font-size:22px; font-weight:900; }
+.co-en { font-size:11px; color:#666; margin-top:2px; }
+h1 { font-size:18px; letter-spacing:3px; margin:18px 0 10px; border-left:5px solid #f0c000; padding-left:10px; }
+.body { white-space:pre-wrap; font-size:12px; line-height:1.9; }
+.sign-box { margin-top:30px; border-top:2px solid #000; padding-top:14px; display:flex; gap:40px; justify-content:space-between; }
+.sign-line { flex:1; border-bottom:1px solid #000; margin-top:40px; padding-bottom:4px; font-size:10px; text-align:center; color:#666; }
+.footer { margin-top:30px; border-top:1px solid #ddd; padding-top:8px; font-size:9px; color:#888; line-height:1.6; }
+.noprint { position:fixed; top:10px; right:10px; z-index:100; }
+@media print { .noprint { display:none !important; } }
+</style></head><body>
+<button class="noprint" onclick="window.print()" style="padding:10px 20px;background:#f0c000;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:800;font-size:14px">🖨️ 列印 / 儲存 PDF</button>
+<div class="header">
+  <div class="co-cn">${esc(co.cn)}</div>
+  <div class="co-en">${esc(co.en)}</div>
+</div>
+<h1>電梯施工安全守則 — Lift Construction Safety Rules</h1>
+<div class="body">${esc(safetyRules)}</div>
+<div class="sign-box">
+  <div>
+    <div class="sign-line">員工簽署 Employee Signature</div>
+  </div>
+  <div>
+    <div class="sign-line">日期 Date</div>
+  </div>
+  <div>
+    <div class="sign-line">主管 / 公司代表 Supervisor</div>
+  </div>
+</div>
+<div class="footer">
+  此守則由 ${esc(co.cn)} 管理系統自動生成於 ${new Date().toLocaleString("zh-HK")}<br/>
+  This document is system-generated. 版本 Version: EMSD-2026-04
+</div>
+</body></html>`);
+              w.document.close();
+            }}>📄 列印守則</button>
           </div>
         </div>
 
