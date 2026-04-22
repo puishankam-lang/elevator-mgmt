@@ -743,6 +743,7 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
 
   const [signingHistory, setSigningHistory] = useState([]);
   const [mobileSigns, setMobileSigns] = useState([]);
+  const [ackRecords, setAckRecords] = useState([]);
 
   useEffect(() => {
     const fetchSigns = () => fetch(`${SUPABASE_URL}/rest/v1/safety_signs?order=submitted_at.desc.nullslast&limit=50`, {
@@ -751,10 +752,28 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setMobileSigns(d); })
       .catch(() => {});
-    fetchSigns();
-    const id = setInterval(fetchSigns, 15000);
+    const fetchAcks = () => fetch(`${SUPABASE_URL}/rest/v1/safety_acknowledgments?order=signed_at.desc&limit=500`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setAckRecords(d); })
+      .catch(() => {});
+    fetchSigns(); fetchAcks();
+    const id = setInterval(() => { fetchSigns(); fetchAcks(); }, 15000);
     return () => clearInterval(id);
   }, []);
+
+  // Returns { status: "valid"|"expiring"|"expired"|"never", daysLeft, ack }
+  const getSafetyStatus = (empId) => {
+    const latest = ackRecords.filter(a => a.employee_id === empId).sort((a,b) => new Date(b.signed_at) - new Date(a.signed_at))[0];
+    if (!latest) return { status: "never" };
+    const validUntil = new Date(latest.valid_until);
+    const now = new Date();
+    const daysLeft = Math.ceil((validUntil - now) / 86400000);
+    if (daysLeft < 0) return { status: "expired", daysLeft, ack: latest };
+    if (daysLeft <= 30) return { status: "expiring", daysLeft, ack: latest };
+    return { status: "valid", daysLeft, ack: latest };
+  };
 
   const empName = (id) => employees.find(e => e.id === id)?.name || `員工 #${id}`;
 
@@ -773,7 +792,15 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
     const emp = employees[i];
     if (!emp) return;
     if (!emp.phone) { showToast(`⚠️ ${emp.name} 未設定電話號碼`, "error"); return; }
-    const msg = `${emp.name} 您好，\n請盡快到今日工地簽署安全守則，並拍照存檔。\n\n— 俊輝電梯工程 管理系統`;
+    const s = getSafetyStatus(emp.id);
+    let msg;
+    if (s.status === "expired") {
+      msg = `${emp.name} 您好，\n\n⚠️ 您的安全守則簽署已於 ${new Date(s.ack.valid_until).toLocaleDateString("zh-HK")} 過期。\n\n根據公司政策，每 6 個月須重新簽署一次安全守則。請即使用員工 App 重新簽署：\nhttps://elevator-staff.vercel.app\n\n謝謝合作！`;
+    } else if (s.status === "expiring") {
+      msg = `${emp.name} 您好，\n\n⏰ 您的安全守則將於 ${s.daysLeft} 日後（${new Date(s.ack.valid_until).toLocaleDateString("zh-HK")}）過期。\n\n請盡早用員工 App 重新簽署：\nhttps://elevator-staff.vercel.app\n\n謝謝合作！`;
+    } else {
+      msg = `${emp.name} 您好，\n\n請用員工 App 簽署最新安全守則（每半年一次）：\nhttps://elevator-staff.vercel.app\n\n謝謝合作！`;
+    }
     const r = sendWhatsApp(emp.phone, msg);
     if (r.ok) showToast(`📱 WhatsApp 已開啟 — 請按發送鍵寄給 ${emp.name}`, "success");
     else showToast(`⚠️ ${r.reason}`, "error");
@@ -834,20 +861,44 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
 
         <div className="card">
           <div className="card-header">
-            <div className="card-title">今日人員簽署狀態</div>
+            <div className="card-title">員工安全簽署狀態（每 6 個月）</div>
             <div className="card-action" style={{ cursor: "pointer" }} onClick={handleExportHistory}>導出記錄 →</div>
           </div>
+          {/* Summary stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, padding: "12px 20px 0" }}>
+            {[
+              { label: "有效", value: employees.filter(e => getSafetyStatus(e.id).status === "valid").length, color: "#22c55e" },
+              { label: "將到期(30日內)", value: employees.filter(e => getSafetyStatus(e.id).status === "expiring").length, color: "#f0c000" },
+              { label: "已過期", value: employees.filter(e => getSafetyStatus(e.id).status === "expired").length, color: "#d63030" },
+              { label: "未簽署", value: employees.filter(e => getSafetyStatus(e.id).status === "never").length, color: "#8891a4" },
+            ].map((s, i) => (
+              <div key={i} style={{ background: "#0d0f12", borderRadius: 8, padding: "8px", textAlign: "center", border: `1px solid ${s.color}33` }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: 9, color: "#555d6e", marginTop: 2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
           <div className="card-body" style={{ padding: "12px 20px" }}>
-            {employees.map((e, i) => (
+            {employees.map((e, i) => {
+              const s = getSafetyStatus(e.id);
+              const statusConfig = {
+                valid: { color: "#22c55e", bg: "rgba(34,197,94,0.1)", label: `✅ 有效 (剩 ${s.daysLeft} 日)`, badge: "green" },
+                expiring: { color: "#f0c000", bg: "rgba(240,192,0,0.1)", label: `⏰ ${s.daysLeft} 日後到期`, badge: "yellow" },
+                expired: { color: "#d63030", bg: "rgba(214,48,48,0.1)", label: `❌ 已過期 ${Math.abs(s.daysLeft)} 日`, badge: "red" },
+                never: { color: "#8891a4", bg: "rgba(136,145,164,0.1)", label: "⚠️ 從未簽署", badge: "gray" },
+              }[s.status];
+              const needsAction = s.status === "expired" || s.status === "never" || s.status === "expiring";
+              return (
               <div key={i} className="emp-row">
                 <div className="emp-avatar" style={{ background: e.color }}>
                   {e.name[0]}
                 </div>
                 <div className="emp-info">
                   <div className="emp-name">{e.name}</div>
-                  <div className="emp-role">{e.role}</div>
+                  <div className="emp-role" style={{ fontSize: 10, color: statusConfig.color, fontWeight: 600 }}>{statusConfig.label}</div>
+                  {s.ack && <div style={{ fontSize: 9, color: "#555d6e", marginTop: 1 }}>上次：{new Date(s.ack.signed_at).toLocaleDateString("zh-HK")} · 有效至：{new Date(s.ack.valid_until).toLocaleDateString("zh-HK")}</div>}
                 </div>
-                {signed[i] ? (
+                {!needsAction ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span className="badge green"><span className="badge-dot" /> 已簽署</span>
                     <button onClick={() => {
@@ -891,12 +942,13 @@ This certificate is system-generated. For enquiries, contact Mr. Kam at 5444 209
                       title="生成安全簽署證明 PDF">📄</button>
                   </div>
                 ) : (
-                  <button className="btn btn-danger btn-sm" onClick={() => handleRemind(i)}>
-                    📱 催簽
+                  <button className="btn btn-danger btn-sm" onClick={() => handleRemind(i)}
+                    title={s.status === "expired" ? "催促重新簽署" : s.status === "expiring" ? "提醒即將到期" : "催簽"}>
+                    📱 {s.status === "expired" ? "催重簽" : s.status === "expiring" ? "催提醒" : "催簽"}
                   </button>
                 )}
               </div>
-            ))}
+            );})}
           </div>
         </div>
       </div>
