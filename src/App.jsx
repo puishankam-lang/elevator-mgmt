@@ -4620,7 +4620,7 @@ function StaffManagement({ employees, setEmployees, showToast }) {
   const [form, setForm] = useState({ name:"", role:"電梯技工", phone:"", pin:"", rate:850, color:"#f0c000", salaryType:"daily" });
   const [pinVisible, setPinVisible] = useState({});
 
-  const ROLES = ["電梯技工","技術主管","助理技工","判頭","文員","管理人員"];
+  const ROLES = ["電梯技工","技術主管","助理技工","安全主任","判頭","文員","管理人員","工程師","學徒","運輸司機"];
   const COLORS = ["#FF6B1A","#22C55E","#60A5FA","#A78BFA","#FB923C","#F43F5E","#06B6D4","#84CC16","#E879F9","#F0C000"];
 
   const genPin = () => Math.floor(1000+Math.random()*9000).toString();
@@ -4746,12 +4746,20 @@ function StaffManagement({ employees, setEmployees, showToast }) {
                 <input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} className="form-input" placeholder="香港手機號碼" />
               </div>
               <div>
-                <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>職位</div>
+                <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>職位（可自訂輸入）</div>
                 <input value={form.role} onChange={e=>setForm({...form,role:e.target.value})}
-                  list="role-list" className="form-input" placeholder="輸入或選擇職位" />
+                  list="role-list" className="form-input" placeholder="點擊選擇或直接輸入..." />
                 <datalist id="role-list">
                   {ROLES.map(r => <option key={r} value={r} />)}
                 </datalist>
+                <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:5 }}>
+                  {ROLES.map(r => (
+                    <button key={r} type="button" onClick={() => setForm({...form, role: r})}
+                      style={{ background: form.role === r ? "#f0c000" : "#1e2330", border: `1px solid ${form.role === r ? "#f0c000" : "#2a3045"}`, color: form.role === r ? "#0d0f12" : "#8891a4", borderRadius: 12, padding: "3px 8px", fontSize: 10, cursor: "pointer", fontWeight: form.role === r ? 700 : 500 }}>
+                      {r}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>{form.salaryType === "monthly" ? "月薪" : "日薪"} (HK$)</div>
