@@ -4292,14 +4292,14 @@ ${docSections}
 function StaffManagement({ employees, setEmployees, showToast }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ name:"", role:"電梯技工", phone:"", pin:"", rate:850, color:"#f0c000" });
+  const [form, setForm] = useState({ name:"", role:"電梯技工", phone:"", pin:"", rate:850, color:"#f0c000", salaryType:"daily" });
   const [pinVisible, setPinVisible] = useState({});
 
   const ROLES = ["電梯技工","技術主管","助理技工","文員","管理人員"];
   const COLORS = ["#FF6B1A","#22C55E","#60A5FA","#A78BFA","#FB923C","#F43F5E","#06B6D4","#84CC16","#E879F9","#F0C000"];
 
   const genPin = () => Math.floor(1000+Math.random()*9000).toString();
-  const resetForm = () => setForm({ name:"", role:"電梯技工", phone:"", pin:genPin(), rate:850, color:"#f0c000" });
+  const resetForm = () => setForm({ name:"", role:"電梯技工", phone:"", pin:genPin(), rate:850, color:"#f0c000", salaryType:"daily" });
 
   useEffect(() => { if (showAdd && !editId) setForm(f => ({ ...f, pin: genPin() })); }, [showAdd]);
 
@@ -4308,11 +4308,11 @@ function StaffManagement({ employees, setEmployees, showToast }) {
     if (form.pin.length !== 4 || !/^\d{4}$/.test(form.pin)) { showToast("⚠️ PIN 必須係4位數字", "error"); return; }
     try {
       if (editId) {
-        await sbUpdate("employees", editId, { name:form.name, role:form.role, phone:form.phone, pin:form.pin, daily_rate:Number(form.rate), color:form.color });
-        setEmployees(prev => prev.map(e => e.id===editId ? {...e, ...form, rate:Number(form.rate)} : e));
+        await sbUpdate("employees", editId, { name:form.name, role:form.role, phone:form.phone, pin:form.pin, daily_rate:Number(form.rate), color:form.color, salary_type:form.salaryType });
+        setEmployees(prev => prev.map(e => e.id===editId ? {...e, ...form, rate:Number(form.rate), salaryType:form.salaryType} : e));
         showToast("✅ 員工資料已更新！");
       } else {
-        const res = await sbInsert("employees", { name:form.name, role:form.role, phone:form.phone, pin:form.pin, daily_rate:Number(form.rate), color:form.color, site:"工地" });
+        const res = await sbInsert("employees", { name:form.name, role:form.role, phone:form.phone, pin:form.pin, daily_rate:Number(form.rate), color:form.color, site:"工地", salary_type:form.salaryType });
         setEmployees(prev => [...prev, {...res[0], rate:res[0].daily_rate}]);
         showToast(`✅ ${form.name} 已加入！PIN: ${form.pin}`);
       }
@@ -4331,7 +4331,7 @@ function StaffManagement({ employees, setEmployees, showToast }) {
 
   const handleResetPin = (emp) => {
     const newPin = genPin();
-    setForm({ name:emp.name, role:emp.role||"電梯技工", phone:emp.phone||"", pin:newPin, rate:emp.rate||850, color:emp.color||"#f0c000" });
+    setForm({ name:emp.name, role:emp.role||"電梯技工", phone:emp.phone||"", pin:newPin, rate:emp.rate||850, color:emp.color||"#f0c000", salaryType:emp.salaryType||"daily" });
     setEditId(emp.id);
     setShowAdd(true);
     showToast(`🔐 已產生新 PIN: ${newPin}，請按儲存確認`);
@@ -4389,8 +4389,15 @@ function StaffManagement({ employees, setEmployees, showToast }) {
                 </select>
               </div>
               <div>
-                <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>日薪 (HK$)</div>
-                <input type="number" value={form.rate} onChange={e=>setForm({...form,rate:e.target.value})} className="form-input" />
+                <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>{form.salaryType === "monthly" ? "月薪" : "日薪"} (HK$)</div>
+                <div style={{ display:"flex", gap:6 }}>
+                  <input type="number" value={form.rate} onChange={e=>setForm({...form,rate:e.target.value})} className="form-input" style={{ flex:1 }} />
+                  <select value={form.salaryType} onChange={e=>setForm({...form,salaryType:e.target.value})}
+                    style={{ background:"#0d0f12", border:"1px solid #2a3045", color:"#f0c000", borderRadius:6, padding:"6px 8px", fontSize:11, fontWeight:700 }}>
+                    <option value="daily">日薪</option>
+                    <option value="monthly">月薪</option>
+                  </select>
+                </div>
               </div>
               <div>
                 <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>登入 PIN（4位數字）</div>
@@ -4426,7 +4433,7 @@ function StaffManagement({ employees, setEmployees, showToast }) {
         <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
           <thead>
             <tr style={{ background:"#13161c", borderBottom:"2px solid #1e2330" }}>
-              {["員工","職位","電話","日薪","PIN","操作"].map(h => (
+              {["員工","職位","電話","薪酬","PIN","操作"].map(h => (
                 <th key={h} style={{ padding:"10px 14px", textAlign:"left", fontSize:11, color:"#3a4255", textTransform:"uppercase", letterSpacing:0.8 }}>{h}</th>
               ))}
             </tr>
@@ -4442,7 +4449,7 @@ function StaffManagement({ employees, setEmployees, showToast }) {
                 </td>
                 <td style={{ padding:"10px 14px", color:"#9aa0b4" }}>{emp.role||"電梯技工"}</td>
                 <td style={{ padding:"10px 14px", color:"#9aa0b4" }}>{emp.phone||"–"}</td>
-                <td style={{ padding:"10px 14px", color:"#f0c000", fontWeight:700 }}>HK${emp.rate||850}</td>
+                <td style={{ padding:"10px 14px", color:"#f0c000", fontWeight:700 }}>HK${emp.rate||850}<span style={{ fontSize:9, color:"#555d6e", marginLeft:2 }}>{emp.salaryType==="monthly"?"/月":"/日"}</span></td>
                 <td style={{ padding:"10px 14px" }}>
                   <span style={{ background:"#1e2330", borderRadius:6, padding:"3px 10px", fontFamily:"monospace", fontSize:14, fontWeight:800, letterSpacing:2, color:"#f0c000" }}>
                     {pinVisible[emp.id] ? (emp.pin||"????") : "••••"}
@@ -4454,7 +4461,7 @@ function StaffManagement({ employees, setEmployees, showToast }) {
                 </td>
                 <td style={{ padding:"10px 14px" }}>
                   <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    <button onClick={() => { setForm({name:emp.name,role:emp.role||"電梯技工",phone:emp.phone||"",pin:emp.pin||"",rate:emp.rate||850,color:emp.color||"#f0c000"}); setEditId(emp.id); setShowAdd(true); }}
+                    <button onClick={() => { setForm({name:emp.name,role:emp.role||"電梯技工",phone:emp.phone||"",pin:emp.pin||"",rate:emp.rate||850,color:emp.color||"#f0c000",salaryType:emp.salaryType||"daily"}); setEditId(emp.id); setShowAdd(true); }}
                       style={{ background:"#1e2330", border:"none", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>✏️</button>
                     <button onClick={() => handleResetPin(emp)}
                       style={{ background:"#1e2330", border:"none", color:"#f0c000", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>🔐 PIN</button>
@@ -5157,6 +5164,7 @@ const mapProject = p => ({
 const mapEmployee = e => ({
   id: e.id, name: e.name, role: e.role, phone: e.phone, pin: e.pin,
   rate: e.daily_rate, site: e.site, color: e.color || "#f0c000",
+  salaryType: e.salary_type || "daily",
   days: 22, signed: true, lat: "22.3193", lng: "114.1694",
 });
 
