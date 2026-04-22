@@ -530,7 +530,8 @@ const NAV_ITEMS = [
   { id: "invoice", icon: "💰", label: "自動化請款" },
   { id: "payroll", icon: "💼", label: "薪酬核算" },
   { id: "empdocs", icon: "📁", label: "員工文件" },
-  { id: "leave", icon: "📝", label: "請假審批" },
+  { id: "workorder", icon: "📝", label: "每日工序" },
+  { id: "leave", icon: "🏖️", label: "請假審批" },
   { id: "calendar", icon: "📅", label: "行事曆" },
   { id: "quotation", icon: "📄", label: "報價單" },
   { id: "announce", icon: "📢", label: "發布通知" },
@@ -5093,6 +5094,185 @@ const mapEmployee = e => ({
   days: 22, signed: true, lat: "22.3193", lng: "114.1694",
 });
 
+// ── Work Order Page (每日工序申報) ────────────────────────────────────────────
+function WorkOrderPage({ showToast, employees = [] }) {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterDate, setFilterDate] = useState(new Date().toISOString().split("T")[0]);
+  const [filterSite, setFilterSite] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
+
+  const fetchOrders = () => {
+    fetch(`${SUPABASE_URL}/rest/v1/safety_signs?order=submitted_at.desc.nullslast&limit=500`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    }).then(r => r.json()).then(d => { if (Array.isArray(d)) setOrders(d); })
+      .catch(() => {}).finally(() => setLoading(false));
+  };
+  useEffect(() => { fetchOrders(); const id = setInterval(fetchOrders, 15000); return () => clearInterval(id); }, []);
+
+  const empName = (id) => employees.find(e => e.id === id)?.name || `員工 #${id}`;
+
+  const filtered = orders.filter(o => {
+    if (filterDate && o.work_date !== filterDate) return false;
+    if (filterSite && !(o.site || "").includes(filterSite)) return false;
+    return true;
+  });
+
+  const sites = [...new Set(orders.map(o => o.site).filter(Boolean))];
+  const abnormalCount = filtered.filter(o => o.abnormal).length;
+  const withGps = filtered.filter(o => o.gps_lat && o.gps_lng).length;
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("確定刪除此工序記錄？")) return;
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/safety_signs?id=eq.${id}`, {
+        method: "DELETE", headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      });
+      setOrders(prev => prev.filter(o => o.id !== id));
+      showToast("✅ 已刪除");
+    } catch (e) { showToast("❌ 刪除失敗", "error"); }
+  };
+
+  return (
+    <div>
+      {/* Stats row */}
+      <div className="grid-4" style={{ marginBottom: 20 }}>
+        {[
+          { label: "今日記錄", value: filtered.length, icon: "📝", color: "#f0c000" },
+          { label: "異常報告", value: abnormalCount, icon: "⚠️", color: abnormalCount > 0 ? "#d63030" : "#22c55e" },
+          { label: "GPS 定位", value: `${withGps}/${filtered.length}`, icon: "📍", color: "#3b82f6" },
+          { label: "涉及工地", value: new Set(filtered.map(o => o.site)).size, icon: "🏗", color: "#8b5cf6" },
+        ].map((s, i) => (
+          <div key={i} className="sign-card" style={{ marginBottom: 0, textAlign: "center" }}>
+            <div style={{ fontSize: 28 }}>{s.icon}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: 10, color: "#555d6e" }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="sign-card" style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>日期</div>
+            <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} className="form-input" style={{ background: "#0d0f12" }} />
+          </div>
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <div style={{ fontSize: 10, color: "#555d6e", marginBottom: 4 }}>工地篩選</div>
+            <select value={filterSite} onChange={e => setFilterSite(e.target.value)} className="form-select" style={{ background: "#0d0f12" }}>
+              <option value="">全部工地</option>
+              {sites.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <button onClick={() => { setFilterDate(""); setFilterSite(""); }} className="btn btn-secondary" style={{ padding: "8px 16px" }}>清除篩選</button>
+        </div>
+      </div>
+
+      {/* Orders table */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">📋 工序記錄</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#22c55e" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", animation: "pulse 2s infinite" }} />
+            即時更新（每 15 秒）
+          </div>
+        </div>
+        <div className="card-body" style={{ padding: 0 }}>
+          {loading ? <div style={{ textAlign: "center", padding: 30, color: "#555d6e" }}>載入中...</div>
+          : filtered.length === 0 ? <div style={{ textAlign: "center", padding: 30, color: "#555d6e" }}><div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>無工序記錄</div>
+          : <table className="data-table">
+            <thead>
+              <tr><th>時間</th><th>提交人</th><th>工地</th><th>工作類別</th><th>GPS</th><th>狀態</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              {filtered.map(o => {
+                const expanded = expandedId === o.id;
+                return [
+                  <tr key={o.id} onClick={() => setExpandedId(expanded ? null : o.id)} style={{ cursor: "pointer" }}>
+                    <td style={{ fontSize: 11 }}>{o.submitted_at ? new Date(o.submitted_at).toLocaleString("zh-HK", { hour: "2-digit", minute: "2-digit" }) : "–"}</td>
+                    <td className="td-name">{empName(o.employee_id)}</td>
+                    <td>
+                      <div style={{ fontSize: 11, fontWeight: 600 }}>{o.site || "–"}</div>
+                      {o.lift_no && <div style={{ fontSize: 10, color: "#555d6e" }}>機號：{o.lift_no}</div>}
+                    </td>
+                    <td style={{ fontSize: 11, color: "#9aa0b4" }}>{o.work_category || "–"}</td>
+                    <td>
+                      {o.gps_lat && o.gps_lng
+                        ? <span className="badge green" title={`${o.gps_lat}, ${o.gps_lng} (±${o.gps_accuracy ? Math.round(o.gps_accuracy) + "m" : "?"})`}><span className="badge-dot" />📍 已定位</span>
+                        : <span className="badge" style={{ background: "rgba(136,145,164,0.1)", color: "#8891a4" }}>無 GPS</span>
+                      }
+                    </td>
+                    <td>
+                      {o.abnormal
+                        ? <span className="badge red" title={o.abnormal_desc || ""}><span className="badge-dot" />⚠️ 異常</span>
+                        : <span className="badge green"><span className="badge-dot" />正常</span>}
+                    </td>
+                    <td>
+                      <button onClick={e => { e.stopPropagation(); handleDelete(o.id); }}
+                        style={{ background: "rgba(214,48,48,0.1)", border: "none", color: "#d63030", borderRadius: 5, padding: "3px 8px", fontSize: 10, cursor: "pointer" }}>🗑</button>
+                    </td>
+                  </tr>,
+                  expanded && (
+                    <tr key={`${o.id}-detail`} style={{ background: "#0a0c10" }}>
+                      <td colSpan={7} style={{ padding: "12px 16px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, fontSize: 12 }}>
+                          <div>
+                            <div style={{ color: "#555d6e", fontSize: 10, marginBottom: 2 }}>工序細項</div>
+                            <div style={{ color: "#c8d0e0" }}>{o.tasks || "–"}</div>
+                          </div>
+                          <div>
+                            <div style={{ color: "#555d6e", fontSize: 10, marginBottom: 2 }}>安全裝備 (PPE)</div>
+                            <div style={{ color: "#c8d0e0" }}>{o.safety_ppe || "–"}</div>
+                          </div>
+                          <div>
+                            <div style={{ color: "#555d6e", fontSize: 10, marginBottom: 2 }}>安全措施</div>
+                            <div style={{ color: "#c8d0e0" }}>{o.safety_measures || "–"}</div>
+                          </div>
+                          <div>
+                            <div style={{ color: "#555d6e", fontSize: 10, marginBottom: 2 }}>安全部件</div>
+                            <div style={{ color: "#c8d0e0" }}>{o.components || "–"}</div>
+                          </div>
+                          <div>
+                            <div style={{ color: "#555d6e", fontSize: 10, marginBottom: 2 }}>在場員工</div>
+                            <div style={{ color: "#c8d0e0" }}>{o.workers || "–"}</div>
+                          </div>
+                          <div>
+                            <div style={{ color: "#555d6e", fontSize: 10, marginBottom: 2 }}>RWL 負責人</div>
+                            <div style={{ color: "#f0c000", fontWeight: 700 }}>{o.rlw || "–"}</div>
+                          </div>
+                          {o.gps_lat && o.gps_lng && (
+                            <div>
+                              <div style={{ color: "#555d6e", fontSize: 10, marginBottom: 2 }}>GPS 座標</div>
+                              <div style={{ color: "#3b82f6" }}>{Number(o.gps_lat).toFixed(5)}°N, {Number(o.gps_lng).toFixed(5)}°E {o.gps_accuracy ? `(±${Math.round(o.gps_accuracy)}m)` : ""}</div>
+                            </div>
+                          )}
+                          {o.abnormal && o.abnormal_desc && (
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <div style={{ color: "#d63030", fontSize: 10, marginBottom: 2 }}>⚠️ 異常描述</div>
+                              <div style={{ color: "#d63030", fontWeight: 600 }}>{o.abnormal_desc}</div>
+                            </div>
+                          )}
+                          {o.remarks && (
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <div style={{ color: "#555d6e", fontSize: 10, marginBottom: 2 }}>備註</div>
+                              <div style={{ color: "#c8d0e0" }}>{o.remarks}</div>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                ];
+              })}
+            </tbody>
+          </table>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Leave Approval Inbox ──────────────────────────────────────────────────────
 const LEAVE_TYPE_META = {
   personal:     { label: "事假",   icon: "🗓️",  color: "#60A5FA" },
@@ -7111,7 +7291,8 @@ export default function App() {
     empdocs: { icon: "📁", title: "員工文件", sub: "綠卡 / ID / 住址證明" },
     profit: { icon: "📈", title: "報價利潤", sub: "試算工具" },
     tax: { icon: "🧾", title: "老闆稅務", sub: "計算器（香港有限公司）" },
-    leave: { icon: "📝", title: "請假審批", sub: "員工請假申請 / 批核" },
+    workorder: { icon: "📝", title: "每日工序申報", sub: "員工每日工作日誌 / GPS 定位 / 異常跟進" },
+    leave: { icon: "🏖️", title: "請假審批", sub: "員工請假申請 / 批核" },
     calendar: { icon: "📅", title: "行事曆", sub: "請假 / 工程完工 / 進度節點" },
     quotation: { icon: "📄", title: "報價單", sub: "報價管理 / 轉化為發票" },
     announce: { icon: "📢", title: "發布通知", sub: "向員工發送 WhatsApp 啟用通知" },
@@ -7211,6 +7392,7 @@ export default function App() {
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
             {active === "profit" && <ProfitCalc showToast={showToast} />}
             {active === "tax" && <TaxCalc showToast={showToast} />}
+            {active === "workorder" && <WorkOrderPage showToast={showToast} employees={employees} />}
             {active === "leave" && <LeaveApproval showToast={showToast} employees={employees} />}
             {active === "calendar" && <CalendarPage employees={employees} projects={projects} />}
             {active === "quotation" && <QuotationPage showToast={showToast} projects={projects} />}
