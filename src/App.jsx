@@ -3585,6 +3585,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
     try {
       await sbUpdate("invoices", editingId, {
         stage: editRow.cfNo,
+        ec_name: editRow.ecName || null,
         amount: Number(editRow.amount) || 0,
         label: editRow.description,
         start_date: editRow.startDate || null,
@@ -3593,7 +3594,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
         cf_num: parseInt(editRow.cfNo.replace(/[^0-9]/g, "")) || null,
       });
       setCfList(prev => prev.map(c => c.id === editingId ? {
-        ...c, cfNo: editRow.cfNo, amount: Number(editRow.amount) || 0,
+        ...c, cfNo: editRow.cfNo, ecName: editRow.ecName, amount: Number(editRow.amount) || 0,
         description: editRow.description, startDate: editRow.startDate,
         endDate: editRow.endDate, contactPhone: editRow.contactPhone,
       } : c));
@@ -4000,8 +4001,8 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
             </div>
             <div style={{ marginBottom:10 }}>
               <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>EC 工程名稱</div>
-              <input value={editRow.ecName} readOnly
-                className="form-input" style={{ background:"#0d0f12", color:"#555d6e" }} />
+              <input value={editRow.ecName} onChange={e => setEditRow({ ...editRow, ecName: e.target.value })}
+                className="form-input" style={{ background:"#0d0f12" }} />
             </div>
             <div style={{ marginBottom:10 }}>
               <div style={{ fontSize:10, color:"#555d6e", marginBottom:4 }}>工程描述</div>
