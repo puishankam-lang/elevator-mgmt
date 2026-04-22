@@ -4361,57 +4361,62 @@ function StaffManagement({ employees, setEmployees, showToast }) {
         </button>
       </div>
 
-      {/* Add/Edit form */}
+      {/* Add/Edit modal overlay */}
       {showAdd && (
-        <div style={{ background:"#13161c", border:"1px solid #f0c000", borderRadius:10, padding:16, marginBottom:16 }}>
-          <div style={{ fontFamily:"'Barlow Condensed'", fontSize:16, fontWeight:700, color:"#f0c000", marginBottom:12 }}>
-            {editId ? "✏️ 編輯員工" : "👷 新增員工"}
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
-            <div>
-              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>姓名 *</div>
-              <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="form-input" placeholder="員工姓名" />
+        <div onClick={() => { setShowAdd(false); setEditId(null); }}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background:"#13161c", border:"1.5px solid #f0c000", borderRadius:14, padding:20, width:"100%", maxWidth:500, maxHeight:"90vh", overflowY:"auto" }}>
+            <div style={{ fontFamily:"'Barlow Condensed'", fontSize:18, fontWeight:700, color:"#f0c000", marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span>{editId ? "✏️ 編輯員工" : "👷 新增員工"}</span>
+              <button onClick={() => { setShowAdd(false); setEditId(null); }}
+                style={{ background:"none", border:"none", color:"#555d6e", fontSize:20, cursor:"pointer" }}>✕</button>
             </div>
-            <div>
-              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>電話 *</div>
-              <input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} className="form-input" placeholder="香港手機號碼" />
-            </div>
-            <div>
-              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>職位</div>
-              <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}
-                style={{ width:"100%", background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 10px", fontSize:13 }}>
-                {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>日薪 (HK$)</div>
-              <input type="number" value={form.rate} onChange={e=>setForm({...form,rate:e.target.value})} className="form-input" />
-            </div>
-            <div>
-              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>登入 PIN（4位數字）</div>
-              <div style={{ display:"flex", gap:6 }}>
-                <input type="text" maxLength={4} value={form.pin} onChange={e=>setForm({...form,pin:e.target.value.replace(/\D/g,"")})}
-                  className="form-input" placeholder="0000" style={{ flex:1, letterSpacing:4, fontWeight:800 }} />
-                <button onClick={() => setForm({...form,pin:genPin()})}
-                  style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#f0c000", borderRadius:6, padding:"6px 12px", cursor:"pointer", fontSize:12, whiteSpace:"nowrap" }}>
-                  🔀 隨機
-                </button>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+              <div>
+                <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>姓名 *</div>
+                <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="form-input" placeholder="員工姓名" />
               </div>
-              <div style={{ fontSize:10, color:"#3a4255", marginTop:4 }}>員工用呢個 PIN 登入員工 App</div>
-            </div>
-            <div>
-              <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>顏色標記</div>
-              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                {COLORS.map(c => (
-                  <div key={c} onClick={()=>setForm({...form,color:c})}
-                    style={{ width:24, height:24, borderRadius:"50%", background:c, cursor:"pointer", border:form.color===c?"2px solid #fff":"2px solid transparent" }} />
-                ))}
+              <div>
+                <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>電話 *</div>
+                <input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} className="form-input" placeholder="香港手機號碼" />
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>職位</div>
+                <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}
+                  style={{ width:"100%", background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 10px", fontSize:13 }}>
+                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>日薪 (HK$)</div>
+                <input type="number" value={form.rate} onChange={e=>setForm({...form,rate:e.target.value})} className="form-input" />
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>登入 PIN（4位數字）</div>
+                <div style={{ display:"flex", gap:6 }}>
+                  <input type="text" maxLength={4} value={form.pin} onChange={e=>setForm({...form,pin:e.target.value.replace(/\D/g,"")})}
+                    className="form-input" placeholder="0000" style={{ flex:1, letterSpacing:4, fontWeight:800 }} />
+                  <button onClick={() => setForm({...form,pin:genPin()})}
+                    style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#f0c000", borderRadius:6, padding:"6px 12px", cursor:"pointer", fontSize:12, whiteSpace:"nowrap" }}>
+                    🔀 隨機
+                  </button>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>顏色標記</div>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  {COLORS.map(c => (
+                    <div key={c} onClick={()=>setForm({...form,color:c})}
+                      style={{ width:24, height:24, borderRadius:"50%", background:c, cursor:"pointer", border:form.color===c?"2px solid #fff":"2px solid transparent" }} />
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-          <div style={{ display:"flex", gap:8 }}>
-            <button className="btn btn-primary" onClick={handleSave} style={{ flex:1 }}>💾 儲存</button>
-            <button className="btn btn-secondary" onClick={() => { setShowAdd(false); setEditId(null); }}>取消</button>
+            <div style={{ display:"flex", gap:8, marginTop:4 }}>
+              <button className="btn btn-primary" onClick={handleSave} style={{ flex:1 }}>💾 儲存</button>
+              <button className="btn btn-secondary" onClick={() => { setShowAdd(false); setEditId(null); }}>取消</button>
+            </div>
           </div>
         </div>
       )}
