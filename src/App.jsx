@@ -532,6 +532,7 @@ const NAV_ITEMS = [
   { id: "empdocs", icon: "📁", label: "員工文件" },
   { id: "subworkers", icon: "👷", label: "判頭管理" },
   { id: "workorder", icon: "📝", label: "每日工序" },
+  { id: "general_safety", icon: "🛡️", label: "內部員工守則記錄" },
   { id: "archive", icon: "📦", label: "文件歸檔" },
   { id: "leave", icon: "🏖️", label: "請假審批" },
   { id: "calendar", icon: "📅", label: "行事曆" },
@@ -5982,6 +5983,209 @@ h3{margin:24px 0 14px;font-size:15px;color:#333}
   );
 }
 
+// ── General Safety Acknowledgment (通用安全守則) ──────────────────────────────
+function GeneralSafetyPage({ showToast, employees = [], safetyRules = "" }) {
+  const [acks, setAcks] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchAcks = () => {
+    fetch(`${SUPABASE_URL}/rest/v1/safety_acknowledgments?ack_type=eq.general&order=signed_at.desc&limit=500`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    }).then(r => r.json()).then(d => { if (Array.isArray(d)) setAcks(d); })
+      .catch(() => {}).finally(() => setLoading(false));
+  };
+  useEffect(() => { fetchAcks(); const id = setInterval(fetchAcks, 15000); return () => clearInterval(id); }, []);
+
+  const getLatestAck = (empId) => {
+    const records = acks.filter(a => a.employee_id === empId).sort((a, b) => new Date(b.signed_at) - new Date(a.signed_at));
+    return records[0] || null;
+  };
+
+  const getStatus = (empId) => {
+    const latest = getLatestAck(empId);
+    if (!latest) return { status: "never" };
+    const validUntil = new Date(latest.valid_until);
+    const daysLeft = Math.ceil((validUntil - new Date()) / 86400000);
+    if (daysLeft < 0) return { status: "expired", daysLeft, ack: latest };
+    if (daysLeft <= 30) return { status: "expiring", daysLeft, ack: latest };
+    return { status: "valid", daysLeft, ack: latest };
+  };
+
+  const stats = {
+    valid: employees.filter(e => getStatus(e.id).status === "valid").length,
+    expiring: employees.filter(e => getStatus(e.id).status === "expiring").length,
+    expired: employees.filter(e => getStatus(e.id).status === "expired").length,
+    never: employees.filter(e => getStatus(e.id).status === "never").length,
+  };
+
+  const handleRemind = (emp) => {
+    if (!emp.phone) { showToast(`⚠️ ${emp.name} 未設定電話號碼`, "error"); return; }
+    const s = getStatus(emp.id);
+    let msg;
+    if (s.status === "expired") {
+      msg = `${emp.name} 您好，\n\n⚠️ 您的《公司通用版安全守則》簽署已於 ${new Date(s.ack.valid_until).toLocaleDateString("zh-HK")} 過期。\n\n根據公司政策，每 6 個月須重新簽署一次。請即使用員工 App 重新簽署：\nhttps://elevator-staff.vercel.app\n\n呢份係勞保合規必要文件，請盡快完成。`;
+    } else if (s.status === "expiring") {
+      msg = `${emp.name} 您好，\n\n⏰ 您的《公司通用版安全守則》將於 ${s.daysLeft} 日後（${new Date(s.ack.valid_until).toLocaleDateString("zh-HK")}）過期。\n\n請盡早用員工 App 重新簽署：\nhttps://elevator-staff.vercel.app`;
+    } else {
+      msg = `${emp.name} 您好，\n\n請用員工 App 簽署《公司通用版安全守則》（每半年一次，勞保合規必要）：\nhttps://elevator-staff.vercel.app`;
+    }
+    const r = sendWhatsApp(emp.phone, msg);
+    if (r.ok) showToast(`📱 已催簽 ${emp.name}`, "success");
+  };
+
+  const handleExportCSV = () => {
+    if (acks.length === 0) { showToast("⚠️ 尚無通用守則簽署記錄", "error"); return; }
+    const now = new Date();
+    const headers = ["簽署日期", "有效至", "員工姓名", "文件版本", "狀態"];
+    const rows = acks.map(r => {
+      const emp = employees.find(e => e.id === r.employee_id);
+      const vu = r.valid_until ? new Date(r.valid_until) : null;
+      const st = vu ? (vu < now ? "已過期" : `有效（剩 ${Math.ceil((vu - now) / 86400000)} 日）`) : "—";
+      return [new Date(r.signed_at).toLocaleString("zh-HK"), r.valid_until || "—", emp?.name || `員工#${r.employee_id}`, r.document_version || "—", st];
+    });
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `通用守則簽署記錄_${new Date().toLocaleDateString("zh-HK").replace(/\//g,"-")}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`📊 已匯出 ${acks.length} 份記錄`, "success");
+  };
+
+  const handleGeneratePDF = (emp, ack) => {
+    const co = getCompany();
+    const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const w = window.open("", "_blank"); if (!w) return;
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>通用安全守則簽署 — ${esc(emp.name)}</title>
+<style>
+@page { size: A4; margin: 14mm 16mm; }
+body { font-family: 'Microsoft JhengHei','Noto Sans TC',Arial,sans-serif; color:#000; max-width:780px; margin:0 auto; padding:28px 32px; font-size:12px; line-height:1.75; -webkit-print-color-adjust:exact; }
+.header { border-bottom:3px solid #60a5fa; padding-bottom:14px; margin-bottom:18px; }
+.co-cn { font-size:22px; font-weight:900; }
+.co-en { font-size:11px; color:#666; margin-top:2px; }
+.title { font-size:20px; font-weight:800; margin:14px 0 8px; color:#60a5fa; }
+.meta { background:#eff6ff; padding:10px 14px; border-radius:6px; margin-bottom:18px; font-size:12px; line-height:1.8; border-left:4px solid #60a5fa; }
+.meta strong { display:inline-block; width:90px; color:#555; }
+h2 { font-size:14px; margin:14px 0 8px; padding-left:8px; border-left:4px solid #60a5fa; }
+.body { white-space:pre-wrap; font-size:11px; line-height:1.85; background:#f9f9f9; padding:14px 18px; border-radius:6px; }
+.stamp { margin:20px 0; padding:14px; border:2px solid #22c55e; border-radius:10px; background:#f0fdf4; text-align:center; }
+.sign-box { margin-top:26px; display:flex; gap:40px; justify-content:space-between; }
+.sign-line { flex:1; border-bottom:1px solid #000; margin-top:40px; padding-bottom:4px; font-size:10px; text-align:center; color:#666; }
+.footer { margin-top:26px; border-top:1px solid #ddd; padding-top:10px; font-size:10px; color:#888; line-height:1.6; }
+.noprint { position:fixed; top:10px; right:10px; z-index:100; }
+@media print { .noprint { display:none !important; } }
+</style></head><body>
+<button class="noprint" onclick="window.print()" style="padding:10px 20px;background:#60a5fa;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:800;font-size:14px">🖨️ 列印 / 儲存 PDF</button>
+<div class="header">
+  <div class="co-cn">${esc(co.cn)}</div>
+  <div class="co-en">${esc(co.en)}</div>
+</div>
+<div class="title">公司通用版安全守則簽署證明</div>
+<div class="title" style="font-size:14px;color:#666;margin-top:-4px">General Safety Rules Acknowledgment Certificate</div>
+<div class="meta">
+  <div><strong>員工姓名：</strong>${esc(emp.name)}</div>
+  <div><strong>職位：</strong>${esc(emp.role || "電梯技工")}</div>
+  <div><strong>手機：</strong>${esc(emp.phone || "—")}</div>
+  <div><strong>簽署日期：</strong>${new Date(ack.signed_at).toLocaleString("zh-HK")}</div>
+  <div><strong>有效期至：</strong>${new Date(ack.valid_until).toLocaleDateString("zh-HK")}（每 6 個月重新簽署一次）</div>
+  <div><strong>文件版本：</strong>${esc(ack.document_version || "EMSD-2026-04")}</div>
+</div>
+<h2>已確認之安全守則內容</h2>
+<div class="body">${esc(safetyRules)}</div>
+<div class="stamp">
+  <div style="font-size:18px;margin-bottom:6px">✅</div>
+  <div style="font-size:14px;font-weight:700;color:#16a34a">本人確認已閱讀、明白並同意遵守上述所有安全守則</div>
+  <div style="font-size:11px;color:#666;margin-top:4px">Confirmed — Employee has read, understood and agreed to comply with all safety rules</div>
+</div>
+<div class="sign-box">
+  <div><div class="sign-line">員工簽署 Employee Signature</div><div style="font-size:10px;color:#666;margin-top:2px;text-align:center">${esc(emp.name)}</div></div>
+  <div><div class="sign-line">簽署日期 Date</div><div style="font-size:10px;color:#666;margin-top:2px;text-align:center">${new Date(ack.signed_at).toLocaleDateString("zh-HK")}</div></div>
+  <div><div class="sign-line">公司代表 Company Representative</div></div>
+</div>
+<div class="footer">
+  此證明由 ${esc(co.cn)} 管理系統於 ${new Date().toLocaleString("zh-HK")} 自動生成。<br/>
+  This certificate is system-generated for HR / insurance compliance purposes.
+</div>
+</body></html>`);
+    w.document.close();
+  };
+
+  return (
+    <div>
+      {/* Info */}
+      <div className="sign-card" style={{ marginBottom: 16, borderTop: "3px solid #60a5fa" }}>
+        <div className="sign-title" style={{ color: "#60a5fa" }}>🛡️ 公司通用版安全守則（每 6 個月）</div>
+        <div style={{ fontSize: 12, color: "#9aa0b4", lineHeight: 1.7 }}>
+          呢個係<strong style={{ color: "#60a5fa" }}>公司內部通用版</strong>嘅安全守則記錄，獨立於地盤簽署記錄。<br/>
+          每位員工無論派去邊個地盤，都需要每 6 個月簽署一次呢份通用版守則，作為：<br/>
+          • <strong>勞工保險索償證據</strong><br/>
+          • <strong>公司管理責任證明</strong><br/>
+          • <strong>入職安全培訓記錄</strong><br/>
+          員工可喺 App「簽署通用守則」一鍵完成（內容同地盤版一致）。
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid-4" style={{ marginBottom: 16 }}>
+        {[
+          { label: "✅ 有效", value: stats.valid, color: "#22c55e" },
+          { label: "⏰ 將到期(30日內)", value: stats.expiring, color: "#f0c000" },
+          { label: "❌ 已過期", value: stats.expired, color: "#d63030" },
+          { label: "⚠️ 從未簽署", value: stats.never, color: "#8891a4" },
+        ].map((s, i) => (
+          <div key={i} className="sign-card" style={{ marginBottom: 0, textAlign: "center", borderTop: `3px solid ${s.color}` }}>
+            <div style={{ fontSize: 32, fontWeight: 800, color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: 11, color: "#555d6e", marginTop: 2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Employee list */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">👷 員工通用守則狀態</div>
+          <button onClick={handleExportCSV} className="card-action" style={{ cursor: "pointer", background: "none", border: "none" }}>匯出 CSV →</button>
+        </div>
+        <div className="card-body" style={{ padding: "12px 20px" }}>
+          {loading ? <div style={{ textAlign: "center", padding: 24, color: "#555d6e" }}>載入中...</div>
+          : employees.length === 0 ? <div style={{ textAlign: "center", padding: 24, color: "#555d6e" }}>尚無員工資料</div>
+          : employees.map(emp => {
+            const s = getStatus(emp.id);
+            const cfg = {
+              valid: { color: "#22c55e", bg: "rgba(34,197,94,0.1)", label: `✅ 有效（剩 ${s.daysLeft} 日）` },
+              expiring: { color: "#f0c000", bg: "rgba(240,192,0,0.1)", label: `⏰ ${s.daysLeft} 日後到期` },
+              expired: { color: "#d63030", bg: "rgba(214,48,48,0.1)", label: `❌ 已過期 ${Math.abs(s.daysLeft)} 日` },
+              never: { color: "#8891a4", bg: "rgba(136,145,164,0.1)", label: "⚠️ 從未簽署" },
+            }[s.status];
+            const needsAction = s.status !== "valid";
+            return (
+              <div key={emp.id} className="emp-row" style={{ borderColor: needsAction ? cfg.color + "55" : "#1e2330" }}>
+                <div className="emp-avatar" style={{ background: emp.color }}>{emp.name[0]}</div>
+                <div className="emp-info" style={{ flex: 1 }}>
+                  <div className="emp-name">{emp.name}</div>
+                  <div className="emp-role" style={{ fontSize: 11, color: cfg.color, fontWeight: 600 }}>{cfg.label}</div>
+                  {s.ack && <div style={{ fontSize: 10, color: "#555d6e", marginTop: 1 }}>簽於 {new Date(s.ack.signed_at).toLocaleDateString("zh-HK")} · 有效至 {new Date(s.ack.valid_until).toLocaleDateString("zh-HK")}</div>}
+                </div>
+                {needsAction ? (
+                  <button onClick={() => handleRemind(emp)} className="btn btn-danger btn-sm">
+                    📱 {s.status === "expired" ? "催重簽" : s.status === "expiring" ? "催提醒" : "催簽"}
+                  </button>
+                ) : (
+                  <button onClick={() => handleGeneratePDF(emp, s.ack)}
+                    style={{ background: "rgba(96,165,250,0.1)", border: "1px solid #60a5fa", color: "#60a5fa", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                    📄 證明 PDF
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Project Archive (文件歸檔 / 一鍵上繳) ─────────────────────────────────────
 function ProjectArchive({ showToast, employees = [], projects = [] }) {
   const today = new Date().toISOString().split("T")[0];
@@ -8747,6 +8951,7 @@ PPE 包括：
     tax: { icon: "🧾", title: "老闆稅務", sub: "計算器（香港有限公司）" },
     subworkers: { icon: "👷", title: "判頭管理", sub: "判頭員工資料 / 登入PIN / 工地分配" },
     workorder: { icon: "📝", title: "每日工序申報", sub: "員工每日工作日誌 / GPS 定位 / 異常跟進" },
+    general_safety: { icon: "🛡️", title: "內部員工電梯施工安全守則紀錄", sub: "公司內部通用版 / 每 6 個月簽署一次 / 勞保合規" },
     archive: { icon: "📦", title: "文件歸檔", sub: "按地盤歸檔 / 一鍵上繳打包 / 獨立盤合規" },
     leave: { icon: "🏖️", title: "請假審批", sub: "員工請假申請 / 批核" },
     calendar: { icon: "📅", title: "行事曆", sub: "請假 / 工程完工 / 進度節點" },
@@ -8850,6 +9055,7 @@ PPE 包括：
             {active === "tax" && <TaxCalc showToast={showToast} />}
             {active === "subworkers" && <SubWorkerManagement showToast={showToast} />}
             {active === "workorder" && <WorkOrderPage showToast={showToast} employees={employees} />}
+            {active === "general_safety" && <GeneralSafetyPage showToast={showToast} employees={employees} safetyRules={safetyRules} />}
             {active === "archive" && <ProjectArchive showToast={showToast} employees={employees} projects={projects} />}
             {active === "leave" && <LeaveApproval showToast={showToast} employees={employees} />}
             {active === "calendar" && <CalendarPage employees={employees} projects={projects} />}
