@@ -746,6 +746,7 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
   const [mobileSigns, setMobileSigns] = useState([]);
   const [ackRecords, setAckRecords] = useState([]);
   const [todayDispatch, setTodayDispatch] = useState([]);
+  const [internalSigns, setInternalSigns] = useState([]);
 
   useEffect(() => {
     const today = new Date().toISOString().split("T")[0];
@@ -767,8 +768,14 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setTodayDispatch(d); })
       .catch(() => {});
-    fetchSigns(); fetchAcks(); fetchDispatch();
-    const id = setInterval(() => { fetchSigns(); fetchAcks(); fetchDispatch(); }, 15000);
+    const fetchInternal = () => fetch(`${SUPABASE_URL}/rest/v1/internal_daily_signs?order=signed_at.desc&limit=500`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setInternalSigns(d); })
+      .catch(() => {});
+    fetchSigns(); fetchAcks(); fetchDispatch(); fetchInternal();
+    const id = setInterval(() => { fetchSigns(); fetchAcks(); fetchDispatch(); fetchInternal(); }, 15000);
     return () => clearInterval(id);
   }, []);
 
@@ -786,6 +793,37 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
   // Get today's assigned sites for a given employee
   const getAssignedSites = (empId) => {
     return [...new Set(todayDispatch.filter(d => d.employee_id === empId).map(d => d.site_name).filter(Boolean))];
+  };
+  // Get today's internal sign for an employee
+  const getTodayInternal = (empId) => {
+    const today = new Date().toISOString().split("T")[0];
+    return internalSigns.find(s => s.employee_id === empId && s.sign_date === today);
+  };
+
+  const handleExportInternal = () => {
+    if (internalSigns.length === 0) { showToast("⚠️ 尚無公司內部聲明記錄", "error"); return; }
+    const headers = ["簽署日期", "簽署時間", "員工姓名", "身體健康", "PPE 檢查", "同意內部指引", "工地"];
+    const rows = internalSigns.map(s => {
+      const emp = employees.find(e => e.id === s.employee_id);
+      return [
+        s.sign_date,
+        new Date(s.signed_at).toLocaleTimeString("zh-HK"),
+        emp?.name || `員工#${s.employee_id}`,
+        s.health_ok ? "✅" : "❌",
+        s.ppe_ok ? "✅" : "❌",
+        s.agree_internal ? "✅" : "❌",
+        s.site || "—",
+      ];
+    });
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `公司內部開工聲明_${new Date().toLocaleDateString("zh-HK").replace(/\//g,"-")}.csv`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`📊 已匯出 ${internalSigns.length} 份內部聲明記錄！`, "success");
   };
 
   // Returns { status: "valid"|"expiring"|"expired"|"never", daysLeft, ack }
@@ -1023,6 +1061,70 @@ This certificate is system-generated. For enquiries, contact Mr. Kam at 5444 209
                 )}
               </div>
             );})}
+          </div>
+        </div>
+      </div>
+
+      {/* Internal daily declaration status */}
+      <div className="card" style={{ marginTop: 4, marginBottom: 4, borderLeft: "3px solid #60a5fa" }}>
+        <div className="card-header">
+          <div className="card-title">🏢 公司內部開工聲明（每日一次，勞保／公司記錄）</div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div style={{ fontSize: 10, color: "#60a5fa" }}>總記錄 {internalSigns.length}</div>
+            <button onClick={handleExportInternal} className="card-action" style={{ cursor: "pointer", background: "none", border: "none" }}>匯出 CSV →</button>
+          </div>
+        </div>
+        <div className="card-body" style={{ padding: "12px 20px" }}>
+          <div style={{ fontSize: 11, color: "#9aa0b4", marginBottom: 10, lineHeight: 1.5 }}>
+            每位員工每日第一次簽署地盤守則時，會一併完成呢份通用聲明（身體狀況、PPE 檢查、同意公司指引）。<br/>
+            呢份記錄係用嚟應付 <strong style={{ color: "#60a5fa" }}>勞工保險索償</strong> 同 <strong style={{ color: "#60a5fa" }}>公司管理責任</strong> 之用。
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
+            {[
+              { label: "今日已簽", value: employees.filter(e => getTodayInternal(e.id)).length, color: "#22c55e" },
+              { label: "今日未簽", value: employees.filter(e => !getTodayInternal(e.id)).length, color: "#d63030" },
+              { label: "歷史總數", value: internalSigns.length, color: "#60a5fa" },
+            ].map((s, i) => (
+              <div key={i} style={{ background: "#0d0f12", borderRadius: 8, padding: "8px", textAlign: "center", border: `1px solid ${s.color}33` }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: 10, color: "#555d6e" }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ maxHeight: 260, overflowY: "auto" }}>
+            {employees.map(emp => {
+              const rec = getTodayInternal(emp.id);
+              return (
+                <div key={emp.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: "#0d0f12", borderRadius: 6, marginBottom: 5, border: `1px solid ${rec ? "#1e2330" : "rgba(214,48,48,0.3)"}` }}>
+                  <div style={{ width: 26, height: 26, borderRadius: "50%", background: emp.color || "#f0c000", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#0d0f12", fontSize: 11 }}>{emp.name[0]}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 12 }}>{emp.name}</div>
+                    {rec ? (
+                      <div style={{ fontSize: 10, color: "#22c55e" }}>
+                        ✅ 已於 {new Date(rec.signed_at).toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" })} 簽署
+                        {rec.site && ` · 首個工地：${rec.site}`}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 10, color: "#d63030" }}>⚠️ 今日未簽署內部聲明</div>
+                    )}
+                  </div>
+                  {rec ? (
+                    <div style={{ display: "flex", gap: 3, fontSize: 9 }}>
+                      <span title="身體健康" style={{ padding: "2px 6px", borderRadius: 4, background: rec.health_ok ? "rgba(34,197,94,0.15)" : "rgba(214,48,48,0.15)", color: rec.health_ok ? "#22c55e" : "#d63030" }}>健康</span>
+                      <span title="PPE 檢查" style={{ padding: "2px 6px", borderRadius: 4, background: rec.ppe_ok ? "rgba(34,197,94,0.15)" : "rgba(214,48,48,0.15)", color: rec.ppe_ok ? "#22c55e" : "#d63030" }}>PPE</span>
+                      <span title="同意內部指引" style={{ padding: "2px 6px", borderRadius: 4, background: rec.agree_internal ? "rgba(34,197,94,0.15)" : "rgba(214,48,48,0.15)", color: rec.agree_internal ? "#22c55e" : "#d63030" }}>指引</span>
+                    </div>
+                  ) : emp.phone && (
+                    <button onClick={() => {
+                      const msg = `${emp.name} 您好，\n您今日尚未完成《公司內部開工聲明》，請到員工 App 簽署（每日一次）：\nhttps://elevator-staff.vercel.app\n\n呢份聲明係勞保合規必要文件，請盡快完成。`;
+                      const r = sendWhatsApp(emp.phone, msg);
+                      if (r.ok) showToast(`📱 已催簽 ${emp.name}`, "success");
+                    }}
+                      style={{ background: "rgba(96,165,250,0.12)", border: "1px solid #60a5fa", color: "#60a5fa", borderRadius: 5, padding: "3px 8px", fontSize: 10, cursor: "pointer", fontWeight: 600 }}>📱 催簽</button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
