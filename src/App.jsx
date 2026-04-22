@@ -5882,7 +5882,7 @@ function ProjectArchive({ showToast, employees = [], projects = [] }) {
   const [startDate, setStartDate] = useState(sevenDaysAgo);
   const [endDate, setEndDate] = useState(today);
   const [loading, setLoading] = useState(false);
-  const [records, setRecords] = useState({ safety_signs: [], safety_acks: [], work_orders: [], progress: [], attendance: [] });
+  const [records, setRecords] = useState({ safety_signs: [], safety_acks: [], work_orders: [], progress: [], attendance: [], internal: [] });
 
   const empName = (id) => employees.find(e => e.id === id)?.name || `員工#${id}`;
   const activeProjects = projects.filter(p => p.phase === "active" || p.phase === "pending");
@@ -5892,11 +5892,12 @@ function ProjectArchive({ showToast, employees = [], projects = [] }) {
     setLoading(true);
     try {
       const dateFilter = `work_date=gte.${startDate}&work_date=lte.${endDate}`;
-      const [signsR, acksR, progR, attR] = await Promise.all([
+      const [signsR, acksR, progR, attR, intR] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/safety_signs?site=eq.${encodeURIComponent(selProj)}&${dateFilter}&order=submitted_at.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
         fetch(`${SUPABASE_URL}/rest/v1/safety_acknowledgments?site=eq.${encodeURIComponent(selProj)}&signed_at=gte.${startDate}T00:00:00&signed_at=lte.${endDate}T23:59:59&order=signed_at.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
         fetch(`${SUPABASE_URL}/rest/v1/progress_reports?project=eq.${encodeURIComponent(selProj)}&submitted_at=gte.${startDate}T00:00:00&submitted_at=lte.${endDate}T23:59:59&order=submitted_at.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
         fetch(`${SUPABASE_URL}/rest/v1/attendance?site=eq.${encodeURIComponent(selProj)}&date=gte.${startDate}&date=lte.${endDate}&order=check_in.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
+        fetch(`${SUPABASE_URL}/rest/v1/internal_daily_signs?site=eq.${encodeURIComponent(selProj)}&sign_date=gte.${startDate}&sign_date=lte.${endDate}&order=signed_at.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
       ]);
       setRecords({
         safety_signs: Array.isArray(signsR) ? signsR : [],
@@ -5904,8 +5905,9 @@ function ProjectArchive({ showToast, employees = [], projects = [] }) {
         work_orders: Array.isArray(signsR) ? signsR : [],
         progress: Array.isArray(progR) ? progR : [],
         attendance: Array.isArray(attR) ? attR : [],
+        internal: Array.isArray(intR) ? intR : [],
       });
-      showToast(`✅ 已載入 ${(signsR?.length||0)+(acksR?.length||0)+(progR?.length||0)+(attR?.length||0)} 份記錄`);
+      showToast(`✅ 已載入 ${(signsR?.length||0)+(acksR?.length||0)+(progR?.length||0)+(attR?.length||0)+(intR?.length||0)} 份記錄`);
     } catch (e) { showToast("❌ 載入失敗：" + e.message, "error"); }
     setLoading(false);
   };
@@ -5926,11 +5928,19 @@ function ProjectArchive({ showToast, employees = [], projects = [] }) {
     else if (type === "SafetyAck") dateStr = fmtDate(record.signed_at);
     else if (type === "Progress") dateStr = fmtDate(record.submitted_at);
     else if (type === "Attendance") dateStr = fmtDate(record.check_in || record.date);
+    else if (type === "InternalSign") dateStr = fmtDate(record.signed_at || record.sign_date);
     else dateStr = fmtDate(new Date());
-    return `${dateStr}_${projCode(selProj)}_${cleanName(emp)}_${type}.pdf`;
+    // Internal signs get a different path prefix: Internal_Records/Daily_Signs/YYYY/MM/
+    if (type === "InternalSign") {
+      const d = new Date(record.signed_at || record.sign_date);
+      const yr = d.getFullYear();
+      const mo = String(d.getMonth() + 1).padStart(2, "0");
+      return `Internal_Records/Daily_Signs/${yr}/${mo}/${dateStr}_${cleanName(emp)}_InternalSign.pdf`;
+    }
+    return `Projects/${projCode(selProj)}/Daily_Records/${dateStr}_${projCode(selProj)}_${cleanName(emp)}_${type}.pdf`;
   };
 
-  const totalCount = records.safety_acks.length + records.safety_signs.length + records.progress.length + records.attendance.length;
+  const totalCount = records.safety_acks.length + records.safety_signs.length + records.progress.length + records.attendance.length + records.internal.length;
 
   const generateSubmissionPackage = () => {
     if (totalCount === 0) { showToast("⚠️ 沒有記錄可打包", "error"); return; }
@@ -5938,8 +5948,14 @@ function ProjectArchive({ showToast, employees = [], projects = [] }) {
     const w = window.open("", "_blank"); if (!w) return;
     const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+    const internalSection = records.internal.length === 0 ? "" : `
+<h2 style="page-break-before:always">🏢 公司內部開工聲明 (${records.internal.length})</h2>
+<table class="tbl"><thead><tr><th>日期</th><th>員工</th><th>身體狀況</th><th>PPE 檢查</th><th>內部指引</th><th>工地</th><th>檔名</th></tr></thead><tbody>
+${records.internal.map(r => `<tr><td>${new Date(r.signed_at || r.sign_date).toLocaleString("zh-HK")}</td><td>${esc(empName(r.employee_id))}</td><td>${r.health_ok ? "✅ 適合工作" : "❌"}</td><td>${r.ppe_ok ? "✅ 已檢查" : "❌"}</td><td>${r.agree_internal ? "✅ 同意" : "❌"}</td><td>${esc(r.site || "—")}</td><td class="fn">${buildFilename("InternalSign", r)}</td></tr>`).join("")}
+</tbody></table>`;
+
     const ackSection = records.safety_acks.length === 0 ? "" : `
-<h2 style="page-break-before:always">📋 安全守則簽署記錄 (${records.safety_acks.length})</h2>
+<h2 style="page-break-before:always">📋 地盤安全守則簽署記錄 (${records.safety_acks.length})</h2>
 <table class="tbl"><thead><tr><th>日期</th><th>員工</th><th>工地</th><th>有效期至</th><th>檔名</th></tr></thead><tbody>
 ${records.safety_acks.map(r => `<tr><td>${new Date(r.signed_at).toLocaleString("zh-HK")}</td><td>${esc(empName(r.employee_id))}</td><td>${esc(r.site)}</td><td>${r.valid_until || "—"}</td><td class="fn">${buildFilename("SafetyAck", r)}</td></tr>`).join("")}
 </tbody></table>`;
@@ -6023,7 +6039,8 @@ h2 { font-size: 14px; background: #1a1a1a; color: #fff; padding: 8px 12px; margi
   <table class="tbl" style="background:#fff">
     <thead><tr><th>類別</th><th>數量</th><th>涉及日期</th></tr></thead>
     <tbody>
-      <tr><td>📋 安全守則簽署（半年）</td><td>${records.safety_acks.length}</td><td>${records.safety_acks[0] ? new Date(records.safety_acks[records.safety_acks.length-1].signed_at).toLocaleDateString("zh-HK") + " – " + new Date(records.safety_acks[0].signed_at).toLocaleDateString("zh-HK") : "—"}</td></tr>
+      <tr><td>🏢 公司內部開工聲明（每日）</td><td>${records.internal.length}</td><td>${records.internal[0] ? new Date(records.internal[records.internal.length-1].signed_at).toLocaleDateString("zh-HK") + " – " + new Date(records.internal[0].signed_at).toLocaleDateString("zh-HK") : "—"}</td></tr>
+      <tr><td>📋 地盤安全守則簽署（半年）</td><td>${records.safety_acks.length}</td><td>${records.safety_acks[0] ? new Date(records.safety_acks[records.safety_acks.length-1].signed_at).toLocaleDateString("zh-HK") + " – " + new Date(records.safety_acks[0].signed_at).toLocaleDateString("zh-HK") : "—"}</td></tr>
       <tr><td>📝 每日工序申報</td><td>${records.safety_signs.length}</td><td>${records.safety_signs[0] ? new Date(records.safety_signs[records.safety_signs.length-1].submitted_at || records.safety_signs[records.safety_signs.length-1].work_date).toLocaleDateString("zh-HK") + " – " + new Date(records.safety_signs[0].submitted_at || records.safety_signs[0].work_date).toLocaleDateString("zh-HK") : "—"}</td></tr>
       <tr><td>📊 工程進度回報</td><td>${records.progress.length}</td><td>${records.progress[0] ? new Date(records.progress[records.progress.length-1].submitted_at).toLocaleDateString("zh-HK") + " – " + new Date(records.progress[0].submitted_at).toLocaleDateString("zh-HK") : "—"}</td></tr>
       <tr><td>📍 GPS 考勤</td><td>${records.attendance.length}</td><td>${records.attendance[0] ? records.attendance[records.attendance.length-1].date + " – " + records.attendance[0].date : "—"}</td></tr>
@@ -6031,6 +6048,7 @@ h2 { font-size: 14px; background: #1a1a1a; color: #fff; padding: 8px 12px; margi
   </table>
 </div>
 
+${internalSection}
 ${ackSection}
 ${signSection}
 ${progSection}
@@ -6086,12 +6104,13 @@ ${attSection}
 
       {/* Summary */}
       {selProj && !loading && (
-        <div className="grid-4" style={{ marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 16 }}>
           {[
-            { label: "📋 安全簽署", value: records.safety_acks.length, color: "#22c55e" },
+            { label: "🏢 內部聲明", value: records.internal.length, color: "#60a5fa" },
+            { label: "📋 地盤簽署", value: records.safety_acks.length, color: "#22c55e" },
             { label: "📝 工序申報", value: records.safety_signs.length, color: "#f0c000" },
-            { label: "📊 進度回報", value: records.progress.length, color: "#60a5fa" },
-            { label: "📍 考勤記錄", value: records.attendance.length, color: "#a78bfa" },
+            { label: "📊 進度回報", value: records.progress.length, color: "#a78bfa" },
+            { label: "📍 考勤記錄", value: records.attendance.length, color: "#f43f5e" },
           ].map((s, i) => (
             <div key={i} className="sign-card" style={{ marginBottom: 0, textAlign: "center" }}>
               <div style={{ fontSize: 28, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -6129,11 +6148,19 @@ ${attSection}
             <table className="data-table">
               <thead><tr><th>日期</th><th>員工</th><th>類型</th><th>標準檔名</th></tr></thead>
               <tbody>
+                {records.internal.map(r => (
+                  <tr key={`int-${r.id}`}>
+                    <td style={{ fontSize: 11 }}>{new Date(r.signed_at || r.sign_date).toLocaleDateString("zh-HK")}</td>
+                    <td className="td-name">{empName(r.employee_id)}</td>
+                    <td><span className="badge" style={{ background: "rgba(96,165,250,0.1)", color: "#60a5fa" }}><span className="badge-dot" />內部聲明</span></td>
+                    <td style={{ fontFamily: "monospace", fontSize: 10, color: "#60a5fa" }}>{buildFilename("InternalSign", r)}</td>
+                  </tr>
+                ))}
                 {records.safety_acks.map(r => (
                   <tr key={`ack-${r.id}`}>
                     <td style={{ fontSize: 11 }}>{new Date(r.signed_at).toLocaleDateString("zh-HK")}</td>
                     <td className="td-name">{empName(r.employee_id)}</td>
-                    <td><span className="badge green"><span className="badge-dot" />安全簽署</span></td>
+                    <td><span className="badge green"><span className="badge-dot" />地盤簽署</span></td>
                     <td style={{ fontFamily: "monospace", fontSize: 10, color: "#60a5fa" }}>{buildFilename("SafetyAck", r)}</td>
                   </tr>
                 ))}
