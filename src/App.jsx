@@ -5249,12 +5249,113 @@ function SubWorkerManagement({ showToast }) {
   const genPin = () => Math.floor(1000+Math.random()*9000).toString();
   const resetForm = () => setForm({ name:"", role:"判頭技工", phone:"", pin:genPin(), rate:850, color:"#FF6B1A", contractor_name:"" });
 
-  useEffect(() => {
+  const [allDocs, setAllDocs] = useState([]);
+  const [viewDocsFor, setViewDocsFor] = useState(null);
+  const STAFF_APP_URL = "https://elevator-staff.vercel.app";
+
+  const fetchWorkers = () => {
     fetch(`${SUPABASE_URL}/rest/v1/subcontractor_workers?order=created_at.desc`, {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
     }).then(r => r.json()).then(d => { if (Array.isArray(d)) setWorkers(d); })
       .catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    fetch(`${SUPABASE_URL}/rest/v1/subcontractor_docs?order=created_at.desc&limit=500`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    }).then(r => r.json()).then(d => { if (Array.isArray(d)) setAllDocs(d); }).catch(() => {});
+  };
+
+  useEffect(() => { fetchWorkers(); const id = setInterval(fetchWorkers, 15000); return () => clearInterval(id); }, []);
+
+  const genToken = () => `sc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+
+  const handleRequestDocs = async (worker) => {
+    let token = worker.upload_token;
+    if (!token) {
+      token = genToken();
+      try {
+        await sbUpdate("subcontractor_workers", worker.id, { upload_token: token });
+        setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, upload_token: token } : w));
+      } catch (e) { showToast("❌ 產生連結失敗", "error"); return; }
+    }
+    const link = `${STAFF_APP_URL}?upload_token=${token}`;
+    const phone = (worker.phone || "").replace(/\D/g, "");
+    const fullPhone = phone.length === 8 ? `852${phone}` : phone;
+    const msg = `${worker.name} 你好！
+
+請透過以下連結上傳所需文件（免登入，直接開連結即可）：
+
+📱 連結：${link}
+
+請上載：
+• 平安咭（綠咭）*必須
+• 身份證副本 *必須
+• 住址證明 *必須
+• 其他專業證書（如有）
+
+所有文件上傳後，管理員會自動收到通知。謝謝合作！`;
+    if (!phone) { showToast("⚠️ 此員工沒有電話號碼", "error"); return; }
+    window.open(`https://wa.me/${fullPhone}?text=${encodeURIComponent(msg)}`, "_blank");
+    showToast(`📱 已開啟 WhatsApp 發送予 ${worker.name}`);
+  };
+
+  const handleBulkRequest = async () => {
+    const validWorkers = workers.filter(w => w.phone);
+    if (validWorkers.length === 0) { showToast("⚠️ 沒有判頭員工有電話號碼", "error"); return; }
+    if (!window.confirm(`即將向 ${validWorkers.length} 位判頭員工發送文件上傳請求（每 1.5 秒開啟一個）？`)) return;
+    for (let i = 0; i < validWorkers.length; i++) {
+      await handleRequestDocs(validWorkers[i]);
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  };
+
+  const handleUpdateDocStatus = async (docId, status) => {
+    try {
+      await sbUpdate("subcontractor_docs", docId, { status });
+      setAllDocs(prev => prev.map(d => d.id === docId ? { ...d, status } : d));
+      showToast(`✅ 已標記為${status === "approved" ? "已審核" : "拒絕"}`);
+    } catch (e) { showToast("❌ 更新失敗", "error"); }
+  };
+
+  const handleGeneratePDF = (doc, worker) => {
+    const win = window.open("", "_blank");
+    const co = getCompany();
+    win.document.write(`<!DOCTYPE html><html><head><title>${worker.name} - ${doc.doc_type}</title>
+<style>
+@page { size: A4; margin: 15mm; }
+body { font-family: 'Microsoft JhengHei','Noto Sans TC',Arial,sans-serif; color: #000; margin: 0; }
+.header { border-bottom: 3px solid #f0c000; padding-bottom: 12px; margin-bottom: 20px; }
+.co-name { font-size: 18px; font-weight: 900; }
+.co-en { font-size: 11px; color: #666; }
+.doc-title { font-size: 22px; font-weight: 800; color: #f0c000; margin: 16px 0 8px; }
+.meta { background: #f5f5f5; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-size: 12px; line-height: 1.8; }
+.meta strong { display: inline-block; width: 110px; color: #555; }
+.img-wrap { text-align: center; padding: 12px; border: 1px solid #ddd; border-radius: 6px; }
+.img-wrap img { max-width: 100%; max-height: 70vh; }
+.footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #ddd; font-size: 10px; color: #888; text-align: center; }
+@media print { .no-print { display: none !important; } }
+.no-print { text-align: center; margin: 20px 0; }
+.no-print button { background: #f0c000; border: none; padding: 10px 24px; font-size: 14px; font-weight: 700; border-radius: 6px; cursor: pointer; }
+</style></head><body>
+<div class="header">
+  <div class="co-name">${co.nameCN || co.cn}</div>
+  <div class="co-en">${co.nameEN || co.en}</div>
+</div>
+<div class="doc-title">判頭員工文件 — Sub-contractor Document</div>
+<div class="meta">
+  <div><strong>判頭員工：</strong>${worker.name}</div>
+  ${worker.contractor_name ? `<div><strong>所屬判頭：</strong>${worker.contractor_name}</div>` : ""}
+  <div><strong>職位：</strong>${worker.role || "判頭技工"}</div>
+  <div><strong>電話：</strong>${worker.phone || "—"}</div>
+  <div><strong>文件類別：</strong>${({greencard:"平安咭（綠咭）",id:"身份證副本",address:"住址證明",license:"專業證書",other:"其他證書"})[doc.doc_type] || doc.doc_type}</div>
+  <div><strong>檔案名稱：</strong>${doc.file_name || "—"}</div>
+  <div><strong>上傳時間：</strong>${new Date(doc.created_at).toLocaleString("zh-HK")}</div>
+  <div><strong>審核狀態：</strong>${({pending_review:"待審核",approved:"已審核",rejected:"已拒絕"})[doc.status] || doc.status}</div>
+</div>
+<div class="img-wrap"><img src="${doc.file_url}" alt="document" /></div>
+<div class="footer">此文件由 ${co.nameCN || co.cn} 自動化管理系統於 ${new Date().toLocaleString("zh-HK")} 生成</div>
+<div class="no-print"><button onclick="window.print()">🖨️ 列印／儲存為 PDF</button></div>
+</body></html>`);
+    win.document.close();
+  };
 
   useEffect(() => { if (showAdd && !editId) setForm(f => ({ ...f, pin: genPin() })); }, [showAdd]);
 
@@ -5302,7 +5403,11 @@ function SubWorkerManagement({ showToast }) {
         ))}
       </div>
 
-      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginBottom:12 }}>
+        <button onClick={handleBulkRequest}
+          style={{ background:"rgba(34,197,94,0.1)", border:"1px solid #22c55e", color:"#22c55e", borderRadius:8, padding:"8px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+          📤 一鍵請求全部文件
+        </button>
         <button className="btn btn-primary" onClick={() => { resetForm(); setEditId(null); setShowAdd(!showAdd); }}>
           {showAdd && !editId ? "✕ 收起" : "+ 新增判頭員工"}
         </button>
@@ -5403,7 +5508,11 @@ function SubWorkerManagement({ showToast }) {
                   </button>
                 </td>
                 <td style={{ padding:"10px 14px" }}>
-                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                    <button onClick={() => handleRequestDocs(w)}
+                      title="WhatsApp 請求文件上傳" style={{ background:"rgba(34,197,94,0.1)", border:"none", color:"#22c55e", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer", fontWeight:600 }}>📤 請求</button>
+                    <button onClick={() => setViewDocsFor(w)}
+                      title="查看已上傳文件" style={{ background:"rgba(96,165,250,0.1)", border:"none", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer", fontWeight:600 }}>📁 文件 ({allDocs.filter(d => d.contractor_id === w.id).length})</button>
                     <button onClick={() => { setForm({name:w.name,role:w.role||"判頭技工",phone:w.phone||"",pin:w.pin||"",rate:w.daily_rate||850,color:w.color||"#FF6B1A",contractor_name:w.contractor_name||""}); setEditId(w.id); setShowAdd(true); }}
                       style={{ background:"#1e2330", border:"none", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>✏️</button>
                     <button onClick={() => handleDelete(w.id, w.name)}
@@ -5420,8 +5529,72 @@ function SubWorkerManagement({ showToast }) {
       </div>
 
       <div style={{ marginTop:12, background:"rgba(255,107,26,0.06)", border:"1px solid rgba(255,107,26,0.15)", borderRadius:8, padding:"12px 16px", fontSize:12, color:"#9aa0b4" }}>
-        💡 判頭員工使用同一個 Employee App 登入，電話 + PIN 即可使用所有功能（簽到、工序申報、文件上載等）
+        💡 按 <strong style={{color:"#22c55e"}}>📤 請求</strong> 會發送 WhatsApp 予判頭，包含免登入上傳連結。文件上傳後會自動出現喺 <strong style={{color:"#60a5fa"}}>📁 文件</strong> 清單內。
       </div>
+
+      {/* Docs viewer modal */}
+      {viewDocsFor && (
+        <div onClick={() => setViewDocsFor(null)}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background:"#13161c", border:"1.5px solid #60a5fa", borderRadius:14, padding:20, width:"100%", maxWidth:720, maxHeight:"90vh", overflowY:"auto" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+              <div>
+                <div style={{ fontSize:16, fontWeight:800, color:"#60a5fa" }}>📁 {viewDocsFor.name} 已上傳文件</div>
+                {viewDocsFor.contractor_name && <div style={{ fontSize:11, color:"#FF6B1A", marginTop:2 }}>🏢 {viewDocsFor.contractor_name}</div>}
+              </div>
+              <button onClick={() => setViewDocsFor(null)}
+                style={{ background:"none", border:"none", color:"#555d6e", fontSize:20, cursor:"pointer" }}>✕</button>
+            </div>
+            {(() => {
+              const wDocs = allDocs.filter(d => d.contractor_id === viewDocsFor.id);
+              if (wDocs.length === 0) return (
+                <div style={{ textAlign:"center", padding:40, color:"#555d6e" }}>
+                  <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+                  尚未上傳任何文件<br/>
+                  <button onClick={() => handleRequestDocs(viewDocsFor)}
+                    style={{ marginTop:12, background:"#22c55e", color:"#fff", border:"none", borderRadius:8, padding:"8px 16px", fontWeight:700, cursor:"pointer" }}>
+                    📤 發送 WhatsApp 請求上傳
+                  </button>
+                </div>
+              );
+              return (
+                <div style={{ display:"grid", gap:10 }}>
+                  {wDocs.map(doc => {
+                    const label = ({greencard:"🪪 平安咭（綠咭）",id:"🆔 身份證副本",address:"🏠 住址證明",license:"📜 專業證書",other:"📄 其他證書"})[doc.doc_type] || doc.doc_type;
+                    const statusColor = doc.status === "approved" ? "#22c55e" : doc.status === "rejected" ? "#d63030" : "#f0c000";
+                    const statusLabel = ({pending_review:"待審核",approved:"✅ 已審核",rejected:"❌ 已拒絕"})[doc.status] || doc.status;
+                    return (
+                      <div key={doc.id} style={{ background:"#0d0f12", border:"1px solid #1e2330", borderRadius:10, padding:12, display:"flex", gap:12, alignItems:"center" }}>
+                        {doc.file_url && <img src={doc.file_url} alt="" style={{ width:60, height:60, objectFit:"cover", borderRadius:6, background:"#1e2330" }} />}
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, fontWeight:700 }}>{label}</div>
+                          <div style={{ fontSize:10, color:"#555d6e" }}>{doc.file_name} · {new Date(doc.created_at).toLocaleString("zh-HK")}</div>
+                          <div style={{ fontSize:10, color:statusColor, fontWeight:600, marginTop:3 }}>{statusLabel}</div>
+                        </div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                          <button onClick={() => window.open(doc.file_url, "_blank")}
+                            style={{ background:"#1e2330", border:"none", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:10, cursor:"pointer" }}>👁️ 查看</button>
+                          <button onClick={() => handleGeneratePDF(doc, viewDocsFor)}
+                            style={{ background:"#1e2330", border:"none", color:"#f0c000", borderRadius:5, padding:"4px 10px", fontSize:10, cursor:"pointer" }}>📄 PDF</button>
+                          {doc.status === "pending_review" && (
+                            <>
+                              <button onClick={() => handleUpdateDocStatus(doc.id, "approved")}
+                                style={{ background:"rgba(34,197,94,0.1)", border:"none", color:"#22c55e", borderRadius:5, padding:"4px 10px", fontSize:10, cursor:"pointer" }}>✅ 審核</button>
+                              <button onClick={() => handleUpdateDocStatus(doc.id, "rejected")}
+                                style={{ background:"rgba(214,48,48,0.1)", border:"none", color:"#d63030", borderRadius:5, padding:"4px 10px", fontSize:10, cursor:"pointer" }}>❌ 拒絕</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
