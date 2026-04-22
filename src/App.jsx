@@ -4295,7 +4295,7 @@ function StaffManagement({ employees, setEmployees, showToast }) {
   const [form, setForm] = useState({ name:"", role:"電梯技工", phone:"", pin:"", rate:850, color:"#f0c000", salaryType:"daily" });
   const [pinVisible, setPinVisible] = useState({});
 
-  const ROLES = ["電梯技工","技術主管","助理技工","文員","管理人員"];
+  const ROLES = ["電梯技工","技術主管","助理技工","判頭","文員","管理人員"];
   const COLORS = ["#FF6B1A","#22C55E","#60A5FA","#A78BFA","#FB923C","#F43F5E","#06B6D4","#84CC16","#E879F9","#F0C000"];
 
   const genPin = () => Math.floor(1000+Math.random()*9000).toString();
@@ -4400,10 +4400,11 @@ function StaffManagement({ employees, setEmployees, showToast }) {
               </div>
               <div>
                 <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>職位</div>
-                <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}
-                  style={{ width:"100%", background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 10px", fontSize:13 }}>
-                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
+                <input value={form.role} onChange={e=>setForm({...form,role:e.target.value})}
+                  list="role-list" className="form-input" placeholder="輸入或選擇職位" />
+                <datalist id="role-list">
+                  {ROLES.map(r => <option key={r} value={r} />)}
+                </datalist>
               </div>
               <div>
                 <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>{form.salaryType === "monthly" ? "月薪" : "日薪"} (HK$)</div>
