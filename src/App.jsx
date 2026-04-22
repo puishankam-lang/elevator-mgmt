@@ -832,9 +832,15 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
   };
 
   const handleExportHistory = () => {
-    if (signingHistory.length === 0) { showToast("⚠️ 尚無簽署記錄", "error"); return; }
-    const headers = ["日期","人員","工地","簽署時間","記錄方式"];
-    const rows = signingHistory.map(r => [r.date, r.name, r.site, r.time, r.device]);
+    if (ackRecords.length === 0) { showToast("⚠️ 尚無安全簽署記錄", "error"); return; }
+    const now = new Date();
+    const headers = ["簽署日期","有效至","人員","工地","文件版本","狀態"];
+    const rows = ackRecords.map(r => {
+      const emp = employees.find(e => e.id === r.employee_id);
+      const vu = r.valid_until ? new Date(r.valid_until) : null;
+      const st = vu ? (vu < now ? "已過期" : `有效（剩 ${Math.ceil((vu - now) / 86400000)} 日）`) : "—";
+      return [new Date(r.signed_at).toLocaleString("zh-HK"), r.valid_until || "—", emp?.name || `員工#${r.employee_id}`, r.site || "—", r.document_version || "—", st];
+    });
     const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
     const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -843,7 +849,7 @@ function Safety({ showToast, employees = EMPLOYEES, safetyRules = "" }) {
     document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast("📊 簽署記錄已匯出！", "success");
+    showToast(`📊 已匯出 ${ackRecords.length} 份安全簽署記錄！`, "success");
   };
 
   return (
