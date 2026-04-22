@@ -982,7 +982,7 @@ const SITE_GPS = {
   "EC-530西灣河綜合大樓":          { lat: "22.2797", lng: "114.2253" },
 };
 
-function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJECTS }) {
+function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJECTS, setProjects }) {
   const today = new Date().toLocaleDateString("zh-HK", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
 
   // empSite[i] = project name selected for employee i (null = 未選擇)
@@ -1331,11 +1331,19 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => {
+                  <button onClick={async () => {
                     if (!geoEditForm.lat || !geoEditForm.lng) { showToast("⚠️ 請輸入 GPS 座標", "error"); return; }
-                    setSiteCoords(prev => ({ ...prev, [editGeoSite]: { lat: geoEditForm.lat, lng: geoEditForm.lng, radius: Number(geoEditForm.radius) || 150 } }));
+                    const lat = parseFloat(geoEditForm.lat), lng = parseFloat(geoEditForm.lng), radius = Number(geoEditForm.radius) || 150;
+                    setSiteCoords(prev => ({ ...prev, [editGeoSite]: { lat: geoEditForm.lat, lng: geoEditForm.lng, radius } }));
+                    const proj = projects.find(p => p.name === editGeoSite);
+                    if (proj?.id) {
+                      try {
+                        await sbUpdate("projects", proj.id, { lat, lng, radius_m: radius });
+                        if (setProjects) setProjects(prev => prev.map(p => p.id === proj.id ? { ...p, lat, lng, radius } : p));
+                      } catch (e) { showToast("⚠️ GPS 儲存到資料庫失敗", "error"); }
+                    }
                     setEditGeoSite(null);
-                    showToast(`✅ 「${editGeoSite}」GPS 已更新！`, "success");
+                    showToast(`✅ 「${editGeoSite}」GPS 已更新並同步到資料庫！`, "success");
                   }} className="btn btn-primary btn-sm">✅ 儲存</button>
                   <button onClick={() => setEditGeoSite(null)} className="btn btn-secondary btn-sm">取消</button>
                 </div>
@@ -1356,10 +1364,10 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
                 >
                   <div onClick={() => setSelectedSiteView(p.name)} style={{ fontSize: 11, fontWeight: 600, flex: 1, cursor: "pointer" }}>{p.name}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ fontSize: 10, color: "#3a4255" }}>
-                      {siteCoords[p.name] ? `${siteCoords[p.name].lat}, ${siteCoords[p.name].lng}` : "未設定"}
+                    <div style={{ fontSize: 10, color: (p.lat && p.lng) ? "#22c55e" : "#3a4255" }}>
+                      {p.lat && p.lng ? `${Number(p.lat).toFixed(4)}, ${Number(p.lng).toFixed(4)} (${p.radius || 150}m)` : siteCoords[p.name] ? `${siteCoords[p.name].lat}, ${siteCoords[p.name].lng}` : "❌ 未設定"}
                     </div>
-                    <button onClick={() => { setEditGeoSite(p.name); setGeoEditForm({ lat: siteCoords[p.name]?.lat || "", lng: siteCoords[p.name]?.lng || "", radius: siteCoords[p.name]?.radius || 150 }); }}
+                    <button onClick={() => { setEditGeoSite(p.name); setGeoEditForm({ lat: p.lat || siteCoords[p.name]?.lat || "", lng: p.lng || siteCoords[p.name]?.lng || "", radius: p.radius || siteCoords[p.name]?.radius || 150 }); }}
                       style={{ background: "none", border: "1px solid #2a3045", color: "#8891a4", borderRadius: 4, padding: "2px 6px", fontSize: 10, cursor: "pointer" }}>⚙️</button>
                   </div>
                 </div>
@@ -1384,10 +1392,19 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
           <div className="card-body" style={{ padding: 0 }}>
             <table className="data-table">
               <thead>
-                <tr><th>員工</th><th>工地</th><th>簽到時間</th><th>GPS 座標</th><th>精準度</th><th>簽退時間</th><th>狀態</th></tr>
+                <tr><th>員工</th><th>工地</th><th>簽到時間</th><th>GPS 座標</th><th>精準度</th><th>範圍驗證</th><th>簽退時間</th><th>狀態</th></tr>
               </thead>
               <tbody>
-                {mobileAttendance.map(a => (
+                {mobileAttendance.map(a => {
+                  const proj = projects.find(p => p.name === a.site);
+                  const hasWorkerGps = a.check_in_lat && a.check_in_lng;
+                  const hasSiteGps = proj?.lat && proj?.lng;
+                  let dist = null, inZone = null;
+                  if (hasWorkerGps && hasSiteGps) {
+                    dist = getDistanceMeters(Number(a.check_in_lat), Number(a.check_in_lng), Number(proj.lat), Number(proj.lng));
+                    inZone = dist <= (proj.radius || 150);
+                  }
+                  return (
                   <tr key={a.id}>
                     <td className="td-name">{empName(a.employee_id)}</td>
                     <td style={{ fontSize: 11 }}>
@@ -1397,12 +1414,22 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
                     </td>
                     <td>{a.check_in ? new Date(a.check_in).toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" }) : "–"}</td>
                     <td style={{ fontSize: 10, color: "#60a5fa", fontFamily: "monospace" }}>
-                      {a.check_in_lat && a.check_in_lng
+                      {hasWorkerGps
                         ? `${Number(a.check_in_lat).toFixed(4)}, ${Number(a.check_in_lng).toFixed(4)}`
                         : "–"}
                     </td>
                     <td style={{ fontSize: 11, color: a.check_in_accuracy > 50 ? "#f0c000" : "#22c55e" }}>
                       {a.check_in_accuracy ? `±${a.check_in_accuracy}m` : "–"}
+                    </td>
+                    <td>
+                      {dist !== null
+                        ? inZone
+                          ? <span className="badge green" title={`距工地 ${Math.round(dist)}m（半徑 ${proj.radius || 150}m 內）`}><span className="badge-dot" />✅ {Math.round(dist)}m</span>
+                          : <span className="badge red" title={`距工地 ${Math.round(dist)}m（超出半徑 ${proj.radius || 150}m）`}><span className="badge-dot" />❌ {Math.round(dist)}m</span>
+                        : !hasWorkerGps ? <span style={{ color: "#555d6e", fontSize: 10 }}>無 GPS</span>
+                        : !hasSiteGps ? <span style={{ color: "#f0c000", fontSize: 10 }}>未設座標</span>
+                        : "–"
+                      }
                     </td>
                     <td>{a.check_out ? new Date(a.check_out).toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" }) : <span style={{ color: "#555d6e" }}>—</span>}</td>
                     <td>
@@ -1411,7 +1438,8 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
                         : <span className="badge yellow"><span className="badge-dot" />工作中</span>}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -4994,6 +5022,14 @@ const SUPABASE_KEY = "sb_publishable_k9GEEEmqiYnuBPFqsQuvIQ_YGjweOSh";
 // admin can review + press Send. Zero setup (no Meta account, no Make.com
 // webhook, no API key, no bans). Keeps the same `sendWhatsApp` signature
 // as the prior async webhook implementation so callers don't change.
+function getDistanceMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function sendWhatsApp(phone, message) {
   if (!phone) return { ok: false, reason: "收件人電話未設定" };
   const digits = String(phone).replace(/\D/g, "");
@@ -5087,6 +5123,7 @@ const mapProject = p => ({
   value: p.contract_value, pct: p.progress_pct, plan: p.plan_pct,
   status: p.status, phase: p.phase,
   start: p.start_date, end: p.end_date,
+  lat: p.lat, lng: p.lng, radius: p.radius_m || 150,
 });
 const mapEmployee = e => ({
   id: e.id, name: e.name, role: e.role, phone: e.phone, pin: e.pin,
@@ -7236,6 +7273,7 @@ export default function App() {
         contract_value: proj.value, progress_pct: proj.pct,
         plan_pct: proj.plan, status: proj.status,
         phase: proj.phase, start_date: proj.start, end_date: proj.end,
+        lat: proj.lat || null, lng: proj.lng || null, radius_m: proj.radius || 150,
       });
       const saved = mapProject(row[0]);
       setProjectsState(prev => [...prev.filter(p => p.id !== proj.id), saved]);
@@ -7250,6 +7288,7 @@ export default function App() {
         contract_value: proj.value, progress_pct: proj.pct,
         plan_pct: proj.plan, status: proj.status,
         phase: proj.phase, start_date: proj.start, end_date: proj.end,
+        lat: proj.lat || null, lng: proj.lng || null, radius_m: proj.radius || 150,
       });
     } catch (e) { showToast("❌ 更新失敗：" + e.message, "error"); }
   };
@@ -7386,7 +7425,7 @@ export default function App() {
             {active === "staff"   && <StaffManagement employees={employees} setEmployees={setEmployees} showToast={showToast} />}
             {active === "empdocs" && <EmployeeDocs showToast={showToast} employees={employees} />}
             {active === "safety" && <Safety showToast={showToast} employees={employees} />}
-            {active === "attendance" && <Attendance showToast={showToast} employees={employees} projects={projects} />}
+            {active === "attendance" && <Attendance showToast={showToast} employees={employees} projects={projects} setProjects={setProjectsState} />}
             {active === "progress" && <Progress showToast={showToast} projects={projects} employees={employees} onUpdateProgress={(projName, newPct) => setProjectsState(prev => prev.map(p => p.name === projName ? { ...p, pct: newPct } : p))} />}
             {active === "invoice" && <Invoice showToast={showToast} />}
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
