@@ -7823,13 +7823,13 @@ export default function App() {
       const saved = localStorage.getItem("safetyRules");
       const version = localStorage.getItem("safetyRulesVersion");
       // Force upgrade old cached rules to new EMSD version
-      if (saved && version !== "emsd-2026-04") {
+      if (saved && version !== "emsd-2026-04-v2") {
         localStorage.removeItem("safetyRules");
-        localStorage.setItem("safetyRulesVersion", "emsd-2026-04");
+        localStorage.setItem("safetyRulesVersion", "emsd-2026-04-v2");
       } else if (saved) {
         return saved;
       }
-      localStorage.setItem("safetyRulesVersion", "emsd-2026-04");
+      localStorage.setItem("safetyRulesVersion", "emsd-2026-04-v2");
       return `安全健康工作安排
 《升降機工程公司｜安全培訓及承諾書》
 
@@ -8023,7 +8023,7 @@ PPE 包括：
 
 如對程序有疑問或現場情況變更，會即時通報主管。
 
-附錄 A：每日開工前安全提示
+附錄 A：每日開工前安全提示（工地可張貼）
 • 今日工作範圍、風險與控制措施已交底
 • 維修模式／上鎖掛牌已啟用並雙人覆核
 • 高處作業：錨點確認、雙掛繩、臨邊保護到位
@@ -8034,7 +8034,7 @@ PPE 包括：
 • 新人／訪客已作安全交底並安排陪同
 • 遇異常立即停工、通報、重新風險評估
 
-附錄 B：事故與險象事故通報流程
+附錄 B：事故與險象事故通報流程（範例）
 1. 即時停工、確保現場安全
 2. 提供急救、召喚救護（如需要）
 3. 於 2 小時內通報主管及安健部
