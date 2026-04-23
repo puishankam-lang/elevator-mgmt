@@ -535,6 +535,7 @@ const NAV_ITEMS = [
   { id: "general_safety", icon: "🛡️", label: "內部員工守則記錄" },
   { id: "archive", icon: "📦", label: "文件歸檔" },
   { id: "leave", icon: "🏖️", label: "請假審批" },
+  { id: "overtime", icon: "⏰", label: "OT / 夜更" },
   { id: "calendar", icon: "📅", label: "行事曆" },
   { id: "quotation", icon: "📄", label: "報價單" },
   { id: "announce", icon: "📢", label: "發布通知" },
@@ -6761,6 +6762,203 @@ function WorkOrderPage({ showToast, employees = [] }) {
   );
 }
 
+// ── Overtime / Night Shift Approval ──────────────────────────────────────────
+function OvertimePage({ showToast, employees = [] }) {
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all"); // all, pending, approved, rejected
+  const [dateRange, setDateRange] = useState({ start: "", end: "" });
+
+  const fetchRecords = () => {
+    fetch(`${SUPABASE_URL}/rest/v1/overtime_records?order=work_date.desc&limit=500`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    }).then(r => r.json()).then(d => { if (Array.isArray(d)) setRecords(d); })
+      .catch(() => {}).finally(() => setLoading(false));
+  };
+  useEffect(() => { fetchRecords(); const id = setInterval(fetchRecords, 15000); return () => clearInterval(id); }, []);
+
+  const empName = (id) => employees.find(e => e.id === id)?.name || `員工#${id}`;
+  const empRate = (id) => employees.find(e => e.id === id)?.rate || 850;
+
+  const filtered = records.filter(r => {
+    if (filter !== "all" && r.status !== filter) return false;
+    if (dateRange.start && r.work_date < dateRange.start) return false;
+    if (dateRange.end && r.work_date > dateRange.end) return false;
+    return true;
+  });
+
+  // OT rate multipliers (HK standard practice)
+  const OT_RATES = { regular: 1.5, weekend: 2.0, holiday: 2.5 };
+  const NIGHT_SHIFT_ALLOWANCE_PER_HR = 30; // HK$30/hr night shift allowance
+
+  const calcOTAmount = (r) => {
+    const hourlyRate = (empRate(r.employee_id) || 850) / 8; // assume 8hr day
+    const otPay = (r.ot_hours || 0) * hourlyRate * (OT_RATES[r.ot_type] || 1.5);
+    const nightPay = (r.night_hours || 0) * NIGHT_SHIFT_ALLOWANCE_PER_HR;
+    return Math.round(otPay + nightPay);
+  };
+
+  const handleApprove = async (r) => {
+    try {
+      await sbUpdate("overtime_records", r.id, { status: "approved", approved_by: "Admin", approved_at: new Date().toISOString() });
+      setRecords(prev => prev.map(x => x.id === r.id ? { ...x, status: "approved" } : x));
+      showToast(`✅ 已批准 ${empName(r.employee_id)} 的 OT 申報`);
+    } catch (e) { showToast("❌ 失敗", "error"); }
+  };
+
+  const handleReject = async (r) => {
+    const reason = window.prompt("拒絕原因（可選）：") || "";
+    try {
+      await sbUpdate("overtime_records", r.id, { status: "rejected", approved_by: "Admin", approved_at: new Date().toISOString(), reason: r.reason + (reason ? ` | 拒絕：${reason}` : "") });
+      setRecords(prev => prev.map(x => x.id === r.id ? { ...x, status: "rejected" } : x));
+      showToast(`❌ 已拒絕 ${empName(r.employee_id)} 的 OT 申報`);
+    } catch (e) { showToast("❌ 失敗", "error"); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("確定刪除？")) return;
+    try {
+      await sbDelete("overtime_records", id);
+      setRecords(prev => prev.filter(x => x.id !== id));
+      showToast("🗑 已刪除");
+    } catch (e) { showToast("❌ 失敗", "error"); }
+  };
+
+  const pending = records.filter(r => r.status === "pending").length;
+  const approved = records.filter(r => r.status === "approved");
+  const approvedThisMonth = approved.filter(r => r.work_date?.startsWith(new Date().toISOString().slice(0, 7)));
+  const approvedOTHours = approvedThisMonth.reduce((s, r) => s + (Number(r.ot_hours) || 0), 0);
+  const approvedNightHours = approvedThisMonth.reduce((s, r) => s + (Number(r.night_hours) || 0), 0);
+  const approvedTotalPay = approvedThisMonth.reduce((s, r) => s + calcOTAmount(r), 0);
+
+  const handleExport = () => {
+    if (filtered.length === 0) { showToast("⚠️ 沒有記錄可匯出", "error"); return; }
+    const now = new Date();
+    const co = getCompany();
+    const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const pad = (n) => String(n).padStart(2, "0");
+    const fmtDT = (d) => { const dt = new Date(d); return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`; };
+    const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>OT記錄</x:Name></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--><style>body{font-family:'Microsoft JhengHei','Noto Sans TC',Arial,sans-serif}table{border-collapse:collapse}.brand{background:#8b5cf6;color:#fff;font-size:18pt;font-weight:900;padding:10px 16px}.brand-en{background:#f3e8ff;color:#6b21a8;font-size:10pt;padding:4px 16px;border-bottom:3px solid #6b21a8}.title{background:#1a1a1a;color:#fff;font-size:14pt;font-weight:700;padding:10px 16px;letter-spacing:2px}.meta{background:#f9f9f9;padding:8px 16px;font-size:10pt;color:#333;border-bottom:1px solid #ddd}th{background:#6b21a8;color:#fff;padding:10px 14px;font-size:10pt;font-weight:700;border:1px solid #4c1d95;text-align:left}td{padding:8px 14px;font-size:10pt;border:1px solid #ccc;background:#fff}tr:nth-child(even) td{background:#f8f9fa}.approved{color:#16a34a;background-color:#f0fdf4;font-weight:700}.pending{color:#b8870a;background-color:#fef9e7;font-weight:700}.rejected{color:#d63030;background-color:#fef2f2;font-weight:700}.footer{background:#1a1a1a;color:#888;padding:8px 16px;font-size:9pt;text-align:center}.num{text-align:right;font-family:Consolas,monospace;font-weight:600}</style></head><body><table><tr><td colspan="10" class="brand">${esc(co.cn)}</td></tr><tr><td colspan="10" class="brand-en">${esc(co.en)}</td></tr><tr><td colspan="10" class="title">⏰ OT / 夜更記錄 Overtime & Night Shift Report</td></tr><tr><td colspan="10" class="meta"><strong>匯出日期：</strong>${fmtDT(now)}　｜　<strong>記錄總數：</strong>${filtered.length} 份</td></tr><tr><th>#</th><th>工作日期</th><th>員工</th><th>工地</th><th>OT類型</th><th>OT時數</th><th>夜更</th><th>夜更時數</th><th>原因</th><th>狀態</th><th>應付金額</th></tr>${filtered.map((r, i) => `<tr><td style="text-align:center;color:#888">${i + 1}</td><td style="font-family:Consolas,monospace">${r.work_date}</td><td style="font-weight:700">${esc(empName(r.employee_id))}</td><td>${esc(r.site || "—")}</td><td>${({regular:"平日",weekend:"假日",holiday:"公眾假期"})[r.ot_type] || r.ot_type}</td><td class="num">${r.ot_hours || 0}</td><td style="text-align:center">${r.night_shift ? "✅" : "—"}</td><td class="num">${r.night_hours || 0}</td><td style="font-size:9pt">${esc(r.reason || "—")}</td><td class="${r.status}">${r.status === "approved" ? "✅ 已批" : r.status === "rejected" ? "❌ 拒絕" : "⏳ 待批"}</td><td class="num" style="color:#22c55e">HK$${calcOTAmount(r).toLocaleString()}</td></tr>`).join("")}<tr><td colspan="10" class="footer">OT 倍率：平日 x1.5 · 假日 x2.0 · 公眾假期 x2.5 · 夜更津貼 HK$${NIGHT_SHIFT_ALLOWANCE_PER_HR}/小時</td></tr></table></body></html>`;
+    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `OT記錄_${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}.xls`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`📊 已匯出 ${filtered.length} 份記錄`);
+  };
+
+  return (
+    <div>
+      {/* Stats */}
+      <div className="grid-4" style={{ marginBottom: 16 }}>
+        {[
+          { label: "⏳ 待審批", value: pending, color: "#f0c000" },
+          { label: "本月 OT 總時數", value: `${approvedOTHours.toFixed(1)}h`, color: "#60a5fa" },
+          { label: "本月夜更總時數", value: `${approvedNightHours.toFixed(1)}h`, color: "#8b5cf6" },
+          { label: "本月應付 OT", value: `$${approvedTotalPay.toLocaleString()}`, color: "#22c55e" },
+        ].map((s, i) => (
+          <div key={i} className="sign-card" style={{ marginBottom: 0, textAlign: "center", borderTop: `3px solid ${s.color}` }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: 11, color: "#555d6e", marginTop: 2 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="sign-card" style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 4 }}>
+            {[{ v: "all", l: "全部" }, { v: "pending", l: "⏳ 待審批" }, { v: "approved", l: "✅ 已批" }, { v: "rejected", l: "❌ 拒絕" }].map(f => (
+              <button key={f.v} onClick={() => setFilter(f.v)}
+                style={{ background: filter === f.v ? "#f0c000" : "#1e2330", color: filter === f.v ? "#0d0f12" : "#8891a4", border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                {f.l}
+              </button>
+            ))}
+          </div>
+          <div style={{ flex: 1 }} />
+          <input type="date" value={dateRange.start} onChange={e => setDateRange({ ...dateRange, start: e.target.value })}
+            style={{ background: "#0d0f12", border: "1px solid #2a3045", color: "#e8eaf0", borderRadius: 6, padding: "6px 8px", fontSize: 11 }} />
+          <span style={{ color: "#555d6e" }}>→</span>
+          <input type="date" value={dateRange.end} onChange={e => setDateRange({ ...dateRange, end: e.target.value })}
+            style={{ background: "#0d0f12", border: "1px solid #2a3045", color: "#e8eaf0", borderRadius: 6, padding: "6px 8px", fontSize: 11 }} />
+          <button onClick={handleExport} className="btn btn-primary" style={{ padding: "6px 12px", fontSize: 11 }}>📊 匯出 Excel</button>
+        </div>
+      </div>
+
+      {/* Records table */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">📋 OT / 夜更申報記錄</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#22c55e" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e", animation: "pulse 2s infinite" }} />
+            即時更新
+          </div>
+        </div>
+        <div className="card-body" style={{ padding: 0 }}>
+          {loading ? <div style={{ textAlign: "center", padding: 30, color: "#555d6e" }}>載入中...</div>
+          : filtered.length === 0 ? <div style={{ textAlign: "center", padding: 30, color: "#555d6e" }}><div style={{ fontSize: 28, marginBottom: 8 }}>📭</div>沒有記錄</div>
+          : <table className="data-table">
+            <thead><tr><th>日期</th><th>員工</th><th>工地</th><th>OT 時數</th><th>夜更</th><th>應付</th><th>原因</th><th>狀態</th><th>操作</th></tr></thead>
+            <tbody>
+              {filtered.map(r => (
+                <tr key={r.id}>
+                  <td style={{ fontSize: 11, fontFamily: "monospace" }}>{r.work_date}</td>
+                  <td className="td-name">{empName(r.employee_id)}</td>
+                  <td style={{ fontSize: 11, color: "#9aa0b4" }}>{r.site || "—"}</td>
+                  <td>
+                    {r.ot_hours > 0 ? (
+                      <div>
+                        <div style={{ fontWeight: 700, color: "#60a5fa" }}>{r.ot_hours}h</div>
+                        <div style={{ fontSize: 9, color: "#555d6e" }}>{({regular:"平日 x1.5",weekend:"假日 x2.0",holiday:"假期 x2.5"})[r.ot_type]}</div>
+                      </div>
+                    ) : "—"}
+                  </td>
+                  <td>
+                    {r.night_shift ? (
+                      <div>
+                        <span style={{ color: "#8b5cf6", fontWeight: 700 }}>🌙 {r.night_hours || 0}h</span>
+                      </div>
+                    ) : "—"}
+                  </td>
+                  <td style={{ color: "#22c55e", fontWeight: 700 }}>HK${calcOTAmount(r).toLocaleString()}</td>
+                  <td style={{ fontSize: 10, color: "#9aa0b4", maxWidth: 150 }}>{r.reason || "—"}</td>
+                  <td>
+                    {r.status === "approved" ? <span className="badge green"><span className="badge-dot" />✅ 已批</span>
+                    : r.status === "rejected" ? <span className="badge red"><span className="badge-dot" />❌ 拒絕</span>
+                    : <span className="badge yellow"><span className="badge-dot" />⏳ 待批</span>}
+                  </td>
+                  <td>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {r.status === "pending" && (
+                        <>
+                          <button onClick={() => handleApprove(r)}
+                            style={{ background: "rgba(34,197,94,0.1)", border: "none", color: "#22c55e", borderRadius: 4, padding: "3px 8px", fontSize: 10, cursor: "pointer", fontWeight: 700 }}>✅</button>
+                          <button onClick={() => handleReject(r)}
+                            style={{ background: "rgba(214,48,48,0.1)", border: "none", color: "#d63030", borderRadius: 4, padding: "3px 8px", fontSize: 10, cursor: "pointer", fontWeight: 700 }}>❌</button>
+                        </>
+                      )}
+                      <button onClick={() => handleDelete(r.id)}
+                        style={{ background: "none", border: "1px solid #2a3045", color: "#555d6e", borderRadius: 4, padding: "3px 8px", fontSize: 10, cursor: "pointer" }}>🗑</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12, background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: 8, padding: "10px 14px", fontSize: 11, color: "#9aa0b4", lineHeight: 1.6 }}>
+        💡 <strong style={{ color: "#8b5cf6" }}>OT 倍率標準（香港慣例）：</strong>
+        平日 OT × 1.5　｜　星期日 / 假日 × 2.0　｜　公眾假期 × 2.5　｜　夜更津貼 HK$30/小時<br/>
+        系統根據每位員工嘅日薪自動計算時薪（日薪 ÷ 8），並乘以對應倍率。
+      </div>
+    </div>
+  );
+}
+
 // ── Leave Approval Inbox ──────────────────────────────────────────────────────
 const LEAVE_TYPE_META = {
   personal:     { label: "事假",   icon: "🗓️",  color: "#60A5FA" },
@@ -9025,6 +9223,7 @@ PPE 包括：
     general_safety: { icon: "🛡️", title: "內部員工電梯施工安全守則紀錄", sub: "公司內部通用版 / 每 6 個月簽署一次 / 勞保合規" },
     archive: { icon: "📦", title: "文件歸檔", sub: "按地盤歸檔 / 一鍵上繳打包 / 獨立盤合規" },
     leave: { icon: "🏖️", title: "請假審批", sub: "員工請假申請 / 批核" },
+    overtime: { icon: "⏰", title: "OT / 夜更審批", sub: "加班及夜更時數審批 / 自動計算薪酬" },
     calendar: { icon: "📅", title: "行事曆", sub: "請假 / 工程完工 / 進度節點" },
     quotation: { icon: "📄", title: "報價單", sub: "報價管理 / 轉化為發票" },
     announce: { icon: "📢", title: "發布通知", sub: "向員工發送 WhatsApp 啟用通知" },
@@ -9129,6 +9328,7 @@ PPE 包括：
             {active === "general_safety" && <GeneralSafetyPage showToast={showToast} employees={employees} safetyRules={safetyRules} />}
             {active === "archive" && <ProjectArchive showToast={showToast} employees={employees} projects={projects} />}
             {active === "leave" && <LeaveApproval showToast={showToast} employees={employees} />}
+            {active === "overtime" && <OvertimePage showToast={showToast} employees={employees} />}
             {active === "calendar" && <CalendarPage employees={employees} projects={projects} />}
             {active === "quotation" && <QuotationPage showToast={showToast} projects={projects} />}
             {active === "announce" && <AnnouncePage showToast={showToast} employees={employees} />}
