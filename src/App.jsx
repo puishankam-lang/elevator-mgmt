@@ -6252,7 +6252,7 @@ function ProjectArchive({ showToast, employees = [], projects = [] }) {
   const [startDate, setStartDate] = useState(sevenDaysAgo);
   const [endDate, setEndDate] = useState(today);
   const [loading, setLoading] = useState(false);
-  const [records, setRecords] = useState({ safety_signs: [], safety_acks: [], work_orders: [], progress: [], attendance: [], internal: [] });
+  const [records, setRecords] = useState({ safety_signs: [], safety_acks: [], work_orders: [], progress: [], attendance: [], internal: [], overtime: [] });
 
   const empName = (id) => employees.find(e => e.id === id)?.name || `員工#${id}`;
   const activeProjects = projects.filter(p => p.phase === "active" || p.phase === "pending");
@@ -6262,12 +6262,13 @@ function ProjectArchive({ showToast, employees = [], projects = [] }) {
     setLoading(true);
     try {
       const dateFilter = `work_date=gte.${startDate}&work_date=lte.${endDate}`;
-      const [signsR, acksR, progR, attR, intR] = await Promise.all([
+      const [signsR, acksR, progR, attR, intR, otR] = await Promise.all([
         fetch(`${SUPABASE_URL}/rest/v1/safety_signs?site=eq.${encodeURIComponent(selProj)}&${dateFilter}&order=submitted_at.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
         fetch(`${SUPABASE_URL}/rest/v1/safety_acknowledgments?site=eq.${encodeURIComponent(selProj)}&signed_at=gte.${startDate}T00:00:00&signed_at=lte.${endDate}T23:59:59&order=signed_at.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
         fetch(`${SUPABASE_URL}/rest/v1/progress_reports?project=eq.${encodeURIComponent(selProj)}&submitted_at=gte.${startDate}T00:00:00&submitted_at=lte.${endDate}T23:59:59&order=submitted_at.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
         fetch(`${SUPABASE_URL}/rest/v1/attendance?site=eq.${encodeURIComponent(selProj)}&date=gte.${startDate}&date=lte.${endDate}&order=check_in.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
         fetch(`${SUPABASE_URL}/rest/v1/internal_daily_signs?site=eq.${encodeURIComponent(selProj)}&sign_date=gte.${startDate}&sign_date=lte.${endDate}&order=signed_at.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
+        fetch(`${SUPABASE_URL}/rest/v1/overtime_records?site=eq.${encodeURIComponent(selProj)}&work_date=gte.${startDate}&work_date=lte.${endDate}&order=work_date.desc&limit=500`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }).then(r => r.json()).catch(() => []),
       ]);
       setRecords({
         safety_signs: Array.isArray(signsR) ? signsR : [],
@@ -6276,8 +6277,9 @@ function ProjectArchive({ showToast, employees = [], projects = [] }) {
         progress: Array.isArray(progR) ? progR : [],
         attendance: Array.isArray(attR) ? attR : [],
         internal: Array.isArray(intR) ? intR : [],
+        overtime: Array.isArray(otR) ? otR : [],
       });
-      showToast(`✅ 已載入 ${(signsR?.length||0)+(acksR?.length||0)+(progR?.length||0)+(attR?.length||0)+(intR?.length||0)} 份記錄`);
+      showToast(`✅ 已載入 ${(signsR?.length||0)+(acksR?.length||0)+(progR?.length||0)+(attR?.length||0)+(intR?.length||0)+(otR?.length||0)} 份記錄`);
     } catch (e) { showToast("❌ 載入失敗：" + e.message, "error"); }
     setLoading(false);
   };
@@ -6299,6 +6301,7 @@ function ProjectArchive({ showToast, employees = [], projects = [] }) {
     else if (type === "Progress") dateStr = fmtDate(record.submitted_at);
     else if (type === "Attendance") dateStr = fmtDate(record.check_in || record.date);
     else if (type === "InternalSign") dateStr = fmtDate(record.signed_at || record.sign_date);
+    else if (type === "Overtime") dateStr = fmtDate(record.work_date);
     else dateStr = fmtDate(new Date());
     // Internal signs get a different path prefix: Internal_Records/Daily_Signs/YYYY/MM/
     if (type === "InternalSign") {
@@ -6310,13 +6313,19 @@ function ProjectArchive({ showToast, employees = [], projects = [] }) {
     return `Projects/${projCode(selProj)}/Daily_Records/${dateStr}_${projCode(selProj)}_${cleanName(emp)}_${type}.pdf`;
   };
 
-  const totalCount = records.safety_acks.length + records.safety_signs.length + records.progress.length + records.attendance.length + records.internal.length;
+  const totalCount = records.safety_acks.length + records.safety_signs.length + records.progress.length + records.attendance.length + records.internal.length + records.overtime.length;
 
   const generateSubmissionPackage = () => {
     if (totalCount === 0) { showToast("⚠️ 沒有記錄可打包", "error"); return; }
     const co = getCompany();
     const w = window.open("", "_blank"); if (!w) return;
     const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    const otSection = records.overtime.length === 0 ? "" : `
+<h2 style="page-break-before:always">⏰ OT / 夜更記錄 (${records.overtime.length})</h2>
+<table class="tbl"><thead><tr><th>工作日期</th><th>員工</th><th>OT 類型</th><th>OT 時數</th><th>夜更時數</th><th>狀態</th><th>原因</th><th>檔名</th></tr></thead><tbody>
+${records.overtime.map(r => `<tr><td>${r.work_date}</td><td>${esc(empName(r.employee_id))}</td><td>${({regular:"平日 x1.5",weekend:"假日 x2.0",holiday:"公眾假期 x2.5"})[r.ot_type] || r.ot_type}</td><td>${r.ot_hours || 0}h</td><td>${r.night_shift ? `🌙 ${r.night_hours || 0}h` : "—"}</td><td>${r.status === "approved" ? "✅ 已批" : r.status === "rejected" ? "❌ 拒絕" : "⏳ 待批"}</td><td>${esc(r.reason || "—")}</td><td class="fn">${buildFilename("Overtime", r)}</td></tr>`).join("")}
+</tbody></table>`;
 
     const internalSection = records.internal.length === 0 ? "" : `
 <h2 style="page-break-before:always">🏢 公司內部開工聲明 (${records.internal.length})</h2>
@@ -6414,6 +6423,7 @@ h2 { font-size: 14px; background: #1a1a1a; color: #fff; padding: 8px 12px; margi
       <tr><td>📝 每日工序申報</td><td>${records.safety_signs.length}</td><td>${records.safety_signs[0] ? new Date(records.safety_signs[records.safety_signs.length-1].submitted_at || records.safety_signs[records.safety_signs.length-1].work_date).toLocaleDateString("zh-HK") + " – " + new Date(records.safety_signs[0].submitted_at || records.safety_signs[0].work_date).toLocaleDateString("zh-HK") : "—"}</td></tr>
       <tr><td>📊 工程進度回報</td><td>${records.progress.length}</td><td>${records.progress[0] ? new Date(records.progress[records.progress.length-1].submitted_at).toLocaleDateString("zh-HK") + " – " + new Date(records.progress[0].submitted_at).toLocaleDateString("zh-HK") : "—"}</td></tr>
       <tr><td>📍 GPS 考勤</td><td>${records.attendance.length}</td><td>${records.attendance[0] ? records.attendance[records.attendance.length-1].date + " – " + records.attendance[0].date : "—"}</td></tr>
+      <tr><td>⏰ OT / 夜更</td><td>${records.overtime.length}</td><td>${records.overtime[0] ? records.overtime[records.overtime.length-1].work_date + " – " + records.overtime[0].work_date : "—"}</td></tr>
     </tbody>
   </table>
 </div>
@@ -6423,6 +6433,7 @@ ${ackSection}
 ${signSection}
 ${progSection}
 ${attSection}
+${otSection}
 
 <div class="footer">
   此文件包由 ${esc(co.cn)} 管理系統自動生成 · 生成時間 ${new Date().toLocaleString("zh-HK")}<br/>
@@ -6474,13 +6485,14 @@ ${attSection}
 
       {/* Summary */}
       {selProj && !loading && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginBottom: 16 }}>
           {[
             { label: "🏢 內部聲明", value: records.internal.length, color: "#60a5fa" },
             { label: "📋 地盤簽署", value: records.safety_acks.length, color: "#22c55e" },
             { label: "📝 工序申報", value: records.safety_signs.length, color: "#f0c000" },
             { label: "📊 進度回報", value: records.progress.length, color: "#a78bfa" },
             { label: "📍 考勤記錄", value: records.attendance.length, color: "#f43f5e" },
+            { label: "⏰ OT/夜更", value: records.overtime.length, color: "#8b5cf6" },
           ].map((s, i) => (
             <div key={i} className="sign-card" style={{ marginBottom: 0, textAlign: "center" }}>
               <div style={{ fontSize: 28, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -6556,6 +6568,14 @@ ${attSection}
                     <td className="td-name">{empName(r.employee_id)}</td>
                     <td><span className="badge" style={{ background: "rgba(167,139,250,0.1)", color: "#a78bfa" }}><span className="badge-dot" />考勤</span></td>
                     <td style={{ fontFamily: "monospace", fontSize: 10, color: "#60a5fa" }}>{buildFilename("Attendance", r)}</td>
+                  </tr>
+                ))}
+                {records.overtime.map(r => (
+                  <tr key={`ot-${r.id}`}>
+                    <td style={{ fontSize: 11 }}>{r.work_date}</td>
+                    <td className="td-name">{empName(r.employee_id)}</td>
+                    <td><span className="badge" style={{ background: "rgba(139,92,246,0.1)", color: "#8b5cf6" }}><span className="badge-dot" />OT/夜更</span></td>
+                    <td style={{ fontFamily: "monospace", fontSize: 10, color: "#60a5fa" }}>{buildFilename("Overtime", r)}</td>
                   </tr>
                 ))}
               </tbody>
