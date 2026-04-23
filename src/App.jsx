@@ -1704,6 +1704,60 @@ function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJE
         </div>
       </div>
 
+      {/* Missing check-in alerts — only after 9am */}
+      {(() => {
+        const hour = new Date().getHours();
+        if (hour < 9) return null;
+        const checkedInIds = new Set(mobileAttendance.map(a => a.employee_id));
+        const missing = employees.filter(e => !checkedInIds.has(e.id) && e.phone);
+        if (missing.length === 0) return null;
+        const sendReminder = (emp) => {
+          const co = getCompany();
+          const now = new Date();
+          const hStr = now.toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" });
+          const msg = `【${co.cn}】\n考勤提醒\n\n${emp.name} 您好，\n\n━━━━━━━━━━━━━━\n⚠️ 截至 ${hStr}，系統未收到您的簽到記錄\n━━━━━━━━━━━━━━\n\n如您已到達工地，請即透過員工 App 完成 GPS 簽到：\n\n🔗 https://elevator-staff.vercel.app\n\n如因事未能上班，請立即通知主管。\n\n— ${co.cn} 管理部`;
+          const r = sendWhatsApp(emp.phone, msg);
+          if (r.ok) showToast(`📱 已發送簽到提醒予 ${emp.name}`, "success");
+          else showToast(`⚠️ ${r.reason}`, "error");
+        };
+        const sendBulk = async () => {
+          if (!window.confirm(`即將向 ${missing.length} 位未簽到員工發送 WhatsApp 提醒（每 1.5 秒開啟一個）？`)) return;
+          for (const emp of missing) {
+            sendReminder(emp);
+            await new Promise(r => setTimeout(r, 1500));
+          }
+        };
+        return (
+          <div className="card" style={{ marginTop: 4, marginBottom: 4, borderLeft: "3px solid #d63030" }}>
+            <div className="card-header">
+              <div className="card-title">⚠️ 未簽到員工提醒（{missing.length} 位）</div>
+              <button onClick={sendBulk}
+                style={{ background: "rgba(214,48,48,0.12)", border: "1px solid #d63030", color: "#d63030", borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                📱 一鍵催促全部
+              </button>
+            </div>
+            <div className="card-body" style={{ padding: "12px 20px" }}>
+              <div style={{ fontSize: 11, color: "#9aa0b4", marginBottom: 10, lineHeight: 1.5 }}>
+                已過上午 9:00，以下員工尚未簽到。可一鍵發送 WhatsApp 提醒，或個別催促。
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+                {missing.map(emp => (
+                  <div key={emp.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#0d0f12", border: "1px solid rgba(214,48,48,0.3)", borderRadius: 8 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: emp.color || "#f0c000", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#0d0f12", fontSize: 12 }}>{emp.name[0]}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#e8eaf0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{emp.name}</div>
+                      <div style={{ fontSize: 10, color: "#d63030" }}>⚠️ 尚未簽到</div>
+                    </div>
+                    <button onClick={() => sendReminder(emp)} title="WhatsApp 催簽到"
+                      style={{ background: "rgba(214,48,48,0.12)", border: "none", color: "#d63030", borderRadius: 5, padding: "4px 8px", fontSize: 10, cursor: "pointer", fontWeight: 700 }}>📱</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {mobileAttendance.length > 0 && (
         <div className="card" style={{ marginTop: 4, marginBottom: 4 }}>
           <div className="card-header">
