@@ -3783,6 +3783,8 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
   const [search, setSearch] = useState("");
   const [filterPaid, setFilterPaid] = useState("all"); // all | paid | unpaid
   const [filterEC, setFilterEC] = useState("all");
+  const [viewMode, setViewMode] = useState("ec"); // "ec" | "cf"
+  const [expandedEC, setExpandedEC] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({ cfNo: "", ecName: "", amount: "", pct: "", description: "", contractValue: "", startDate: "", endDate: "", contactPhone: "" });
   const [saving, setSaving] = useState(false);
@@ -4048,10 +4050,22 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
         ))}
       </div>
 
+      {/* View mode toggle */}
+      <div style={{ display:"flex", gap:0, marginBottom:14, background:"#0d0f12", borderRadius:8, padding:4, width:"fit-content" }}>
+        <button onClick={() => setViewMode("ec")}
+          style={{ background: viewMode==="ec" ? "#f0c000" : "transparent", color: viewMode==="ec" ? "#0d0f12" : "#8891a4", border:"none", padding:"8px 16px", borderRadius:6, fontWeight:700, fontSize:12, cursor:"pointer" }}>
+          📊 EC 工程總覽
+        </button>
+        <button onClick={() => setViewMode("cf")}
+          style={{ background: viewMode==="cf" ? "#f0c000" : "transparent", color: viewMode==="cf" ? "#0d0f12" : "#8891a4", border:"none", padding:"8px 16px", borderRadius:6, fontWeight:700, fontSize:12, cursor:"pointer" }}>
+          📋 CF 發票列表
+        </button>
+      </div>
+
       {/* Search + Filters + Add button */}
       <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
         <input
-          className="form-input" placeholder="🔍 搜尋 CF 號 / 工程名稱..."
+          className="form-input" placeholder={viewMode==="ec" ? "🔍 搜尋 EC 工程名稱..." : "🔍 搜尋 CF 號 / 工程名稱..."}
           value={search} onChange={e => handleSearch(e.target.value)}
           style={{ flex:1, minWidth:200 }}
         />
@@ -4223,7 +4237,108 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
         <div style={{ textAlign:"center", padding:40, color:"#555d6e" }}>
           <div style={{ fontSize:24, marginBottom:8 }}>⏳</div>載入發票中...
         </div>
-      ) : filtered.length === 0 ? (
+      ) : viewMode === "ec" ? (() => {
+        // Group filtered CFs by EC project name
+        const ecGroups = {};
+        filtered.forEach(item => {
+          const key = item.ecName || "未指定";
+          if (!ecGroups[key]) ecGroups[key] = { name: key, cfs: [], totalAmount: 0, paidAmount: 0, contractValue: 0, latestEnd: null, company: null };
+          ecGroups[key].cfs.push(item);
+          ecGroups[key].totalAmount += Number(item.amount) || 0;
+          if (item.status === "paid") ecGroups[key].paidAmount += Number(item.amount) || 0;
+          if (item.contractValue) ecGroups[key].contractValue = Number(item.contractValue);
+          if (item.endDate && (!ecGroups[key].latestEnd || item.endDate > ecGroups[key].latestEnd)) ecGroups[key].latestEnd = item.endDate;
+          if (item.company && !ecGroups[key].company) ecGroups[key].company = item.company;
+        });
+        const ecList = Object.values(ecGroups).filter(g => !search || g.name.toLowerCase().includes(search.toLowerCase()));
+        if (ecList.length === 0) return <div style={{ textAlign:"center", padding:40, color:"#555d6e" }}><div style={{ fontSize:32, marginBottom:8 }}>🔍</div>搵唔到符合條件的工程</div>;
+        return (
+          <div className="card" style={{ padding:0, overflow:"hidden" }}>
+            <div style={{ padding:"10px 16px", background:"#13161c", borderBottom:"1px solid #1e2330", fontSize:11, color:"#8891a4" }}>
+              共 <strong style={{ color:"#f0c000" }}>{ecList.length}</strong> 個 EC 工程，總金額 <strong style={{ color:"#f0c000" }}>HK${ecList.reduce((s,g)=>s+g.totalAmount,0).toLocaleString()}</strong>
+            </div>
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                <thead>
+                  <tr style={{ background:"#13161c", borderBottom:"2px solid #1e2330" }}>
+                    {["EC 工程","公司","CF 數","已收款","總金額","收款率","結束日期",""].map(h => (
+                      <th key={h} style={{ padding:"10px 12px", textAlign:"left", fontSize:10, color:"#3a4255", textTransform:"uppercase", letterSpacing:0.8, whiteSpace:"nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ecList.map(g => {
+                    const expanded = expandedEC === g.name;
+                    const collectRate = g.totalAmount > 0 ? Math.round(g.paidAmount / g.totalAmount * 100) : 0;
+                    const overdue = g.latestEnd && new Date(g.latestEnd) < new Date() && collectRate < 100;
+                    return [
+                      <tr key={g.name} onClick={() => setExpandedEC(expanded ? null : g.name)}
+                        style={{ borderBottom:"1px solid #0d0f12", cursor:"pointer", background: expanded ? "rgba(240,192,0,0.05)" : "transparent" }}>
+                        <td style={{ padding:"10px 12px", fontWeight:600 }}>
+                          <span style={{ color:"#3a4255", marginRight:6 }}>{expanded ? "▼" : "▶"}</span>
+                          {g.name}
+                        </td>
+                        <td style={{ padding:"10px 12px" }}>
+                          {g.company ? <span style={{ fontSize:10, padding:"2px 8px", borderRadius:10, fontWeight:700, background: g.company === "chunfai" ? "rgba(240,192,0,0.1)" : "rgba(96,165,250,0.1)", color: g.company === "chunfai" ? "#f0c000" : "#60a5fa" }}>{INVOICE_COMPANIES.find(c => c.id === g.company)?.cn?.slice(0,2)}</span> : <span style={{ color:"#3a4255" }}>–</span>}
+                        </td>
+                        <td style={{ padding:"10px 12px", color:"#9aa0b4" }}>{g.cfs.length}</td>
+                        <td style={{ padding:"10px 12px", color:"#22c55e", fontWeight:700 }}>HK${g.paidAmount.toLocaleString()}</td>
+                        <td style={{ padding:"10px 12px", color:"#f0c000", fontWeight:700 }}>HK${g.totalAmount.toLocaleString()}</td>
+                        <td style={{ padding:"10px 12px" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                            <div style={{ width:60, height:6, background:"#1e2330", borderRadius:3, overflow:"hidden" }}>
+                              <div style={{ width:`${collectRate}%`, height:"100%", background: collectRate===100 ? "#22c55e" : collectRate>=50 ? "#f0c000" : "#d63030" }} />
+                            </div>
+                            <span style={{ fontSize:11, color: collectRate===100 ? "#22c55e" : "#9aa0b4", fontWeight:700 }}>{collectRate}%</span>
+                          </div>
+                        </td>
+                        <td style={{ padding:"10px 12px", fontSize:11, color: overdue ? "#d63030" : "#8891a4", fontWeight: overdue ? 700 : 400 }}>
+                          {g.latestEnd || "–"}{overdue && " ⚠️"}
+                        </td>
+                        <td style={{ padding:"10px 12px", color:"#3a4255", fontSize:11 }}>{expanded ? "收起" : "展開"}</td>
+                      </tr>,
+                      expanded && (
+                        <tr key={`${g.name}-detail`}>
+                          <td colSpan={8} style={{ padding:0, background:"#0a0c10" }}>
+                            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                              <thead>
+                                <tr style={{ background:"#0d0f12" }}>
+                                  {["CF 號","金額","狀態","工程描述","結束日期","操作"].map(h => (
+                                    <th key={h} style={{ padding:"6px 12px", textAlign:"left", fontSize:9, color:"#3a4255", textTransform:"uppercase" }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {g.cfs.map(cf => (
+                                  <tr key={cf.id} style={{ borderBottom:"1px solid #0d0f12" }}>
+                                    <td style={{ padding:"6px 12px", fontWeight:700, color:"#60a5fa" }}>{cf.cfNo}</td>
+                                    <td style={{ padding:"6px 12px", color: cf.status==="paid" ? "#22c55e" : "#f0c000", fontWeight:700 }}>HK${Number(cf.amount).toLocaleString()}</td>
+                                    <td style={{ padding:"6px 12px" }}>
+                                      {cf.status === "paid" ? <span className="badge green"><span className="badge-dot" />已收</span>
+                                        : cf.status === "completed" ? <span className="badge" style={{ background:"rgba(136,145,164,0.15)", color:"#8891a4" }}>已完成</span>
+                                        : <span className="badge yellow"><span className="badge-dot" />待收</span>}
+                                    </td>
+                                    <td style={{ padding:"6px 12px", color:"#9aa0b4", maxWidth:280, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cf.description || "–"}</td>
+                                    <td style={{ padding:"6px 12px", color:"#8891a4" }}>{cf.endDate || "–"}</td>
+                                    <td style={{ padding:"6px 12px" }}>
+                                      <button onClick={e => { e.stopPropagation(); handleEditCF(cf); }}
+                                        style={{ background:"#1e2330", border:"none", color:"#60a5fa", borderRadius:4, padding:"3px 8px", fontSize:10, cursor:"pointer" }}>✏️ 編輯</button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )
+                    ];
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })() : filtered.length === 0 ? (
         <div style={{ textAlign:"center", padding:40, color:"#555d6e" }}>
           <div style={{ fontSize:32, marginBottom:8 }}>🔍</div>搵唔到符合條件的發票
         </div>
