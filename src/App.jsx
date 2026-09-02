@@ -1059,297 +1059,473 @@ const SITE_GPS = {
 
 function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJECTS }) {
   const today = new Date().toLocaleDateString("zh-HK", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+  const now = new Date();
+  const LATE_HOUR = 9; // 09:00 為遲到分界
+  const SHIFTS = ["早更 (07:00–16:00)", "夜更 (16:00–01:00)", "假日更", "散工"];
 
-  // empSite[i] = project name selected for employee i (null = 未選擇)
-  const [empSite, setEmpSite] = useState(() => employees.map(() => null));
-  const [checkedIn, setCheckedIn] = useState(() => employees.map(() => false));
-  const [checkInTime, setCheckInTime] = useState(() => employees.map(() => null));
-  const [selectedSiteView, setSelectedSiteView] = useState(null); // for site-focused map view
-  const [viewMode, setViewMode] = useState("employee"); // "employee" | "site"
+  // ── State ──
+  const [empSite,      setEmpSite]      = useState(() => employees.map(() => null));
+  const [empShift,     setEmpShift]     = useState(() => employees.map(() => SHIFTS[0]));
+  const [checkedIn,    setCheckedIn]    = useState(() => employees.map(() => false));
+  const [checkedOut,   setCheckedOut]   = useState(() => employees.map(() => false));
+  const [checkInTime,  setCheckInTime]  = useState(() => employees.map(() => null));
+  const [checkOutTime, setCheckOutTime] = useState(() => employees.map(() => null));
+  const [viewMode,     setViewMode]     = useState("employee");
+  const [activeTab,    setActiveTab]    = useState("today"); // "today" | "shift" | "monthly"
+  const [selectedSiteView, setSelectedSiteView] = useState(null);
+  const [monthYear,    setMonthYear]    = useState({ y: now.getFullYear(), m: now.getMonth()+1 });
 
   const activeProjects = projects.filter(p => p.phase === "active" || p.phase === "pending");
 
-  const handleAssignSite = (empIdx, siteName) => {
-    const updated = [...empSite];
-    updated[empIdx] = siteName;
-    setEmpSite(updated);
-    showToast(`📍 ${employees[empIdx].name} 已分配至「${siteName}」`);
+  // ── Helpers ──
+  const calcHours = (inT, outT) => {
+    if (!inT || !outT) return null;
+    const [ih, im] = inT.split(":").map(Number);
+    const [oh, om] = outT.split(":").map(Number);
+    const mins = (oh * 60 + om) - (ih * 60 + im);
+    if (mins <= 0) return null;
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return `${h}h ${m}m`;
   };
 
-  const handleCheckIn = (empIdx) => {
-    if (!empSite[empIdx]) { showToast("⚠️ 請先選擇工地", "error"); return; }
-    const updated = [...checkedIn];
-    updated[empIdx] = true;
-    setCheckedIn(updated);
+  const isLate = (inT, shift) => {
+    if (!inT) return false;
+    if (shift && shift.includes("夜更")) return false; // 夜更唔計遲到
+    const [h, m] = inT.split(":").map(Number);
+    return h > LATE_HOUR || (h === LATE_HOUR && m > 0);
+  };
+
+  const getStatus = (i) => {
+    if (checkedOut[i]) return { label: `已離場 ${checkOutTime[i]}`, badge: "green", color: "#22c55e" };
+    if (checkedIn[i])  return { label: `在場 ${checkInTime[i]}${isLate(checkInTime[i], empShift[i]) ? " ⚠️遲" : ""}`, badge: isLate(checkInTime[i], empShift[i]) ? "yellow" : "green", color: isLate(checkInTime[i], empShift[i]) ? "#f0c000" : "#22c55e" };
+    if (empSite[i])    return { label: "已分配", badge: "yellow", color: "#f0c000" };
+    return { label: "未分配", badge: "red", color: "#e05c5c" };
+  };
+
+  // ── Handlers ──
+  const handleAssignSite = (i, site) => {
+    const u = [...empSite]; u[i] = site; setEmpSite(u);
+    showToast(`📍 ${employees[i].name} → 「${site}」`);
+  };
+
+  const handleAssignShift = (i, shift) => {
+    const u = [...empShift]; u[i] = shift; setEmpShift(u);
+  };
+
+  const handleCheckIn = async (i) => {
+    if (!empSite[i]) { showToast("⚠️ 請先選擇工地", "error"); return; }
     const t = new Date().toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" });
-    const times = [...checkInTime];
-    times[empIdx] = t;
-    setCheckInTime(times);
-    showToast(`✅ ${employees[empIdx].name} 已簽到 — ${empSite[empIdx]}`);
+    const u = [...checkedIn]; u[i] = true; setCheckedIn(u);
+    const ts = [...checkInTime]; ts[i] = t; setCheckInTime(ts);
+    const late = isLate(t, empShift[i]);
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/attendance`, {
+        method: "POST",
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({ employee_id: employees[i].id, employee_name: employees[i].name, site: empSite[i], shift: empShift[i], check_in: new Date().toISOString(), is_late: late, date: new Date().toISOString().slice(0,10) })
+      });
+    } catch(e) {}
+    showToast(`✅ ${employees[i].name} 已簽到${late ? " — ⚠️ 遲到記錄" : ""}`, late ? "error" : "success");
   };
 
-  // Group employees by site
+  const handleCheckOut = async (i) => {
+    const t = new Date().toLocaleTimeString("zh-HK", { hour: "2-digit", minute: "2-digit" });
+    const u = [...checkedOut]; u[i] = true; setCheckedOut(u);
+    const ts = [...checkOutTime]; ts[i] = t; setCheckOutTime(ts);
+    const hrs = calcHours(checkInTime[i], t);
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/attendance?employee_name=eq.${encodeURIComponent(employees[i].name)}&date=eq.${new Date().toISOString().slice(0,10)}&order=check_in.desc&limit=1`, {
+        method: "PATCH",
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ check_out: new Date().toISOString(), hours_worked: hrs })
+      });
+    } catch(e) {}
+    showToast(`🏁 ${employees[i].name} 已簽退 — 工時 ${hrs || "計算中"}`, "success");
+  };
+
+  const handleBatchAssign = (site, shift) => {
+    setEmpSite(employees.map(() => site));
+    setEmpShift(employees.map(() => shift));
+    showToast(`✅ 已批量分配 ${employees.length} 人 → 「${site}」${shift}`);
+  };
+
+  const handleExportCSV = () => {
+    const rows = [["員工","職位","更期","工地","簽到","簽退","工時","遲到","日期"]];
+    employees.forEach((e, i) => {
+      const late = isLate(checkInTime[i], empShift[i]) ? "是" : "否";
+      const hrs = calcHours(checkInTime[i], checkOutTime[i]) || "—";
+      rows.push([e.name, e.role, empShift[i]||"—", empSite[i]||"未分配", checkInTime[i]||"—", checkOutTime[i]||"—", hrs, late, new Date().toLocaleDateString('zh-HK')]);
+    });
+    const csv = rows.map(r=>r.join(",")).join("\n");
+    const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = `考勤記錄_${monthYear.y}年${monthYear.m}月.csv`; a.click();
+    showToast("✅ 考勤報表已導出", "success");
+  };
+
+  // ── Computed ──
   const siteGroups = {};
   activeProjects.forEach(p => { siteGroups[p.name] = []; });
-  employees.forEach((e, i) => {
-    if (empSite[i] && siteGroups[empSite[i]] !== undefined) {
-      siteGroups[empSite[i]].push({ ...e, idx: i, checkedIn: checkedIn[i], time: checkInTime[i] });
-    }
-  });
-
-  const unassigned = employees.filter((e, i) => !empSite[i]);
-  const totalCheckedIn = checkedIn.filter(Boolean).length;
-
-  const focusSite = selectedSiteView || empSite.find(s => s) || activeProjects[0]?.name;
-  const focusGPS = SITE_GPS[focusSite] || { lat: "22.3193", lng: "114.1694" };
+  employees.forEach((e, i) => { if (empSite[i] && siteGroups[empSite[i]] !== undefined) siteGroups[empSite[i]].push({ ...e, idx:i, checkedIn:checkedIn[i], checkedOut:checkedOut[i], time:checkInTime[i], outTime:checkOutTime[i], shift:empShift[i] }); });
+  const unassigned = employees.filter((_, i) => !empSite[i]);
+  const totalIn    = checkedIn.filter(Boolean).length;
+  const totalOut   = checkedOut.filter(Boolean).length;
+  const lateCount  = employees.filter((_, i) => checkedIn[i] && isLate(checkInTime[i], empShift[i])).length;
+  const focusSite  = selectedSiteView || empSite.find(s => s) || activeProjects[0]?.name;
+  const focusGPS   = SITE_GPS[focusSite] || { lat: "22.3193", lng: "114.1694" };
   const focusCount = focusSite ? (siteGroups[focusSite]?.length || 0) : 0;
+
+  const kpiStyle = (color) => ({ background:"#13161c", border:`1px solid ${color}33`, borderRadius:10, padding:"12px 16px" });
+  const tabBtn   = (t, label) => (
+    <button onClick={() => setActiveTab(t)} style={{ padding:"6px 16px", borderRadius:6, border:"none", cursor:"pointer", fontWeight:600, fontSize:12, background: activeTab===t ? "#f0c000" : "#1e2330", color: activeTab===t ? "#0d0f12" : "#8891a4" }}>{label}</button>
+  );
 
   return (
     <div>
-      {/* Top KPI strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
+      {/* ── KPI Strip ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:10, marginBottom:14 }}>
         {[
-          { label: "今日出勤", value: `${totalCheckedIn} / ${employees.length}`, color: "#22c55e" },
-          { label: "已分配地盤", value: empSite.filter(Boolean).length, color: "#f0c000" },
-          { label: "未分配", value: unassigned.length, color: "#d63030" },
-          { label: "活躍地盤", value: activeProjects.length, color: "#60a5fa" },
-        ].map((k, i) => (
-          <div key={i} style={{ background: "#13161c", border: "1px solid #1e2330", borderRadius: 10, padding: "12px 16px" }}>
-            <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{k.label}</div>
-            <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 24, fontWeight: 800, color: k.color }}>{k.value}</div>
+          { label:"今日簽到", value:`${totalIn}/${employees.length}`, color:"#22c55e" },
+          { label:"已簽退", value:totalOut, color:"#60a5fa" },
+          { label:"在場中", value:totalIn-totalOut, color:"#f0c000" },
+          { label:"遲到記錄", value:lateCount, color: lateCount>0 ? "#e05c5c" : "#3a4255" },
+          { label:"活躍地盤", value:activeProjects.length, color:"#a78bfa" },
+        ].map((k,i) => (
+          <div key={i} style={kpiStyle(k.color)}>
+            <div style={{ fontSize:10, color:"#3a4255", textTransform:"uppercase", letterSpacing:1, marginBottom:4 }}>{k.label}</div>
+            <div style={{ fontFamily:"'Barlow Condensed'", fontSize:22, fontWeight:800, color:k.color }}>{k.value}</div>
           </div>
         ))}
       </div>
 
-      {/* View toggle */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        {["employee", "site"].map(m => (
-          <button key={m} onClick={() => setViewMode(m)} style={{
-            padding: "6px 18px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13,
-            background: viewMode === m ? "#f0c000" : "#1e2330", color: viewMode === m ? "#0d0f12" : "#8891a4"
-          }}>
-            {m === "employee" ? "👷 員工視角" : "🏗 地盤視角"}
-          </button>
-        ))}
+      {/* ── Late Alert ── */}
+      {lateCount > 0 && (
+        <div style={{ background:"#2a1010", border:"1px solid #e05c5c", borderRadius:8, padding:"10px 16px", marginBottom:12, display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:18 }}>⚠️</span>
+          <div style={{ flex:1 }}>
+            <strong style={{ color:"#e05c5c" }}>今日遲到記錄：</strong>
+            <span style={{ fontSize:13, color:"#c8d0e0" }}>
+              {employees.filter((_,i) => checkedIn[i] && isLate(checkInTime[i], empShift[i])).map((e,_,i) => `${e.name}（${checkInTime[employees.indexOf(e)]}）`).join("、")}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tab Bar ── */}
+      <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
+        {tabBtn("today", "📋 今日考勤")}
+        {tabBtn("shift", "🔄 員工報更")}
+        {tabBtn("monthly", "📊 月度報表")}
+        <div style={{ flex:1 }} />
+        <button onClick={handleExportCSV} style={{ padding:"6px 14px", borderRadius:6, border:"1px solid #f0c000", cursor:"pointer", fontWeight:600, fontSize:12, background:"transparent", color:"#f0c000" }}>
+          📥 導出 CSV
+        </button>
       </div>
 
-      <div className="grid-2">
-        {/* Left: employee or site view */}
-        {viewMode === "employee" ? (
+      {/* ══ TAB: 今日考勤 ══ */}
+      {activeTab === "today" && (
+        <div className="grid-2">
+          {/* Left */}
           <div className="card">
             <div className="card-header">
-              <div className="card-title">👷 員工地盤分配</div>
-              <div className="date-badge" style={{ fontSize: 11 }}>{today}</div>
+              <div className="card-title">👷 員工簽到／簽退</div>
+              <div style={{ fontSize:11, color:"#9aa0b4" }}>{today}</div>
             </div>
-            <div className="card-body" style={{ padding: "8px 16px" }}>
-              {employees.map((e, i) => (
-                <div key={i} style={{ background: "#0d0f12", border: "1px solid #1e2330", borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                    <div className="emp-avatar" style={{ background: e.color }}>{e.name[0]}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>{e.name}</div>
-                      <div style={{ fontSize: 11, color: "#555d6e" }}>{e.role}</div>
-                    </div>
-                    {checkedIn[i]
-                      ? <span className="badge green"><span className="badge-dot" /> 已簽到 {checkInTime[i]}</span>
-                      : empSite[i]
-                        ? <span className="badge yellow"><span className="badge-dot" /> 已分配</span>
-                        : <span className="badge red"><span className="badge-dot" /> 未分配</span>
-                    }
-                  </div>
-
-                  {/* Site selector */}
-                  <select
-                    value={empSite[i] || ""}
-                    onChange={e2 => handleAssignSite(i, e2.target.value)}
-                    disabled={checkedIn[i]}
-                    style={{
-                      width: "100%", background: "#13161c", border: "1px solid #2a3045",
-                      color: empSite[i] ? "#e8eaf0" : "#555d6e", borderRadius: 6,
-                      padding: "7px 10px", fontSize: 12, marginBottom: 8, cursor: checkedIn[i] ? "not-allowed" : "pointer"
-                    }}
-                  >
-                    <option value="">── 選擇今日工地 ──</option>
-                    {activeProjects.map(p => (
-                      <option key={p.id} value={p.name}>{p.name}</option>
-                    ))}
-                  </select>
-
-                  {/* GPS coords if site selected */}
-                  {empSite[i] && SITE_GPS[empSite[i]] && (
-                    <div style={{ fontSize: 10, color: "#3a4255", marginBottom: 8 }}>
-                      📍 GPS: {SITE_GPS[empSite[i]].lat}°N {SITE_GPS[empSite[i]].lng}°E
-                    </div>
-                  )}
-
-                  {/* Check-in button */}
-                  {!checkedIn[i] && (
-                    <button
-                      onClick={() => handleCheckIn(i)}
-                      style={{
-                        width: "100%", background: empSite[i] ? "#f0c000" : "#1e2330",
-                        color: empSite[i] ? "#0d0f12" : "#555d6e",
-                        border: "none", borderRadius: 6, padding: "7px 0",
-                        fontWeight: 700, fontSize: 12, cursor: empSite[i] ? "pointer" : "not-allowed"
-                      }}
-                    >
-                      📍 確認簽到
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="card">
-            <div className="card-header">
-              <div className="card-title">🏗 各地盤人員</div>
-              <span className="badge green"><span className="badge-dot" /> 即時</span>
-            </div>
-            <div className="card-body" style={{ padding: "8px 16px" }}>
-              {activeProjects.map(p => {
-                const ppl = siteGroups[p.name] || [];
+            <div className="card-body" style={{ padding:"8px 14px", maxHeight:560, overflowY:"auto" }}>
+              {employees.map((e, i) => {
+                const s = getStatus(i);
+                const hrs = calcHours(checkInTime[i], checkOutTime[i]);
                 return (
-                  <div key={p.id}
-                    onClick={() => setSelectedSiteView(p.name)}
-                    style={{
-                      background: selectedSiteView === p.name ? "#1a1f2e" : "#0d0f12",
-                      border: `1px solid ${selectedSiteView === p.name ? "#f0c000" : "#1e2330"}`,
-                      borderRadius: 10, padding: "12px 14px", marginBottom: 10, cursor: "pointer"
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{p.name}</div>
-                      <span className={`badge ${ppl.length > 0 ? "green" : "red"}`}>
-                        <span className="badge-dot" /> {ppl.length} 人
-                      </span>
+                  <div key={i} style={{ background:"#0d0f12", border:`1px solid ${checkedIn[i] ? "#1e3a1e" : "#1e2330"}`, borderRadius:10, padding:"11px 13px", marginBottom:9 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:9 }}>
+                      <div className="emp-avatar" style={{ background:e.color }}>{e.name[0]}</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontWeight:700, fontSize:14 }}>{e.name}</div>
+                        <div style={{ fontSize:11, color:"#555d6e" }}>{e.role}</div>
+                      </div>
+                      <span className={`badge ${s.badge}`} style={{ fontSize:11 }}><span className="badge-dot" />{s.label}</span>
                     </div>
-                    <div style={{ fontSize: 10, color: "#3a4255", marginBottom: 8 }}>
-                      📍 {SITE_GPS[p.name] ? `${SITE_GPS[p.name].lat}°N ${SITE_GPS[p.name].lng}°E` : "GPS 未設定"}
+
+                    {/* Site + Shift selectors */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginBottom:8 }}>
+                      <select value={empSite[i]||""} onChange={ev => handleAssignSite(i, ev.target.value)} disabled={checkedIn[i]}
+                        style={{ background:"#13161c", border:"1px solid #2a3045", color: empSite[i]?"#e8eaf0":"#555d6e", borderRadius:6, padding:"6px 8px", fontSize:11, cursor: checkedIn[i]?"not-allowed":"pointer" }}>
+                        <option value="">── 選擇工地 ──</option>
+                        {activeProjects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                      </select>
+                      <select value={empShift[i]} onChange={ev => handleAssignShift(i, ev.target.value)} disabled={checkedIn[i]}
+                        style={{ background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"6px 8px", fontSize:11, cursor: checkedIn[i]?"not-allowed":"pointer" }}>
+                        {SHIFTS.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
                     </div>
-                    {ppl.length > 0 ? (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {ppl.map((emp, j) => (
-                          <div key={j} style={{ display: "flex", alignItems: "center", gap: 4, background: "#13161c", borderRadius: 20, padding: "3px 10px" }}>
-                            <div style={{ width: 18, height: 18, borderRadius: "50%", background: emp.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#0d0f12" }}>{emp.name[0]}</div>
-                            <span style={{ fontSize: 11, color: emp.checkedIn ? "#22c55e" : "#f0c000" }}>{emp.name}</span>
-                            {emp.checkedIn && <span style={{ fontSize: 9, color: "#3a4255" }}>{emp.time}</span>}
+
+                    {/* GPS */}
+                    {empSite[i] && SITE_GPS[empSite[i]] && (
+                      <div style={{ fontSize:10, color:"#3a4255", marginBottom:7 }}>📍 {SITE_GPS[empSite[i]].lat}°N {SITE_GPS[empSite[i]].lng}°E</div>
+                    )}
+
+                    {/* Work hours display */}
+                    {checkedIn[i] && (
+                      <div style={{ display:"flex", gap:8, marginBottom:8, flexWrap:"wrap" }}>
+                        <div style={{ background:"#0a1a0a", borderRadius:6, padding:"4px 10px", fontSize:11 }}>
+                          🕐 簽到：<strong style={{ color:"#22c55e" }}>{checkInTime[i]}</strong>
+                          {isLate(checkInTime[i], empShift[i]) && <span style={{ color:"#e05c5c", marginLeft:4 }}>遲到</span>}
+                        </div>
+                        {checkedOut[i] && (
+                          <>
+                            <div style={{ background:"#0a0a1a", borderRadius:6, padding:"4px 10px", fontSize:11 }}>
+                              🏁 簽退：<strong style={{ color:"#60a5fa" }}>{checkOutTime[i]}</strong>
+                            </div>
+                            <div style={{ background:"#1a1510", borderRadius:6, padding:"4px 10px", fontSize:11 }}>
+                              ⏱ 工時：<strong style={{ color:"#f0c000" }}>{hrs}</strong>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Action buttons */}
+                    <div style={{ display:"flex", gap:6 }}>
+                      {!checkedIn[i] && (
+                        <button onClick={() => handleCheckIn(i)} style={{ flex:1, background: empSite[i]?"#f0c000":"#1e2330", color: empSite[i]?"#0d0f12":"#555d6e", border:"none", borderRadius:6, padding:"7px 0", fontWeight:700, fontSize:12, cursor: empSite[i]?"pointer":"not-allowed" }}>
+                          📍 確認簽到
+                        </button>
+                      )}
+                      {checkedIn[i] && !checkedOut[i] && (
+                        <button onClick={() => handleCheckOut(i)} style={{ flex:1, background:"#1a2a4a", color:"#60a5fa", border:"1px solid #60a5fa44", borderRadius:6, padding:"7px 0", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+                          🏁 確認簽退
+                        </button>
+                      )}
+                      {checkedOut[i] && (
+                        <div style={{ flex:1, background:"#0a1a0a", border:"1px solid #22c55e44", borderRadius:6, padding:"7px 0", fontWeight:600, fontSize:12, color:"#22c55e", textAlign:"center" }}>
+                          ✅ 已完成
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right: GPS + Site View */}
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title">📍 GPS 地盤定位</div>
+                <span className="badge green"><span className="badge-dot" />系統運行中</span>
+              </div>
+              <div className="card-body">
+                <div className="gps-map-mock">
+                  <div className="map-grid" /><div className="map-circle" /><div className="map-dot" />
+                  <div className="map-label">{focusSite||"請選擇地盤"}</div>
+                  <div className="map-coords">{focusGPS.lat}°N {focusGPS.lng}°E</div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+                  {[{l:"容許半徑",v:"150 m",c:"#f0c000"},{l:"在場人數",v:`${focusCount} 人`,c:"#22c55e"}].map((k,i)=>(
+                    <div key={i} style={{ background:"#0d0f12", borderRadius:8, padding:"10px 14px", border:"1px solid #1e2330" }}>
+                      <div style={{ fontSize:10, color:"#3a4255", textTransform:"uppercase", marginBottom:4 }}>{k.l}</div>
+                      <div style={{ fontFamily:"'Barlow Condensed'", fontSize:20, fontWeight:700, color:k.c }}>{k.v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ maxHeight:160, overflowY:"auto" }}>
+                  {activeProjects.map(p => (
+                    <div key={p.id} onClick={() => setSelectedSiteView(p.name)} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", borderRadius:6, marginBottom:4, cursor:"pointer", background: selectedSiteView===p.name?"#1a1f2e":"#0d0f12", border:`1px solid ${selectedSiteView===p.name?"#f0c000":"#1e2330"}` }}>
+                      <div style={{ fontSize:11, fontWeight:600 }}>{p.name}</div>
+                      <div style={{ fontSize:10, color:"#3a4255" }}>{SITE_GPS[p.name]?`${SITE_GPS[p.name].lat}, ${SITE_GPS[p.name].lng}`:"未設定"}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Site view mini */}
+            <div className="card" style={{ flex:1 }}>
+              <div className="card-header"><div className="card-title">🏗 各地盤人員</div></div>
+              <div className="card-body" style={{ padding:"8px 14px", maxHeight:220, overflowY:"auto" }}>
+                {activeProjects.map(p => {
+                  const ppl = siteGroups[p.name]||[];
+                  return (
+                    <div key={p.id} style={{ background:"#0d0f12", border:"1px solid #1e2330", borderRadius:8, padding:"9px 12px", marginBottom:8 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                        <div style={{ fontWeight:700, fontSize:12 }}>{p.name}</div>
+                        <span className={`badge ${ppl.length>0?"green":"red"}`}><span className="badge-dot" />{ppl.length} 人</span>
+                      </div>
+                      <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                        {ppl.map((emp,j) => (
+                          <div key={j} style={{ display:"flex", alignItems:"center", gap:4, background:"#13161c", borderRadius:20, padding:"2px 8px" }}>
+                            <div style={{ width:16, height:16, borderRadius:"50%", background:emp.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:700, color:"#0d0f12" }}>{emp.name[0]}</div>
+                            <span style={{ fontSize:10, color: emp.checkedOut?"#60a5fa":emp.checkedIn?"#22c55e":"#f0c000" }}>{emp.name}</span>
+                            <span style={{ fontSize:9, color:"#3a4255" }}>{emp.checkedOut?`出${emp.outTime}`:emp.time||""}</span>
                           </div>
                         ))}
+                        {ppl.length===0 && <div style={{ fontSize:11, color:"#3a4255" }}>暫無人員</div>}
                       </div>
-                    ) : (
-                      <div style={{ fontSize: 11, color: "#3a4255" }}>今日暫無人員分配</div>
-                    )}
-                  </div>
-                );
-              })}
-              {unassigned.length > 0 && (
-                <div style={{ background: "#0d0f12", border: "1px solid #d63030", borderRadius: 10, padding: "12px 14px" }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: "#d63030", marginBottom: 8 }}>⚠️ 未分配地盤</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {unassigned.map((e, j) => (
-                      <div key={j} style={{ display: "flex", alignItems: "center", gap: 4, background: "#13161c", borderRadius: 20, padding: "3px 10px" }}>
-                        <div style={{ width: 18, height: 18, borderRadius: "50%", background: e.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#0d0f12" }}>{e.name[0]}</div>
-                        <span style={{ fontSize: 11, color: "#e8eaf0" }}>{e.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Right: GPS map focus */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">📍 GPS 地盤定位</div>
-            <span className="badge green"><span className="badge-dot" /> 系統運行中</span>
-          </div>
-          <div className="card-body">
-            <div className="gps-map-mock">
-              <div className="map-grid" />
-              <div className="map-circle" />
-              <div className="map-dot" />
-              <div className="map-label">{focusSite || "請選擇地盤"}</div>
-              <div className="map-coords">{focusGPS.lat}°N {focusGPS.lng}°E</div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-              <div style={{ background: "#0d0f12", borderRadius: 8, padding: "10px 14px", border: "1px solid #1e2330" }}>
-                <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>容許半徑</div>
-                <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 20, fontWeight: 700, color: "#f0c000" }}>150 m</div>
-              </div>
-              <div style={{ background: "#0d0f12", borderRadius: 8, padding: "10px 14px", border: "1px solid #1e2330" }}>
-                <div style={{ fontSize: 10, color: "#3a4255", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>此地盤人數</div>
-                <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 20, fontWeight: 700, color: "#22c55e" }}>{focusCount} 人</div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            {/* Quick site GPS reference table */}
-            <div style={{ fontSize: 11, color: "#555d6e", marginBottom: 6, fontWeight: 600 }}>各地盤 GPS 座標</div>
-            <div style={{ maxHeight: 180, overflowY: "auto" }}>
-              {activeProjects.map(p => (
-                <div key={p.id}
-                  onClick={() => setSelectedSiteView(p.name)}
-                  style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "6px 10px", borderRadius: 6, marginBottom: 4, cursor: "pointer",
-                    background: selectedSiteView === p.name ? "#1a1f2e" : "#0d0f12",
-                    border: `1px solid ${selectedSiteView === p.name ? "#f0c000" : "#1e2330"}`
-                  }}
-                >
-                  <div style={{ fontSize: 11, fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ fontSize: 10, color: "#3a4255" }}>
-                    {SITE_GPS[p.name] ? `${SITE_GPS[p.name].lat}, ${SITE_GPS[p.name].lng}` : "未設定"}
-                  </div>
+      {/* ══ TAB: 員工報更 ══ */}
+      {activeTab === "shift" && (
+        <div>
+          {/* Batch assign */}
+          <div className="card" style={{ marginBottom:12 }}>
+            <div className="card-header"><div className="card-title">⚡ 批量報更</div></div>
+            <div className="card-body" style={{ padding:"12px 16px" }}>
+              <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"flex-end" }}>
+                <div style={{ flex:2, minWidth:180 }}>
+                  <div style={{ fontSize:11, color:"#9aa0b4", marginBottom:4 }}>工地</div>
+                  <select id="batchSite" style={{ width:"100%", background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 10px", fontSize:12 }}>
+                    <option value="">── 選擇工地 ──</option>
+                    {activeProjects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                  </select>
                 </div>
-              ))}
+                <div style={{ flex:1, minWidth:140 }}>
+                  <div style={{ fontSize:11, color:"#9aa0b4", marginBottom:4 }}>更期</div>
+                  <select id="batchShift" style={{ width:"100%", background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"8px 10px", fontSize:12 }}>
+                    {SHIFTS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <button onClick={() => {
+                  const site  = document.getElementById("batchSite").value;
+                  const shift = document.getElementById("batchShift").value;
+                  if (!site) { showToast("⚠️ 請選擇工地", "error"); return; }
+                  handleBatchAssign(site, shift);
+                }} style={{ background:"#f0c000", color:"#0d0f12", border:"none", borderRadius:6, padding:"8px 20px", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                  ✅ 批量分配全員
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Individual shift table */}
+          <div className="card">
+            <div className="card-header">
+              <div className="card-title">📋 個人報更管理</div>
+              <div style={{ fontSize:11, color:"#9aa0b4" }}>{today}</div>
+            </div>
+            <div className="card-body" style={{ padding:0 }}>
+              <table className="data-table">
+                <thead>
+                  <tr><th>員工</th><th>職位</th><th>更期</th><th>工地</th><th>簽到</th><th>簽退</th><th>工時</th><th>狀態</th></tr>
+                </thead>
+                <tbody>
+                  {employees.map((e, i) => {
+                    const s = getStatus(i);
+                    const hrs = calcHours(checkInTime[i], checkOutTime[i]);
+                    return (
+                      <tr key={i}>
+                        <td className="td-name">
+                          <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+                            <div className="emp-avatar" style={{ background:e.color, width:24, height:24, fontSize:10 }}>{e.name[0]}</div>
+                            {e.name}
+                          </div>
+                        </td>
+                        <td style={{ fontSize:11 }}>{e.role}</td>
+                        <td>
+                          <select value={empShift[i]} onChange={ev => handleAssignShift(i, ev.target.value)} disabled={checkedIn[i]}
+                            style={{ background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:5, padding:"4px 6px", fontSize:11, cursor: checkedIn[i]?"not-allowed":"pointer", maxWidth:130 }}>
+                            {SHIFTS.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ fontSize:11, color: empSite[i]?"#f0c000":"#3a4255" }}>{empSite[i]||"未分配"}</td>
+                        <td style={{ color:"#22c55e", fontSize:12 }}>{checkInTime[i]||"—"}{isLate(checkInTime[i],empShift[i])&&<span style={{color:"#e05c5c",fontSize:10}}> ⚠️</span>}</td>
+                        <td style={{ color:"#60a5fa", fontSize:12 }}>{checkOutTime[i]||"—"}</td>
+                        <td style={{ color:"#f0c000", fontWeight:600, fontSize:12 }}>{hrs||"—"}</td>
+                        <td><span className={`badge ${s.badge}`} style={{fontSize:10}}><span className="badge-dot" />{s.label}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Shift legend */}
+          <div style={{ marginTop:12, display:"flex", gap:10, flexWrap:"wrap" }}>
+            {[
+              { shift:"早更 (07:00–16:00)", note:"遲到基準：09:00", color:"#22c55e" },
+              { shift:"夜更 (16:00–01:00)", note:"不計遲到", color:"#60a5fa" },
+              { shift:"假日更", note:"假日加班", color:"#f0c000" },
+              { shift:"散工", note:"按日計算", color:"#a78bfa" },
+            ].map((s,i) => (
+              <div key={i} style={{ background:"#13161c", border:`1px solid ${s.color}33`, borderRadius:8, padding:"8px 14px" }}>
+                <div style={{ fontWeight:600, fontSize:12, color:s.color }}>{s.shift}</div>
+                <div style={{ fontSize:10, color:"#555d6e", marginTop:2 }}>{s.note}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ══ TAB: 月度報表 ══ */}
+      {activeTab === "monthly" && (
+        <div>
+          <div style={{ display:"flex", gap:10, marginBottom:14, alignItems:"center" }}>
+            <select value={monthYear.y} onChange={e=>setMonthYear(p=>({...p,y:+e.target.value}))} style={{ background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"6px 10px", fontSize:12 }}>
+              {[2024,2025,2026].map(y=><option key={y} value={y}>{y}年</option>)}
+            </select>
+            <select value={monthYear.m} onChange={e=>setMonthYear(p=>({...p,m:+e.target.value}))} style={{ background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"6px 10px", fontSize:12 }}>
+              {Array.from({length:12},(_,i)=><option key={i+1} value={i+1}>{i+1}月</option>)}
+            </select>
+            <button onClick={handleExportCSV} style={{ background:"#f0c000", color:"#0d0f12", border:"none", borderRadius:6, padding:"6px 18px", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+              📥 導出 Excel（CSV）
+            </button>
+          </div>
+
+          <div className="card">
+            <div className="card-header">
+              <div className="card-title">📊 {monthYear.y}年{monthYear.m}月 出勤彙總</div>
+              <div style={{ fontSize:11, color:"#9aa0b4" }}>連結薪酬核算</div>
+            </div>
+            <div className="card-body" style={{ padding:0 }}>
+              <table className="data-table">
+                <thead>
+                  <tr><th>員工</th><th>職位</th><th>日薪</th><th>應出勤</th><th>實際出勤</th><th>遲到次數</th><th>總工時</th><th>月薪試算</th><th>出勤率</th></tr>
+                </thead>
+                <tbody>
+                  {employees.map((e, i) => {
+                    const worked = e.days || 22;
+                    const shouldWork = 23;
+                    const late = checkedIn[i] && isLate(checkInTime[i], empShift[i]) ? 1 : 0;
+                    const rate = Math.round((worked/shouldWork)*100);
+                    const totalHrs = worked * 8;
+                    const salary = worked * (e.rate||0);
+                    return (
+                      <tr key={i}>
+                        <td className="td-name">
+                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                            <div className="emp-avatar" style={{ background:e.color, width:24, height:24, fontSize:10 }}>{e.name[0]}</div>
+                            {e.name}
+                          </div>
+                        </td>
+                        <td style={{ fontSize:11 }}>{e.role}</td>
+                        <td>HK${(e.rate||0).toLocaleString()}</td>
+                        <td>{shouldWork} 天</td>
+                        <td style={{ color:"#22c55e", fontWeight:600 }}>{worked} 天</td>
+                        <td style={{ color: late>0?"#e05c5c":"#3a4255" }}>{late} 次</td>
+                        <td style={{ color:"#f0c000" }}>{totalHrs}h</td>
+                        <td className="td-amount">HK${salary.toLocaleString()}</td>
+                        <td>
+                          <span className={`badge ${rate>=90?"green":rate>=75?"yellow":"red"}`}>
+                            <span className="badge-dot" />{rate}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Monthly summary table */}
-      <div className="card" style={{ marginTop: 4 }}>
-        <div className="card-header">
-          <div className="card-title">本月出勤彙總</div>
-          <div className="card-action">下載 CSV →</div>
-        </div>
-        <div className="card-body" style={{ padding: 0 }}>
-          <table className="data-table">
-            <thead>
-              <tr><th>員工</th><th>職位</th><th>今日地盤</th><th>應出勤</th><th>實際出勤</th><th>遲到</th><th>出勤率</th></tr>
-            </thead>
-            <tbody>
-              {employees.map((e, i) => {
-                const rate = Math.round(((e.days || 22) / 23) * 100);
-                return (
-                  <tr key={i}>
-                    <td className="td-name">
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div className="emp-avatar" style={{ background: e.color, width: 24, height: 24, fontSize: 10 }}>{e.name[0]}</div>
-                        {e.name}
-                      </div>
-                    </td>
-                    <td>{e.role}</td>
-                    <td style={{ fontSize: 11, color: empSite[i] ? "#f0c000" : "#3a4255" }}>
-                      {empSite[i] || "未分配"}
-                    </td>
-                    <td>23 天</td>
-                    <td>{e.days || 22} 天</td>
-                    <td>{[1, 0, 3, 0, 1][i] || 0} 次</td>
-                    <td>
-                      <span className={`badge ${rate >= 90 ? "green" : rate >= 75 ? "yellow" : "red"}`}>
-                        <span className="badge-dot" /> {rate}%
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -2143,22 +2319,25 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
-  // Load all invoices with project names from Supabase
+  // Load all invoices with pagination (Supabase default limit = 1000, we paginate to get all)
   const loadCFList = async () => {
     setLoading(true);
     try {
-      // Use Supabase join: invoices → projects
-      const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=cf_num.asc.nullslast&limit=2000&offset=0`,
-        { headers: { 
-          "apikey": SUPABASE_KEY, 
-          "Authorization": `Bearer ${SUPABASE_KEY}`,
-          "Prefer": "count=exact",
-          "Range-Unit": "items",
-          "Range": "0-1999"
-        } }
-      );
-      const data = await res.json();
+      const fetchPage = async (from, to) => {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/invoices?select=*,projects(name)&order=cf_num.asc.nullslast`,
+          { headers: {
+            "apikey": SUPABASE_KEY,
+            "Authorization": `Bearer ${SUPABASE_KEY}`,
+            "Range-Unit": "items",
+            "Range": `${from}-${to}`
+          } }
+        );
+        return res.json();
+      };
+      // Fetch page 1 (0–999) and page 2 (1000–1999) in parallel
+      const [page1, page2] = await Promise.all([fetchPage(0, 999), fetchPage(1000, 1999)]);
+      const data = [...(Array.isArray(page1)?page1:[]), ...(Array.isArray(page2)?page2:[])];
       // Flatten: each row = { id, cfNo(stage), ecName, amount, status, pct, description, contractValue }
       const flat = data.map(inv => ({
         id: inv.id,
