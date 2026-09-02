@@ -480,17 +480,19 @@ const styles = `
 `;
 
 const NAV_ITEMS = [
-  { id: "dashboard", icon: "⬛", label: "總覽儀表板" },
-  { id: "projects", icon: "🏗", label: "工程管理" },
-  { id: "staff", icon: "👷", label: "員工管理" },
-  { id: "safety", icon: "🛡", label: "安全簽署", badge: 3 },
+  { id: "dashboard",  icon: "⬛", label: "總覽儀表板" },
+  { id: "projects",   icon: "🏗", label: "工程管理" },
+  { id: "staff",      icon: "👷", label: "員工管理" },
+  { id: "safety",     icon: "🛡", label: "安全簽署", badge: 3 },
   { id: "attendance", icon: "📍", label: "GPS 考勤管理" },
-  { id: "progress", icon: "📊", label: "施工進度回報", badge: 1 },
-  { id: "invoice", icon: "💰", label: "自動化請款" },
-  { id: "payroll", icon: "💼", label: "薪酬核算" },
-  { id: "empdocs", icon: "📁", label: "員工文件" },
-  { id: "profit", icon: "📈", label: "報價利潤試算" },
-  { id: "tax", icon: "🧾", label: "老闆稅務計算" },
+  { id: "calendar",   icon: "📅", label: "考勤月曆" },
+  { id: "company-cal", icon: "🗓", label: "公司月曆" },
+  { id: "progress",   icon: "📊", label: "施工進度回報", badge: 1 },
+  { id: "invoice",    icon: "💰", label: "自動化請款" },
+  { id: "payroll",    icon: "💼", label: "薪酬核算" },
+  { id: "empdocs",    icon: "📁", label: "員工文件" },
+  { id: "profit",     icon: "📈", label: "報價利潤試算" },
+  { id: "tax",        icon: "🧾", label: "老闆稅務計算" },
 ];
 
 const INITIAL_PROJECTS = [];
@@ -1056,6 +1058,1027 @@ const SITE_GPS = {
   "EC-547將軍澳政府聯用辦工大樓":   { lat: "22.3059", lng: "114.2599" },
   "EC-530西灣河綜合大樓":          { lat: "22.2797", lng: "114.2253" },
 };
+
+// ─── Company Calendar ─────────────────────────────────────────────────────────
+const CAL_EVENT_TYPES = {
+  project:  { label:"工程截止/驗機", icon:"🏗", color:"#60a5fa",  bg:"#0a1525" },
+  invoice:  { label:"請款節點",      icon:"💰", color:"#f0c000",  bg:"#1a1500" },
+  shift:    { label:"員工排更",      icon:"👷", color:"#22c55e",  bg:"#0a1a0a" },
+  safety:   { label:"安全守則到期",  icon:"🛡", color:"#e05c5c",  bg:"#1a0a0a" },
+  meeting:  { label:"會議/重要事項", icon:"📋", color:"#a78bfa",  bg:"#120a1a" },
+  holiday:  { label:"公眾假期",      icon:"🎉", color:"#f97316",  bg:"#1a0f00" },
+};
+
+const HK_HOLIDAYS_2026 = [
+  "2026-01-01","2026-01-26","2026-02-17","2026-02-18","2026-02-19",
+  "2026-04-03","2026-04-04","2026-04-05","2026-04-06",
+  "2026-04-20","2026-05-01","2026-05-20","2026-06-19",
+  "2026-07-01","2026-09-26","2026-10-01","2026-10-02",
+  "2026-10-26","2026-12-25","2026-12-26",
+];
+
+function CompanyCalendar({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJECTS }) {
+  const now = new Date();
+  const [curYear,  setCurYear]  = useState(now.getFullYear());
+  const [curMonth, setCurMonth] = useState(now.getMonth());
+  const [events,   setEvents]   = useState({}); // { "YYYY-MM-DD": [{ id, type, title, detail, empName, color }] }
+  const [selDate,  setSelDate]  = useState(null);
+  const [showAdd,  setShowAdd]  = useState(false);
+  const [editEvt,  setEditEvt]  = useState(null); // event being edited
+  const [filters,  setFilters]  = useState(Object.fromEntries(Object.keys(CAL_EVENT_TYPES).map(k=>[k,true])));
+  const [newEvt,   setNewEvt]   = useState({ type:"meeting", title:"", detail:"", empName:"", date: now.toISOString().slice(0,10) });
+
+  const WEEKDAYS  = ["日","一","二","三","四","五","六"];
+  const todayStr  = now.toISOString().slice(0,10);
+  const monthStr  = `${curYear}-${String(curMonth+1).padStart(2,"0")}`;
+  const firstDay  = new Date(curYear, curMonth, 1);
+  const lastDay   = new Date(curYear, curMonth+1, 0);
+  const startDow  = firstDay.getDay();
+  const daysInMon = lastDay.getDate();
+  const dateStr   = d => `${curYear}-${String(curMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+
+  // ── Load events from Supabase + auto-generate from existing data ──
+  useEffect(() => {
+    const load = async () => {
+      const evts = {};
+
+      // Helper to add event
+      const addEvt = (date, evt) => {
+        if (!evts[date]) evts[date] = [];
+        evts[date].push({ id: Date.now() + Math.random(), ...evt });
+      };
+
+      // 1. Auto-generate project deadlines from Supabase projects
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/projects?select=name,end_date,start_date,phase&limit=200`,
+          { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+        );
+        const proj = await res.json();
+        if (Array.isArray(proj)) {
+          proj.forEach(p => {
+            if (p.end_date && p.end_date.startsWith(monthStr)) {
+              addEvt(p.end_date.slice(0,10), { type:"project", title:`📋 ${p.name}`, detail:"工程竣工日期", fromDB:true, projName:p.name });
+            }
+            // 10-day warning
+            if (p.end_date) {
+              const warn = new Date(p.end_date);
+              warn.setDate(warn.getDate() - 10);
+              const warnStr = warn.toISOString().slice(0,10);
+              if (warnStr.startsWith(monthStr)) {
+                addEvt(warnStr, { type:"project", title:`⚠️ ${p.name}`, detail:"距離竣工剩10天", fromDB:true });
+              }
+            }
+          });
+        }
+      } catch(e) {}
+
+      // 2. Auto-generate invoice milestones from Supabase invoices
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/invoices?select=stage,amount,status,sent_at&status=eq.pending&limit=200`,
+          { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+        );
+        const invs = await res.json();
+        if (Array.isArray(invs)) {
+          invs.filter(r => r.sent_at && r.sent_at.startsWith(monthStr)).forEach(r => {
+            addEvt(r.sent_at.slice(0,10), { type:"invoice", title:`💰 ${r.stage}`, detail:`HK$${(r.amount||0).toLocaleString()} 待收款`, fromDB:true });
+          });
+        }
+      } catch(e) {}
+
+      // 3. Auto-generate safety expiry warnings from safety_signs
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/safety_signs?select=employee_name,signed_at&order=signed_at.desc`,
+          { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+        );
+        const signs = await res.json();
+        if (Array.isArray(signs)) {
+          const seen = new Set();
+          signs.forEach(s => {
+            if (seen.has(s.employee_name)) return;
+            seen.add(s.employee_name);
+            const exp = new Date(s.signed_at);
+            exp.setMonth(exp.getMonth() + 6);
+            const expStr = exp.toISOString().slice(0,10);
+            if (expStr.startsWith(monthStr)) {
+              addEvt(expStr, { type:"safety", title:`🛡 ${s.employee_name}`, detail:"安全守則簽署到期", fromDB:true, empName:s.employee_name });
+            }
+            // 14-day warning
+            const warn = new Date(exp); warn.setDate(warn.getDate()-14);
+            const warnStr = warn.toISOString().slice(0,10);
+            if (warnStr.startsWith(monthStr)) {
+              addEvt(warnStr, { type:"safety", title:`⚠️ ${s.employee_name}`, detail:"安全守則14日後到期", fromDB:true });
+            }
+          });
+        }
+      } catch(e) {}
+
+      // 4. Load manually-added events from Supabase calendar table
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/calendar_events?date=gte.${monthStr}-01&date=lte.${monthStr}-31&select=*&order=date.asc`,
+          { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+        );
+        const manuals = await res.json();
+        if (Array.isArray(manuals)) {
+          manuals.forEach(m => {
+            addEvt(m.date, { id:m.id, type:m.type||"meeting", title:m.title, detail:m.detail||"", empName:m.emp_name||"", fromDB:true, manualId:m.id });
+          });
+        }
+      } catch(e) {}
+
+      // 5. HK Public Holidays
+      HK_HOLIDAYS_2026.filter(d=>d.startsWith(monthStr)).forEach(d => {
+        addEvt(d, { type:"holiday", title:"🎉 公眾假期", detail:"香港法定假日", fromDB:false });
+      });
+
+      setEvents(evts);
+    };
+    load();
+  }, [curYear, curMonth]);
+
+  // ── Save manual event ──
+  const saveEvent = async (evt) => {
+    const payload = { date: evt.date, type: evt.type, title: evt.title, detail: evt.detail, emp_name: evt.empName };
+    try {
+      let savedId = evt.manualId;
+      if (savedId) {
+        await fetch(`${SUPABASE_URL}/rest/v1/calendar_events?id=eq.${savedId}`, {
+          method:"PATCH", headers:{ "apikey":SUPABASE_KEY,"Authorization":`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json" },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/calendar_events`, {
+          method:"POST", headers:{ "apikey":SUPABASE_KEY,"Authorization":`Bearer ${SUPABASE_KEY}`,"Content-Type":"application/json","Prefer":"return=representation" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        savedId = data?.[0]?.id;
+      }
+      setEvents(prev => {
+        const n = { ...prev };
+        const date = evt.date;
+        if (!n[date]) n[date] = [];
+        // Remove old version if editing
+        if (evt.manualId) n[date] = n[date].filter(e => e.manualId !== evt.manualId);
+        n[date] = [...n[date], { ...evt, manualId:savedId, fromDB:true }];
+        return n;
+      });
+      showToast("✅ 事項已儲存", "success");
+    } catch(e) { showToast("⚠️ 儲存失敗", "error"); }
+    setShowAdd(false); setEditEvt(null);
+    setNewEvt({ type:"meeting", title:"", detail:"", empName:"", date: todayStr });
+  };
+
+  // ── Delete event ──
+  const deleteEvent = async (date, evt) => {
+    if (evt.manualId) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/calendar_events?id=eq.${evt.manualId}`, {
+          method:"DELETE", headers:{ "apikey":SUPABASE_KEY,"Authorization":`Bearer ${SUPABASE_KEY}` }
+        });
+      } catch(e) {}
+    }
+    setEvents(prev => {
+      const n = { ...prev };
+      n[date] = (n[date]||[]).filter(e => e !== evt);
+      return n;
+    });
+    showToast("🗑 事項已刪除", "success");
+    setEditEvt(null);
+  };
+
+  // ── Export ──
+  const handleExport = () => {
+    const rows = [["日期","類型","標題","詳情","相關人員"]];
+    Object.entries(events).sort().forEach(([date, evts]) => {
+      evts.forEach(e => { if (filters[e.type]) rows.push([date, CAL_EVENT_TYPES[e.type]?.label||e.type, e.title, e.detail||"", e.empName||""]); });
+    });
+    const csv = rows.map(r=>r.join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"}));
+    a.download = `公司月曆_${curYear}年${curMonth+1}月.csv`; a.click();
+    showToast("✅ 月曆已導出", "success");
+  };
+
+  // ── Upcoming events (next 14 days) ──
+  const upcoming = [];
+  for (let i=0; i<14; i++) {
+    const d = new Date(now); d.setDate(now.getDate()+i);
+    const ds = d.toISOString().slice(0,10);
+    (events[ds]||[]).filter(e=>filters[e.type]).forEach(e => upcoming.push({ date:ds, ...e }));
+  }
+
+  // ── Event form ──
+  const EventForm = ({ initial, onSave, onCancel }) => {
+    const [form, setForm] = useState(initial);
+    return (
+      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}
+        onClick={e=>e.target===e.currentTarget&&onCancel()}>
+        <div style={{ background:"#13161c", border:"1px solid #2a3045", borderRadius:12, padding:24, width:400, maxWidth:"92vw" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+            <div style={{ fontWeight:700, fontSize:16, color:"#e8eaf0" }}>{initial.manualId?"編輯事項":"新增事項"}</div>
+            <button onClick={onCancel} style={{ background:"none", border:"none", color:"#9aa0b4", cursor:"pointer", fontSize:20 }}>✕</button>
+          </div>
+
+          {/* Type selector */}
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:11, color:"#9aa0b4", marginBottom:6 }}>事項類型</div>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              {Object.entries(CAL_EVENT_TYPES).filter(([k])=>k!=="holiday").map(([k,v])=>(
+                <button key={k} onClick={()=>setForm(p=>({...p,type:k}))}
+                  style={{ padding:"4px 10px", borderRadius:6, border:`1px solid ${form.type===k?v.color:"#2a3045"}`, background:form.type===k?v.bg:"transparent", color:form.type===k?v.color:"#9aa0b4", cursor:"pointer", fontSize:11, fontWeight:600 }}>
+                  {v.icon} {v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {[
+            { l:"日期", k:"date", t:"date" },
+            { l:"標題", k:"title", t:"text", p:"例：EC-505 驗機、薪酬審批會議..." },
+            { l:"詳情（可選）", k:"detail", t:"text", p:"例：請準備相關文件" },
+            { l:"相關人員（可選）", k:"empName", t:"text", p:"例：姚奇敏、全體員工" },
+          ].map(f=>(
+            <div key={f.k} style={{ marginBottom:10 }}>
+              <div style={{ fontSize:11, color:"#9aa0b4", marginBottom:4 }}>{f.l}</div>
+              <input type={f.t} value={form[f.k]||""} onChange={e=>setForm(p=>({...p,[f.k]:e.target.value}))}
+                placeholder={f.p||""} style={{ width:"100%", background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:7, padding:"8px 10px", fontSize:13, boxSizing:"border-box" }} />
+            </div>
+          ))}
+
+          {/* Preview */}
+          {form.title && (
+            <div style={{ background:CAL_EVENT_TYPES[form.type]?.bg||"#1a1a2a", border:`1px solid ${CAL_EVENT_TYPES[form.type]?.color||"#60a5fa"}44`, borderRadius:7, padding:"8px 12px", marginBottom:14 }}>
+              <span style={{ fontSize:12, color:CAL_EVENT_TYPES[form.type]?.color||"#60a5fa" }}>
+                {CAL_EVENT_TYPES[form.type]?.icon} {form.title}
+              </span>
+              {form.detail && <div style={{ fontSize:11, color:"#9aa0b4", marginTop:2 }}>{form.detail}</div>}
+            </div>
+          )}
+
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={()=>form.title?onSave(form):showToast("⚠️ 請填寫標題","error")}
+              style={{ flex:1, background:"#f0c000", color:"#0d0f12", border:"none", borderRadius:7, padding:"10px 0", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+              ✅ 儲存
+            </button>
+            {initial.manualId && (
+              <button onClick={()=>{ if(window.confirm("確定刪除此事項？")) deleteEvent(initial.date, initial); }}
+                style={{ background:"#2a1010", color:"#e05c5c", border:"1px solid #e05c5c44", borderRadius:7, padding:"10px 14px", cursor:"pointer", fontSize:13 }}>
+                🗑
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Day detail panel ──
+  const DayPanel = ({ date }) => {
+    const dayEvts = (events[date]||[]).filter(e=>filters[e.type]);
+    const dow = new Date(date).getDay();
+    const isHoliday = HK_HOLIDAYS_2026.includes(date);
+    return (
+      <div className="card" style={{ height:"100%" }}>
+        <div className="card-header">
+          <div>
+            <div className="card-title">{date}</div>
+            <div style={{ fontSize:11, color:"#9aa0b4" }}>{["星期日","星期一","星期二","星期三","星期四","星期五","星期六"][dow]}{isHoliday?" 🎉 公眾假期":""}</div>
+          </div>
+          <button onClick={()=>{ setNewEvt(p=>({...p,date})); setShowAdd(true); }}
+            style={{ background:"#f0c000", color:"#0d0f12", border:"none", borderRadius:6, padding:"5px 12px", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+            + 新增
+          </button>
+        </div>
+        <div className="card-body" style={{ padding:"8px 12px", maxHeight:500, overflowY:"auto" }}>
+          {dayEvts.length===0 ? (
+            <div style={{ textAlign:"center", padding:"30px 0", color:"#3a4255" }}>
+              <div style={{ fontSize:24, marginBottom:8 }}>📭</div>
+              <div style={{ fontSize:12 }}>今日暫無事項</div>
+              <button onClick={()=>{ setNewEvt(p=>({...p,date})); setShowAdd(true); }}
+                style={{ marginTop:10, background:"#1e2330", border:"1px solid #2a3045", color:"#9aa0b4", borderRadius:6, padding:"6px 16px", cursor:"pointer", fontSize:12 }}>
+                + 新增事項
+              </button>
+            </div>
+          ) : dayEvts.map((e,i)=>{
+            const tc = CAL_EVENT_TYPES[e.type]||CAL_EVENT_TYPES.meeting;
+            return (
+              <div key={i} style={{ background:tc.bg, border:`1px solid ${tc.color}44`, borderRadius:8, padding:"10px 12px", marginBottom:8, cursor: e.manualId?"pointer":"default" }}
+                onClick={()=>e.manualId&&setEditEvt({...e,date})}>
+                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
+                  <span style={{ fontSize:14 }}>{tc.icon}</span>
+                  <span style={{ fontSize:12, fontWeight:700, color:tc.color }}>{e.title}</span>
+                  {e.manualId && <span style={{ marginLeft:"auto", fontSize:10, color:"#555d6e" }}>✏️</span>}
+                </div>
+                {e.detail && <div style={{ fontSize:11, color:"#9aa0b4", marginLeft:20 }}>{e.detail}</div>}
+                {e.empName && <div style={{ fontSize:10, color:"#555d6e", marginLeft:20, marginTop:2 }}>👤 {e.empName}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // ── Stats for this month ──
+  const typeCount = Object.fromEntries(Object.keys(CAL_EVENT_TYPES).map(k=>[k,0]));
+  Object.values(events).flat().forEach(e=>{ if(typeCount[e.type]!==undefined) typeCount[e.type]++; });
+
+  return (
+    <div>
+      {/* ── Header ── */}
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14, flexWrap:"wrap" }}>
+        {/* Month nav */}
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          {[["◀", ()=>{ if(curMonth===0){setCurMonth(11);setCurYear(y=>y-1);}else setCurMonth(m=>m-1); }],
+            ["▶", ()=>{ if(curMonth===11){setCurMonth(0);setCurYear(y=>y+1);}else setCurMonth(m=>m+1); }]
+          ].map(([l,fn],i)=>(
+            <button key={i} onClick={fn} style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"5px 12px", cursor:"pointer", fontSize:13 }}>{l}</button>
+          ))}
+          <div style={{ fontFamily:"'Barlow Condensed'", fontSize:22, fontWeight:700, color:"#e8eaf0", minWidth:140, textAlign:"center" }}>
+            {curYear}年 {curMonth+1}月
+          </div>
+          <button onClick={()=>{setCurYear(now.getFullYear());setCurMonth(now.getMonth());setSelDate(todayStr);}}
+            style={{ background:"#1e2330", border:"1px solid #f0c00044", color:"#f0c000", borderRadius:6, padding:"5px 10px", cursor:"pointer", fontSize:11 }}>今日</button>
+        </div>
+        <div style={{ flex:1 }} />
+        <button onClick={()=>setShowAdd(true)}
+          style={{ background:"#f0c000", color:"#0d0f12", border:"none", borderRadius:6, padding:"6px 16px", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+          ＋ 新增事項
+        </button>
+        <button onClick={handleExport}
+          style={{ background:"transparent", border:"1px solid #f0c000", color:"#f0c000", borderRadius:6, padding:"6px 14px", cursor:"pointer", fontSize:12, fontWeight:600 }}>
+          📥 導出
+        </button>
+      </div>
+
+      {/* ── Filter chips ── */}
+      <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
+        {Object.entries(CAL_EVENT_TYPES).map(([k,v])=>(
+          <button key={k} onClick={()=>setFilters(p=>({...p,[k]:!p[k]}))}
+            style={{ display:"flex", alignItems:"center", gap:5, padding:"4px 12px", borderRadius:20, border:`1px solid ${filters[k]?v.color:"#2a3045"}`, background:filters[k]?v.bg:"transparent", cursor:"pointer", fontSize:11, fontWeight:600, color:filters[k]?v.color:"#555d6e" }}>
+            {v.icon} {v.label}
+            <span style={{ background:filters[k]?v.color+"33":"#1e2330", borderRadius:10, padding:"0 5px", fontSize:10, color:filters[k]?v.color:"#555d6e" }}>{typeCount[k]||0}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ── KPI strip ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:14 }}>
+        {[
+          { l:"本月事項總數", v:Object.values(events).flat().length, c:"#60a5fa" },
+          { l:"工程截止/驗機", v:typeCount.project, c:"#60a5fa" },
+          { l:"安全到期提醒", v:typeCount.safety, c:"#e05c5c" },
+          { l:"請款節點",     v:typeCount.invoice, c:"#f0c000" },
+        ].map((k,i)=>(
+          <div key={i} style={{ background:"#13161c", border:`1px solid ${k.c}33`, borderRadius:10, padding:"10px 14px" }}>
+            <div style={{ fontSize:10, color:"#3a4255", textTransform:"uppercase", marginBottom:4 }}>{k.l}</div>
+            <div style={{ fontFamily:"'Barlow Condensed'", fontSize:22, fontWeight:800, color:k.c }}>{k.v}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Main layout: Calendar + Side Panel ── */}
+      <div style={{ display:"flex", gap:14 }}>
+        {/* Calendar grid */}
+        <div style={{ flex:1 }}>
+          {/* Weekday headers */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, marginBottom:4 }}>
+            {WEEKDAYS.map(d=>(
+              <div key={d} style={{ textAlign:"center", fontSize:11, fontWeight:700, color:"#555d6e", padding:"6px 0" }}>{d}</div>
+            ))}
+          </div>
+          {/* Day cells */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3 }}>
+            {Array.from({length:startDow}).map((_,i)=><div key={`e${i}`}/>)}
+            {Array.from({length:daysInMon}).map((_,i)=>{
+              const day = i+1;
+              const ds  = dateStr(day);
+              const isToday   = ds===todayStr;
+              const isSel     = ds===selDate;
+              const isHoliday = HK_HOLIDAYS_2026.includes(ds);
+              const dow       = new Date(curYear,curMonth,day).getDay();
+              const isWeekend = dow===0||dow===6;
+              const dayEvts   = (events[ds]||[]).filter(e=>filters[e.type]);
+
+              return (
+                <div key={day} onClick={()=>setSelDate(isSel?null:ds)}
+                  style={{ background:isSel?"#1a2240":isToday?"#0d1525":isHoliday?"#1a0f00":isWeekend?"#0f1118":"#0d0f12",
+                    border:`2px solid ${isSel?"#f0c000":isToday?"#60a5fa":isHoliday?"#f9741633":"#1e2330"}`,
+                    borderRadius:8, padding:"6px 6px", minHeight:90, cursor:"pointer" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                    <span style={{ fontSize:13, fontWeight:700, color:isToday?"#60a5fa":isHoliday?"#f97316":isWeekend?"#9aa0b4":"#e8eaf0" }}>{day}</span>
+                    {isHoliday && <span style={{ fontSize:9, color:"#f97316" }}>假</span>}
+                    {dayEvts.length>0 && !isHoliday && (
+                      <span style={{ fontSize:9, background:"#1e2330", color:"#9aa0b4", borderRadius:8, padding:"0 5px" }}>{dayEvts.length}</span>
+                    )}
+                  </div>
+                  {/* Event pills — max 3 */}
+                  {dayEvts.slice(0,3).map((e,j)=>{
+                    const tc = CAL_EVENT_TYPES[e.type]||CAL_EVENT_TYPES.meeting;
+                    return (
+                      <div key={j} style={{ background:tc.bg, border:`1px solid ${tc.color}44`, borderRadius:4, padding:"2px 5px", marginBottom:2, fontSize:9, color:tc.color, overflow:"hidden", whiteSpace:"nowrap", textOverflow:"ellipsis" }}>
+                        {tc.icon} {e.title.replace(/^[^\w\u4e00-\u9fff]*/,"")}
+                      </div>
+                    );
+                  })}
+                  {dayEvts.length>3 && <div style={{ fontSize:9, color:"#555d6e" }}>+{dayEvts.length-3}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right side panel */}
+        <div style={{ width:300, flexShrink:0, display:"flex", flexDirection:"column", gap:12 }}>
+          {/* Selected day detail */}
+          {selDate ? <DayPanel date={selDate} /> : (
+            /* Upcoming 14 days */
+            <div className="card" style={{ flex:1 }}>
+              <div className="card-header">
+                <div className="card-title">📌 未來14日事項</div>
+                <span style={{ fontSize:11, color:"#9aa0b4" }}>{upcoming.length} 項</span>
+              </div>
+              <div className="card-body" style={{ padding:"8px 12px", maxHeight:520, overflowY:"auto" }}>
+                {upcoming.length===0 ? (
+                  <div style={{ textAlign:"center", padding:"30px 0", color:"#3a4255", fontSize:12 }}>暫無即將事項</div>
+                ) : upcoming.map((e,i)=>{
+                  const tc = CAL_EVENT_TYPES[e.type]||CAL_EVENT_TYPES.meeting;
+                  const daysLeft = Math.ceil((new Date(e.date)-now)/(1000*60*60*24));
+                  return (
+                    <div key={i} style={{ display:"flex", gap:8, padding:"7px 0", borderBottom:"1px solid #1e2330", cursor:"pointer" }}
+                      onClick={()=>setSelDate(e.date)}>
+                      <div style={{ width:36, flexShrink:0, textAlign:"center" }}>
+                        <div style={{ fontSize:16, lineHeight:1 }}>{tc.icon}</div>
+                        <div style={{ fontSize:9, color: daysLeft===0?"#e05c5c":daysLeft<=3?"#f0c000":"#555d6e", marginTop:2, fontWeight:700 }}>
+                          {daysLeft===0?"今日":`${daysLeft}日`}
+                        </div>
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:12, fontWeight:600, color:tc.color, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{e.title}</div>
+                        <div style={{ fontSize:10, color:"#555d6e" }}>{e.date} {e.detail&&`· ${e.detail.slice(0,20)}`}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Modals ── */}
+      {showAdd  && <EventForm initial={newEvt}  onSave={saveEvent} onCancel={()=>setShowAdd(false)}  />}
+      {editEvt  && <EventForm initial={editEvt} onSave={saveEvent} onCancel={()=>setEditEvt(null)}   />}
+    </div>
+  );
+}
+
+// ─── Attendance Calendar ───────────────────────────────────────────────────────
+const SHIFT_OPTIONS = ["早更 07:00–16:00", "夜更 16:00–01:00", "假日更", "散工", "休假", "病假", "事假"];
+const SHIFT_COLORS  = {
+  "早更 07:00–16:00": { bg:"#0a2a0a", border:"#22c55e", text:"#22c55e" },
+  "夜更 16:00–01:00": { bg:"#0a0a2a", border:"#60a5fa", text:"#60a5fa" },
+  "假日更":           { bg:"#2a200a", border:"#f0c000", text:"#f0c000" },
+  "散工":             { bg:"#1a0a2a", border:"#a78bfa", text:"#a78bfa" },
+  "休假":             { bg:"#1a1a1a", border:"#555d6e", text:"#555d6e" },
+  "病假":             { bg:"#2a0a0a", border:"#e05c5c", text:"#e05c5c" },
+  "事假":             { bg:"#1a1510", border:"#f97316", text:"#f97316" },
+};
+
+function AttendanceCalendar({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJECTS }) {
+  const now = new Date();
+  const [viewMode,   setViewMode]   = useState("month");   // "month" | "grid"
+  const [curYear,    setCurYear]    = useState(now.getFullYear());
+  const [curMonth,   setCurMonth]   = useState(now.getMonth()); // 0-based
+  const [records,    setRecords]    = useState({});  // { "YYYY-MM-DD": { empId: { shift, site, inTime, outTime, note } } }
+  const [editCell,   setEditCell]   = useState(null);// { date, empId } currently editing
+  const [editForm,   setEditForm]   = useState({});
+  const [loading,    setLoading]    = useState(true);
+  const [selDate,    setSelDate]    = useState(null);// month view: selected date for detail panel
+
+  const activeProjects = projects.filter(p => p.phase === "active" || p.phase === "pending");
+
+  // ── Build calendar days ──
+  const firstDay  = new Date(curYear, curMonth, 1);
+  const lastDay   = new Date(curYear, curMonth + 1, 0);
+  const startDow  = firstDay.getDay(); // 0=Sun
+  const daysInMon = lastDay.getDate();
+  const WEEKDAYS  = ["日","一","二","三","四","五","六"];
+  const monthStr  = `${curYear}-${String(curMonth+1).padStart(2,"0")}`;
+  const todayStr  = now.toISOString().slice(0,10);
+
+  const dateStr = (d) => `${curYear}-${String(curMonth+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+
+  // ── Load records from Supabase ──
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/attendance?date=gte.${monthStr}-01&date=lte.${monthStr}-31&select=*&order=date.asc`,
+          { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+        );
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const rec = {};
+          data.forEach(r => {
+            if (!rec[r.date]) rec[r.date] = {};
+            rec[r.date][r.employee_name] = {
+              shift: r.shift || "早更 07:00–16:00",
+              site:  r.site  || "",
+              inTime:  r.check_in  ? new Date(r.check_in).toLocaleTimeString("zh-HK",{hour:"2-digit",minute:"2-digit"}) : "",
+              outTime: r.check_out ? new Date(r.check_out).toLocaleTimeString("zh-HK",{hour:"2-digit",minute:"2-digit"}) : "",
+              note:  r.note  || "",
+              isLate: r.is_late || false,
+              id:    r.id,
+            };
+          });
+          setRecords(rec);
+        }
+      } catch(e) {}
+      setLoading(false);
+    };
+    load();
+  }, [curYear, curMonth]);
+
+  // ── Save a cell to Supabase ──
+  const saveCell = async (date, empName, form) => {
+    const existing = records[date]?.[empName];
+    const payload = {
+      employee_name: empName,
+      date,
+      shift:    form.shift,
+      site:     form.site,
+      check_in:  form.inTime  ? `${date}T${form.inTime}:00+08:00` : null,
+      check_out: form.outTime ? `${date}T${form.outTime}:00+08:00` : null,
+      note:     form.note,
+      is_late:  form.inTime ? (parseInt(form.inTime) > 9 && !form.shift.includes("夜更")) : false,
+    };
+    try {
+      if (existing?.id) {
+        await fetch(`${SUPABASE_URL}/rest/v1/attendance?id=eq.${existing.id}`, {
+          method: "PATCH",
+          headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        await fetch(`${SUPABASE_URL}/rest/v1/attendance`, {
+          method: "POST",
+          headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" },
+          body: JSON.stringify(payload)
+        });
+      }
+      // Update local state
+      setRecords(prev => ({
+        ...prev,
+        [date]: { ...(prev[date]||{}), [empName]: { ...form, isLate: payload.is_late } }
+      }));
+      showToast(`✅ ${empName} ${date} 記錄已儲存`, "success");
+    } catch(e) {
+      showToast("⚠️ 儲存失敗，請重試", "error");
+    }
+    setEditCell(null);
+  };
+
+  // ── Delete a cell ──
+  const deleteCell = async (date, empName) => {
+    const existing = records[date]?.[empName];
+    if (existing?.id) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/attendance?id=eq.${existing.id}`, {
+          method: "DELETE",
+          headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` }
+        });
+      } catch(e) {}
+    }
+    setRecords(prev => {
+      const n = { ...prev };
+      if (n[date]) { delete n[date][empName]; }
+      return n;
+    });
+    showToast(`🗑 ${empName} ${date} 記錄已刪除`, "success");
+    setEditCell(null);
+  };
+
+  // ── Batch fill a whole day ──
+  const batchFillDay = async (date, shift, site) => {
+    const updates = employees.map(e => ({
+      employee_name: e.name, date, shift, site,
+      is_late: false,
+    }));
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/attendance`, {
+        method: "POST",
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify(updates)
+      });
+      const dayRec = {};
+      employees.forEach(e => { dayRec[e.name] = { shift, site, inTime:"", outTime:"", note:"", isLate:false }; });
+      setRecords(prev => ({ ...prev, [date]: { ...(prev[date]||{}), ...dayRec } }));
+      showToast(`✅ ${date} 已批量排更 ${employees.length} 人`, "success");
+    } catch(e) {
+      showToast("⚠️ 批量排更失敗", "error");
+    }
+  };
+
+  // ── Export ──
+  const handleExport = () => {
+    const rows = [["日期","員工","更期","工地","簽到","簽退","遲到","備註"]];
+    Object.entries(records).sort().forEach(([date, emps]) => {
+      Object.entries(emps).forEach(([emp, r]) => {
+        rows.push([date, emp, r.shift||"", r.site||"", r.inTime||"", r.outTime||"", r.isLate?"是":"否", r.note||""]);
+      });
+    });
+    const csv = rows.map(r=>r.join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"}));
+    a.download = `考勤月曆_${curYear}年${curMonth+1}月.csv`; a.click();
+    showToast("✅ 已導出考勤月曆", "success");
+  };
+
+  // ── Edit modal ──
+  const openEdit = (date, empName) => {
+    const existing = records[date]?.[empName] || {};
+    setEditForm({ shift: existing.shift||"早更 07:00–16:00", site: existing.site||"", inTime: existing.inTime||"", outTime: existing.outTime||"", note: existing.note||"" });
+    setEditCell({ date, empName });
+  };
+
+  // ── Month stats ──
+  const monthStats = employees.map(e => {
+    let worked=0, late=0, leave=0;
+    for (let d=1; d<=daysInMon; d++) {
+      const r = records[dateStr(d)]?.[e.name];
+      if (!r) continue;
+      if (r.shift === "休假" || r.shift === "病假" || r.shift === "事假") leave++;
+      else { worked++; if (r.isLate) late++; }
+    }
+    return { name:e.name, color:e.color, worked, late, leave };
+  });
+
+  const navBtn = (label, onClick) => (
+    <button onClick={onClick} style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:6, padding:"5px 12px", cursor:"pointer", fontSize:13 }}>{label}</button>
+  );
+
+  // ════════════════════════════════════════════════════════
+  // MONTH VIEW
+  // ════════════════════════════════════════════════════════
+  const MonthView = () => {
+    const [batchDate, setBatchDate] = useState(null);
+    const [batchShift, setBatchShift] = useState("早更 07:00–16:00");
+    const [batchSite,  setBatchSite]  = useState("");
+
+    return (
+      <div style={{ display:"flex", gap:14 }}>
+        {/* Calendar grid */}
+        <div style={{ flex:1 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, marginBottom:4 }}>
+            {WEEKDAYS.map(d => (
+              <div key={d} style={{ textAlign:"center", fontSize:11, fontWeight:700, color:"#555d6e", padding:"6px 0" }}>{d}</div>
+            ))}
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3 }}>
+            {/* Empty cells before first day */}
+            {Array.from({length: startDow}).map((_,i) => <div key={`e${i}`} />)}
+            {/* Day cells */}
+            {Array.from({length: daysInMon}).map((_,i) => {
+              const day = i+1;
+              const ds  = dateStr(day);
+              const dayRec = records[ds] || {};
+              const count  = Object.keys(dayRec).length;
+              const isToday = ds === todayStr;
+              const isFuture = ds > todayStr;
+              const isSel   = ds === selDate;
+              const dow     = new Date(curYear, curMonth, day).getDay();
+              const isWeekend = dow === 0 || dow === 6;
+
+              return (
+                <div key={day} onClick={() => setSelDate(isSel ? null : ds)}
+                  style={{ background: isSel?"#1a2240":isToday?"#1a2030":isWeekend?"#0f1118":"#0d0f12",
+                    border: `2px solid ${isSel?"#f0c000":isToday?"#60a5fa":"#1e2330"}`,
+                    borderRadius:8, padding:"6px 7px", minHeight:80, cursor:"pointer",
+                    position:"relative"
+                  }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                    <span style={{ fontSize:13, fontWeight:700, color: isToday?"#60a5fa":isWeekend?"#9aa0b4":"#e8eaf0" }}>{day}</span>
+                    {count>0 && <span style={{ fontSize:10, background:"#f0c00033", color:"#f0c000", borderRadius:10, padding:"1px 6px" }}>{count}人</span>}
+                    {isFuture && count===0 && <span style={{ fontSize:9, color:"#3a4255" }}>排更</span>}
+                  </div>
+                  {/* Shift badges - show up to 3 */}
+                  {Object.entries(dayRec).slice(0,3).map(([emp, r]) => {
+                    const sc = SHIFT_COLORS[r.shift] || SHIFT_COLORS["早更 07:00–16:00"];
+                    return (
+                      <div key={emp} style={{ background:sc.bg, border:`1px solid ${sc.border}33`, borderRadius:4, padding:"1px 5px", marginBottom:2, fontSize:9, color:sc.text, overflow:"hidden", whiteSpace:"nowrap", textOverflow:"ellipsis" }}>
+                        {r.isLate && "⚠️"}{emp.slice(0,2)} {r.shift.slice(0,2)}
+                      </div>
+                    );
+                  })}
+                  {count > 3 && <div style={{ fontSize:9, color:"#555d6e" }}>+{count-3} 更多</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right panel: selected day detail or stats */}
+        <div style={{ width:280, flexShrink:0 }}>
+          {selDate ? (
+            <div className="card" style={{ height:"100%" }}>
+              <div className="card-header">
+                <div className="card-title">📅 {selDate}</div>
+                <button onClick={() => setSelDate(null)} style={{ background:"none", border:"none", color:"#9aa0b4", cursor:"pointer", fontSize:16 }}>✕</button>
+              </div>
+              <div className="card-body" style={{ padding:"8px 12px" }}>
+                {/* Batch fill for this day */}
+                <div style={{ background:"#0d0f12", border:"1px solid #1e2330", borderRadius:8, padding:"10px", marginBottom:10 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:"#9aa0b4", marginBottom:6 }}>⚡ 批量排更</div>
+                  <select value={batchShift} onChange={e=>setBatchShift(e.target.value)}
+                    style={{ width:"100%", background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:5, padding:"5px 8px", fontSize:11, marginBottom:6 }}>
+                    {SHIFT_OPTIONS.map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <select value={batchSite} onChange={e=>setBatchSite(e.target.value)}
+                    style={{ width:"100%", background:"#13161c", border:"1px solid #2a3045", color: batchSite?"#e8eaf0":"#555d6e", borderRadius:5, padding:"5px 8px", fontSize:11, marginBottom:6 }}>
+                    <option value="">── 選擇工地（可選）──</option>
+                    {activeProjects.map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+                  </select>
+                  <button onClick={() => batchFillDay(selDate, batchShift, batchSite)}
+                    style={{ width:"100%", background:"#f0c000", color:"#0d0f12", border:"none", borderRadius:5, padding:"6px 0", fontWeight:700, fontSize:11, cursor:"pointer" }}>
+                    分配全部 {employees.length} 人
+                  </button>
+                </div>
+
+                {/* Per-employee for selected day */}
+                <div style={{ maxHeight:420, overflowY:"auto" }}>
+                  {employees.map(e => {
+                    const r = records[selDate]?.[e.name];
+                    const sc = r ? (SHIFT_COLORS[r.shift]||SHIFT_COLORS["早更 07:00–16:00"]) : null;
+                    return (
+                      <div key={e.name} style={{ display:"flex", alignItems:"center", gap:7, padding:"6px 0", borderBottom:"1px solid #1e2330" }}>
+                        <div className="emp-avatar" style={{ background:e.color, width:24, height:24, fontSize:10, flexShrink:0 }}>{e.name[0]}</div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:12, fontWeight:600 }}>{e.name}</div>
+                          {r ? (
+                            <div style={{ fontSize:10, color:sc.text }}>
+                              {r.shift} {r.inTime&&`${r.inTime}→${r.outTime||"?"}`} {r.isLate&&"⚠️遲"}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize:10, color:"#3a4255" }}>未排更</div>
+                          )}
+                        </div>
+                        <button onClick={() => openEdit(selDate, e.name)}
+                          style={{ background:"#1e2330", border:"none", color:"#f0c000", borderRadius:5, padding:"3px 8px", fontSize:10, cursor:"pointer" }}>
+                          {r ? "✏️" : "+"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : (
+            // Monthly stats summary
+            <div className="card">
+              <div className="card-header"><div className="card-title">📊 本月出勤統計</div></div>
+              <div className="card-body" style={{ padding:"8px 12px" }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, marginBottom:10 }}>
+                  {[
+                    {l:"出勤天數",c:"#22c55e",v:k=>k.worked},
+                    {l:"遲到",c:"#e05c5c",v:k=>k.late},
+                    {l:"請假",c:"#f97316",v:k=>k.leave},
+                  ].map((col,ci)=>(
+                    <div key={ci} style={{ background:"#0d0f12", border:`1px solid ${col.c}33`, borderRadius:8, padding:"8px", textAlign:"center" }}>
+                      <div style={{ fontSize:10, color:"#555d6e", marginBottom:2 }}>{col.l}</div>
+                      <div style={{ fontFamily:"'Barlow Condensed'", fontSize:20, fontWeight:800, color:col.c }}>
+                        {monthStats.reduce((a,s)=>a+col.v(s),0)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {monthStats.map(s => (
+                  <div key={s.name} style={{ display:"flex", alignItems:"center", gap:7, padding:"5px 0", borderBottom:"1px solid #1e2330" }}>
+                    <div className="emp-avatar" style={{ background:s.color, width:22, height:22, fontSize:9 }}>{s.name[0]}</div>
+                    <div style={{ flex:1, fontSize:11 }}>{s.name}</div>
+                    <span style={{ fontSize:10, color:"#22c55e" }}>{s.worked}天</span>
+                    {s.late>0  && <span style={{ fontSize:10, color:"#e05c5c" }}>遲{s.late}</span>}
+                    {s.leave>0 && <span style={{ fontSize:10, color:"#f97316" }}>假{s.leave}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ════════════════════════════════════════════════════════
+  // GRID VIEW (員工 × 日期)
+  // ════════════════════════════════════════════════════════
+  const GridView = () => {
+    const days = Array.from({length: daysInMon}, (_,i) => i+1);
+    return (
+      <div style={{ overflowX:"auto" }}>
+        <table style={{ borderCollapse:"collapse", fontSize:11, minWidth: daysInMon*52+160 }}>
+          <thead>
+            <tr>
+              <th style={{ position:"sticky", left:0, background:"#13161c", zIndex:2, minWidth:100, padding:"8px 10px", borderBottom:"2px solid #2a3045", textAlign:"left", color:"#9aa0b4" }}>員工</th>
+              {days.map(d => {
+                const ds  = dateStr(d);
+                const dow = new Date(curYear, curMonth, d).getDay();
+                const isW = dow===0||dow===6;
+                const isT = ds===todayStr;
+                return (
+                  <th key={d} style={{ minWidth:48, padding:"6px 3px", borderBottom:"2px solid #2a3045", textAlign:"center", background: isT?"#1a2030":isW?"#0f1118":"#13161c", color: isT?"#60a5fa":isW?"#555d6e":"#9aa0b4" }}>
+                    <div style={{ fontSize:10, fontWeight:700 }}>{d}</div>
+                    <div style={{ fontSize:9, color:"#3a4255" }}>{WEEKDAYS[dow]}</div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {employees.map((e, ei) => (
+              <tr key={e.name} style={{ background: ei%2===0?"#0d0f12":"#0a0c10" }}>
+                {/* Sticky name cell */}
+                <td style={{ position:"sticky", left:0, background: ei%2===0?"#0d0f12":"#0a0c10", zIndex:1, padding:"6px 10px", borderRight:"2px solid #2a3045", whiteSpace:"nowrap" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    <div className="emp-avatar" style={{ background:e.color, width:20, height:20, fontSize:9 }}>{e.name[0]}</div>
+                    <span style={{ fontWeight:600, color:"#e8eaf0" }}>{e.name}</span>
+                  </div>
+                </td>
+                {/* Day cells */}
+                {days.map(d => {
+                  const ds  = dateStr(d);
+                  const r   = records[ds]?.[e.name];
+                  const sc  = r ? (SHIFT_COLORS[r.shift]||SHIFT_COLORS["早更 07:00–16:00"]) : null;
+                  const isT = ds===todayStr;
+                  const dow = new Date(curYear, curMonth, d).getDay();
+                  const isW = dow===0||dow===6;
+                  return (
+                    <td key={d} onClick={() => openEdit(ds, e.name)}
+                      style={{ padding:"3px", textAlign:"center", cursor:"pointer", border:"1px solid #1a1d24",
+                        background: isT?"#0d1525":isW?"#0a0c10":"transparent",
+                        verticalAlign:"middle"
+                      }}>
+                      {r ? (
+                        <div style={{ background:sc.bg, border:`1px solid ${sc.border}44`, borderRadius:5, padding:"3px 2px", minHeight:32 }}>
+                          <div style={{ fontSize:9, fontWeight:700, color:sc.text, lineHeight:1.2 }}>
+                            {r.isLate && "⚠️"}
+                            {r.shift==="休假"?"休":r.shift==="病假"?"病":r.shift==="事假"?"事":r.shift.slice(0,1)==="早"?"早":r.shift.slice(0,1)==="夜"?"夜":r.shift.slice(0,1)==="假"?"假":"散"}
+                          </div>
+                          {r.inTime && <div style={{ fontSize:8, color:sc.text+"99" }}>{r.inTime}</div>}
+                        </div>
+                      ) : (
+                        <div style={{ minHeight:32, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                          <span style={{ fontSize:14, color:"#2a3045", lineHeight:1 }}>+</span>
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Legend */}
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
+          {Object.entries(SHIFT_COLORS).map(([s,c])=>(
+            <div key={s} style={{ display:"flex", alignItems:"center", gap:4, background:c.bg, border:`1px solid ${c.border}44`, borderRadius:6, padding:"3px 8px" }}>
+              <div style={{ width:8, height:8, borderRadius:"50%", background:c.border }} />
+              <span style={{ fontSize:10, color:c.text }}>{s}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // ── Edit Modal ──
+  const EditModal = () => {
+    if (!editCell) return null;
+    const { date, empName } = editCell;
+    const hasRecord = !!records[date]?.[empName];
+    return (
+      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}
+        onClick={e => e.target === e.currentTarget && setEditCell(null)}>
+        <div style={{ background:"#13161c", border:"1px solid #2a3045", borderRadius:12, padding:24, width:360, maxWidth:"90vw" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+            <div>
+              <div style={{ fontWeight:700, fontSize:16, color:"#e8eaf0" }}>{empName}</div>
+              <div style={{ fontSize:12, color:"#9aa0b4" }}>{date}</div>
+            </div>
+            <button onClick={()=>setEditCell(null)} style={{ background:"none", border:"none", color:"#9aa0b4", cursor:"pointer", fontSize:20 }}>✕</button>
+          </div>
+
+          {/* Form fields */}
+          {[
+            { label:"更期", key:"shift", type:"select", opts: SHIFT_OPTIONS },
+            { label:"工地", key:"site",  type:"select", opts: ["", ...activeProjects.map(p=>p.name)], placeholder:"── 選擇工地 ──" },
+            { label:"簽到時間", key:"inTime",  type:"time" },
+            { label:"簽退時間", key:"outTime", type:"time" },
+            { label:"備註",    key:"note",    type:"text", placeholder:"例：半日工、特別任務..." },
+          ].map(f => (
+            <div key={f.key} style={{ marginBottom:12 }}>
+              <div style={{ fontSize:11, color:"#9aa0b4", marginBottom:4 }}>{f.label}</div>
+              {f.type==="select" ? (
+                <select value={editForm[f.key]||""} onChange={e=>setEditForm(p=>({...p,[f.key]:e.target.value}))}
+                  style={{ width:"100%", background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:7, padding:"8px 10px", fontSize:13 }}>
+                  {f.opts.map(o=><option key={o} value={o}>{o||f.placeholder}</option>)}
+                </select>
+              ) : (
+                <input type={f.type} value={editForm[f.key]||""} onChange={e=>setEditForm(p=>({...p,[f.key]:e.target.value}))}
+                  placeholder={f.placeholder||""} style={{ width:"100%", background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:7, padding:"8px 10px", fontSize:13, boxSizing:"border-box" }} />
+              )}
+            </div>
+          ))}
+
+          {/* Shift color preview */}
+          {editForm.shift && SHIFT_COLORS[editForm.shift] && (
+            <div style={{ background:SHIFT_COLORS[editForm.shift].bg, border:`1px solid ${SHIFT_COLORS[editForm.shift].border}`, borderRadius:7, padding:"6px 12px", marginBottom:14, fontSize:11, color:SHIFT_COLORS[editForm.shift].text }}>
+              預覽：{editForm.shift} {editForm.inTime&&`${editForm.inTime} → ${editForm.outTime||"?"}`}
+            </div>
+          )}
+
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={() => saveCell(date, empName, editForm)}
+              style={{ flex:1, background:"#f0c000", color:"#0d0f12", border:"none", borderRadius:7, padding:"10px 0", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+              ✅ 儲存
+            </button>
+            {hasRecord && (
+              <button onClick={() => { if(window.confirm(`確定刪除 ${empName} ${date} 的記錄？`)) deleteCell(date, empName); }}
+                style={{ background:"#2a1010", color:"#e05c5c", border:"1px solid #e05c5c44", borderRadius:7, padding:"10px 14px", cursor:"pointer", fontSize:13 }}>
+                🗑
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ════════════════════════════════════════════════════════
+  // MAIN RENDER
+  // ════════════════════════════════════════════════════════
+  return (
+    <div>
+      {/* ── Header controls ── */}
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16, flexWrap:"wrap" }}>
+        {/* Month nav */}
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          {navBtn("◀", () => { if(curMonth===0){setCurMonth(11);setCurYear(y=>y-1);}else setCurMonth(m=>m-1); })}
+          <div style={{ fontFamily:"'Barlow Condensed'", fontSize:22, fontWeight:700, color:"#e8eaf0", minWidth:130, textAlign:"center" }}>
+            {curYear}年 {curMonth+1}月
+          </div>
+          {navBtn("▶", () => { if(curMonth===11){setCurMonth(0);setCurYear(y=>y+1);}else setCurMonth(m=>m+1); })}
+          <button onClick={()=>{setCurYear(now.getFullYear());setCurMonth(now.getMonth());}} style={{ background:"#1e2330", border:"1px solid #f0c00044", color:"#f0c000", borderRadius:6, padding:"5px 10px", cursor:"pointer", fontSize:11 }}>今月</button>
+        </div>
+
+        {/* View toggle */}
+        <div style={{ display:"flex", gap:6, background:"#0d0f12", border:"1px solid #1e2330", borderRadius:8, padding:3 }}>
+          {[{v:"month",l:"📅 月曆"},{v:"grid",l:"⊞ 員工表"}].map(btn=>(
+            <button key={btn.v} onClick={()=>setViewMode(btn.v)} style={{ padding:"5px 14px", borderRadius:6, border:"none", cursor:"pointer", fontWeight:600, fontSize:12, background:viewMode===btn.v?"#f0c000":"transparent", color:viewMode===btn.v?"#0d0f12":"#8891a4" }}>
+              {btn.l}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ flex:1 }} />
+
+        {/* Export */}
+        <button onClick={handleExport} style={{ background:"transparent", border:"1px solid #f0c000", color:"#f0c000", borderRadius:6, padding:"5px 14px", cursor:"pointer", fontSize:12, fontWeight:600 }}>
+          📥 導出 CSV
+        </button>
+      </div>
+
+      {/* ── KPI Strip ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:14 }}>
+        {[
+          { l:"本月出勤總天數", v: monthStats.reduce((a,s)=>a+s.worked,0), c:"#22c55e" },
+          { l:"遲到記錄",       v: monthStats.reduce((a,s)=>a+s.late,0),   c:"#e05c5c" },
+          { l:"請假天數",       v: monthStats.reduce((a,s)=>a+s.leave,0),  c:"#f97316" },
+          { l:"已排更人次",     v: Object.values(records).reduce((a,d)=>a+Object.keys(d).length,0), c:"#a78bfa" },
+        ].map((k,i)=>(
+          <div key={i} style={{ background:"#13161c", border:`1px solid ${k.c}33`, borderRadius:10, padding:"10px 14px" }}>
+            <div style={{ fontSize:10, color:"#3a4255", textTransform:"uppercase", marginBottom:4 }}>{k.l}</div>
+            <div style={{ fontFamily:"'Barlow Condensed'", fontSize:22, fontWeight:800, color:k.c }}>{loading?"…":k.v}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Main view ── */}
+      {loading ? (
+        <div style={{ textAlign:"center", padding:60, color:"#9aa0b4" }}>📅 載入考勤記錄中...</div>
+      ) : viewMode==="month" ? <MonthView /> : <GridView />}
+
+      {/* ── Edit Modal ── */}
+      <EditModal />
+    </div>
+  );
+}
 
 function Attendance({ showToast, employees = EMPLOYEES, projects = INITIAL_PROJECTS }) {
   const today = new Date().toLocaleDateString("zh-HK", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
@@ -3919,6 +4942,8 @@ export default function App() {
     staff:     { icon: "👷", title: "員工管理", sub: "人員 / PIN / 薪酬" },
     safety: { icon: "🛡", title: "安全條款", sub: "電子簽署" },
     attendance: { icon: "📍", title: "GPS 考勤", sub: "管理" },
+    calendar:    { icon: "📅", title: "考勤月曆",   sub: "排更 / 補登 / 月覽" },
+    "company-cal": { icon: "🗓", title: "公司月曆",   sub: "工程 / 請款 / 排更 / 會議" },
     progress: { icon: "📊", title: "施工進度", sub: "回報與預警" },
     invoice: { icon: "💰", title: "自動請款", sub: "上單系統" },
     payroll: { icon: "💼", title: "薪酬核算", sub: "自動計算" },
@@ -4009,6 +5034,8 @@ export default function App() {
             {active === "empdocs" && <EmployeeDocs showToast={showToast} employees={employees} />}
             {active === "safety" && <Safety showToast={showToast} employees={employees} />}
             {active === "attendance" && <Attendance showToast={showToast} employees={employees} projects={projects} />}
+            {active === "calendar"    && <AttendanceCalendar showToast={showToast} employees={employees} projects={projects} />}
+            {active === "company-cal" && <CompanyCalendar showToast={showToast} employees={employees} projects={projects} />}
             {active === "progress" && <Progress showToast={showToast} projects={projects} />}
             {active === "invoice" && <Invoice showToast={showToast} />}
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
