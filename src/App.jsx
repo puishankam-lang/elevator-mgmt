@@ -1110,8 +1110,183 @@ const SITE_GPS = {
 };
 
 // ─── QR Codes Page ────────────────────────────────────────────────────────────
+// ─── Employee Self-Service Check-in Page ──────────────────────────────────────
+const CHECKIN_EMPLOYEES = [
+  { id:26, name:"姚奇敏", phone:"52392789", color:"#FF6B1A" },
+  { id:28, name:"賴偉志", phone:"91498681", color:"#22C55E" },
+  { id:29, name:"韓小錦", phone:"57631557", color:"#60A5FA" },
+  { id:30, name:"彭金花", phone:"93405725", color:"#A78BFA" },
+  { id:31, name:"李文彪", phone:"63573726", color:"#FB923C" },
+  { id:32, name:"莫家文", phone:"65704790", color:"#F43F5E" },
+  { id:33, name:"陳文軒", phone:"51115103", color:"#06B6D4" },
+  { id:43, name:"Simon 曾遠宗", phone:"93408961", color:"#84CC16" },
+  { id:44, name:"Kim",   phone:"66438119", color:"#E879F9" },
+  { id:45, name:"耿華成", phone:"95615270", color:"#F0C000" },
+  { id:46, name:"譚敏銳", phone:"54201997", color:"#22C55E" },
+  { id:47, name:"吳紹鵬", phone:"56111810", color:"#60A5FA" },
+  { id:48, name:"蔡貴明", phone:"59383172", color:"#A78BFA" },
+  { id:51, name:"李國森", phone:"68908731", color:"#FB923C" },
+];
+
+function CheckinPage({ empId }) {
+  const emp = CHECKIN_EMPLOYEES.find(e => e.id === empId);
+  const [shift, setShift] = useState(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [summary, setSummary] = useState(null);
+
+  // HK time
+  const hkNow = () => {
+    const now = new Date();
+    const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+    return new Date(utc + 8 * 3600000);
+  };
+  const hk = hkNow();
+  const todayStr = `${hk.getFullYear()}-${String(hk.getMonth()+1).padStart(2,'0')}-${String(hk.getDate()).padStart(2,'0')}`;
+  const nowTime  = `${String(hk.getHours()).padStart(2,'0')}:${String(hk.getMinutes()).padStart(2,'0')}`;
+
+  const [date, setDate]     = useState(todayStr);
+  const [time, setTime]     = useState(nowTime);
+  const [remark, setRemark] = useState('');
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+
+  const submit = async () => {
+    if (!shift) { showToast('⚠️ 請選擇更期'); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/attendance`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ employee_name: emp.name, date, shift_type: shift, clock_in: `${date}T${time}:00+08:00`, notes: remark || null, status: 'present' })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      setSummary({ name: emp.name, date, shift, time, remark });
+      setSubmitted(true);
+    } catch(e) {
+      showToast('❌ 提交失敗，請重試');
+    }
+    setLoading(false);
+  };
+
+  const ciStyles = `
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang HK', sans-serif; }
+    .ci-wrap { background:#0d0f12; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:20px 16px 40px; color:#e8eaf0; }
+    .ci-card { background:#13161c; border:1px solid #1e2330; border-radius:16px; padding:24px 20px; width:100%; max-width:420px; margin-bottom:16px; }
+    .ci-badge { display:flex; align-items:center; gap:14px; margin-bottom:24px; padding:16px; background:#0d0f12; border-radius:12px; border:1px solid #2a3045; }
+    .ci-avatar { width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; flex-shrink:0; }
+    .ci-field { margin-bottom:18px; }
+    .ci-label { display:block; font-size:12px; color:#9aa0b4; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; font-weight:600; }
+    .ci-input { width:100%; background:#0d0f12; border:1px solid #2a3045; border-radius:10px; color:#e8eaf0; font-size:16px; padding:13px 14px; outline:none; -webkit-appearance:none; }
+    .ci-input:focus { border-color:#f0c000; }
+    .ci-textarea { width:100%; background:#0d0f12; border:1px solid #2a3045; border-radius:10px; color:#e8eaf0; font-size:15px; padding:12px 14px; outline:none; resize:none; height:80px; }
+    .ci-shifts { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .ci-shift { padding:14px 10px; border-radius:10px; border:2px solid #2a3045; background:transparent; color:#9aa0b4; font-size:14px; font-weight:600; cursor:pointer; text-align:center; transition:all 0.15s; }
+    .ci-shift.sel { border-color:#f0c000; background:#1a1500; color:#f0c000; }
+    .ci-btn { width:100%; background:#f0c000; color:#0d0f12; border:none; border-radius:12px; padding:16px; font-size:17px; font-weight:800; cursor:pointer; margin-top:8px; }
+    .ci-btn:disabled { opacity:0.4; cursor:not-allowed; }
+    .ci-success { text-align:center; }
+    .ci-sum { background:#0d0f12; border:1px solid #1e2330; border-radius:12px; padding:16px; margin:20px 0; text-align:left; }
+    .ci-row { display:flex; justify-content:space-between; padding:6px 0; font-size:14px; border-bottom:1px solid #1e2330; }
+    .ci-row:last-child { border-bottom:none; }
+  `;
+
+  const shiftMap = { '早更':'🌅 早更','夜更':'🌙 夜更','假日更':'🎉 假日更','散工':'💼 散工' };
+
+  if (!emp) return (
+    <div style={{ background:'#0d0f12', minHeight:'100vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:'#e8eaf0', padding:24 }}>
+      <style>{ciStyles}</style>
+      <div style={{ fontSize:48, marginBottom:16 }}>⚠️</div>
+      <div style={{ fontSize:18, fontWeight:700, color:'#e05c5c', marginBottom:8 }}>連結無效</div>
+      <div style={{ color:'#555d6e', fontSize:14 }}>請向主管索取正確嘅報更連結</div>
+    </div>
+  );
+
+  return (
+    <div className="ci-wrap">
+      <style>{ciStyles}</style>
+      {/* Header */}
+      <div style={{ textAlign:'center', marginBottom:28, paddingTop:12 }}>
+        <div style={{ fontSize:36, marginBottom:8 }}>🏗️</div>
+        <div style={{ fontSize:18, fontWeight:700, color:'#f0c000' }}>俊輝電梯工程有限公司</div>
+        <div style={{ fontSize:13, color:'#555d6e', marginTop:4 }}>員工自助報更</div>
+      </div>
+
+      {submitted ? (
+        <div className="ci-card ci-success">
+          <div style={{ fontSize:64, marginBottom:16 }}>✅</div>
+          <div style={{ fontSize:22, fontWeight:800, color:'#22c55e', marginBottom:8 }}>報更成功！</div>
+          <div className="ci-sum">
+            {[['姓名', summary.name],['日期', summary.date],['更期', shiftMap[summary.shift]||summary.shift],['上班時間', summary.time],summary.remark&&['備註', summary.remark]].filter(Boolean).map(([l,v],i)=>(
+              <div key={i} className="ci-row">
+                <span style={{ color:'#555d6e' }}>{l}</span>
+                <span style={{ fontWeight:600 }}>{v}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ color:'#9aa0b4', fontSize:14, lineHeight:1.6 }}>已記錄到系統，主管可以喺考勤月曆睇到</div>
+        </div>
+      ) : (
+        <div className="ci-card">
+          {/* Employee badge */}
+          <div className="ci-badge">
+            <div className="ci-avatar" style={{ background:emp.color+'33', color:emp.color, border:`2px solid ${emp.color}66` }}>{emp.name[0]}</div>
+            <div>
+              <div style={{ fontSize:18, fontWeight:700 }}>{emp.name}</div>
+              <div style={{ fontSize:12, color:'#555d6e', marginTop:2 }}>電梯技工</div>
+            </div>
+          </div>
+
+          {/* Date */}
+          <div className="ci-field">
+            <label className="ci-label">📅 日期</label>
+            <input type="date" className="ci-input" value={date} onChange={e=>setDate(e.target.value)} />
+          </div>
+
+          {/* Shift */}
+          <div className="ci-field">
+            <label className="ci-label">⏰ 更期</label>
+            <div className="ci-shifts">
+              {[['早更','🌅'],['夜更','🌙'],['假日更','🎉'],['散工','💼']].map(([s,icon])=>(
+                <button key={s} className={'ci-shift'+(shift===s?' sel':'')} onClick={()=>setShift(s)}>
+                  <span style={{ fontSize:20, display:'block', marginBottom:4 }}>{icon}</span>{s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Time */}
+          <div className="ci-field">
+            <label className="ci-label">🕐 上班時間</label>
+            <input type="time" className="ci-input" value={time} onChange={e=>setTime(e.target.value)} />
+          </div>
+
+          {/* Remark */}
+          <div className="ci-field">
+            <label className="ci-label">📝 備註（可選）</label>
+            <textarea className="ci-textarea" value={remark} onChange={e=>setRemark(e.target.value)} placeholder="例：工作內容、特別情況..." />
+          </div>
+
+          <button className="ci-btn" disabled={loading} onClick={submit}>
+            {loading ? '提交中...' : '✅ 確認報更'}
+          </button>
+        </div>
+      )}
+
+      {toast && (
+        <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:'#e05c5c', color:'#fff', borderRadius:8, padding:'10px 20px', fontSize:14, fontWeight:600, whiteSpace:'nowrap' }}>
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function QRCodesPage({ employees = EMPLOYEES }) {
-  const BASE_URL = (window.location.hostname === "localhost" ? window.location.origin : "https://elevator-mgmt-vert.vercel.app") + "/checkin.html";
+  const BASE_URL = "https://elevator-mgmt-vert.vercel.app/#/checkin";
   const [copied, setCopied] = React.useState(null);
 
   const getUrl = (emp) => `${BASE_URL}?emp=${emp.id}`;
