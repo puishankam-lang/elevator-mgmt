@@ -14,6 +14,47 @@ const styles = `
 
   .app { display: flex; height: 100vh; overflow: hidden; }
 
+  /* Mobile hamburger */
+  .hamburger {
+    display: none;
+    position: fixed;
+    top: 12px; left: 12px;
+    z-index: 300;
+    background: #13161c;
+    border: 1px solid #2a3045;
+    border-radius: 8px;
+    width: 38px; height: 38px;
+    align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    color: #f0c000;
+  }
+  .sidebar-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 199;
+  }
+  @media (max-width: 768px) {
+    .hamburger { display: flex; }
+    .sidebar {
+      position: fixed !important;
+      left: -240px !important;
+      top: 0; bottom: 0;
+      z-index: 200;
+      transition: left 0.25s ease;
+      width: 220px !important;
+    }
+    .sidebar.open {
+      left: 0 !important;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+    }
+    .sidebar-overlay.open { display: block; }
+    .main { padding-top: 56px !important; }
+    .page-header { padding-left: 56px !important; }
+    .kpi-grid { grid-template-columns: repeat(2,1fr) !important; }
+  }
+
   /* Sidebar */
   .sidebar {
     width: 220px;
@@ -487,6 +528,7 @@ const NAV_ITEMS = [
   { id: "attendance", icon: "📍", label: "GPS 考勤管理" },
   { id: "calendar",   icon: "📅", label: "考勤月曆" },
   { id: "company-cal", icon: "🗓", label: "公司月曆" },
+  { id: "qr-codes",   icon: "📱", label: "員工報更QR" },
   { id: "progress",   icon: "📊", label: "施工進度回報", badge: 1 },
   { id: "invoice",    icon: "💰", label: "自動化請款" },
   { id: "payroll",    icon: "💼", label: "薪酬核算" },
@@ -994,7 +1036,15 @@ function Safety({ showToast, employees = EMPLOYEES }) {
                     </span>
                     {s.status !== "valid" && (
                       <button className="btn btn-danger btn-sm" style={{ fontSize:11, padding:"3px 10px" }}
-                        onClick={() => showToast(`📱 已向 ${e.name} 發送催簽通知`, "success")}>
+                        onClick={() => {
+                          const phone = e.phone ? e.phone.replace(/[^0-9]/g,'') : '';
+                          const msg = encodeURIComponent(`${e.name}，你好！請記得簽署安全守則，連結：https://elevator-mgmt-vert.vercel.app/checkin.html?emp=${e.id}`);
+                          if (phone) {
+                            window.open(`https://wa.me/852${phone}?text=${msg}`, '_blank');
+                          } else {
+                            showToast('⚠️ 未有電話號碼，請在員工管理更新', 'error');
+                          }
+                        }}>
                         📱 催簽
                       </button>
                     )}
@@ -1058,6 +1108,123 @@ const SITE_GPS = {
   "EC-547將軍澳政府聯用辦工大樓":   { lat: "22.3059", lng: "114.2599" },
   "EC-530西灣河綜合大樓":          { lat: "22.2797", lng: "114.2253" },
 };
+
+// ─── QR Codes Page ────────────────────────────────────────────────────────────
+function QRCodesPage({ employees = EMPLOYEES }) {
+  const BASE_URL = (window.location.hostname === "localhost" ? window.location.origin : "https://elevator-mgmt-vert.vercel.app") + "/checkin.html";
+  const [copied, setCopied] = React.useState(null);
+
+  const getUrl = (emp) => `${BASE_URL}?emp=${emp.id}`;
+
+  const copyLink = (emp) => {
+    navigator.clipboard.writeText(getUrl(emp)).then(() => {
+      setCopied(emp.id);
+      setTimeout(() => setCopied(null), 2000);
+    });
+  };
+
+  const printAll = () => window.print();
+
+  const copyAll = () => {
+    const text = employees.map(e => `${e.name}: ${getUrl(e)}`).join('\n');
+    navigator.clipboard.writeText(text);
+    // Show toast via parent - we use alert as fallback
+    alert('✅ 已複製全部連結！請貼入 WhatsApp 群組發送。');
+  };
+
+  const sendViaWhatsApp = (emp) => {
+    const phone = emp.phone ? emp.phone.replace(/[^0-9]/g,'') : '';
+    const msg = encodeURIComponent(
+      `${emp.name}，你好！\n\n請用以下連結自助報更：\n${getUrl(emp)}\n\n步驟：\n1️⃣ 開連結\n2️⃣ 揀更期\n3️⃣ 填上班時間\n4️⃣ 撳「確認報更」\n\n多謝合作！`
+    );
+    if (phone) {
+      window.open(`https://wa.me/852${phone}?text=${msg}`, '_blank');
+    } else {
+      alert(`${emp.name} 未有電話號碼，請在員工管理頁面更新。`);
+    }
+  };
+
+  // QR via Google Charts API (no npm needed)
+  const qrUrl = (url) =>
+    `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(url)}&color=e8eaf0&bgcolor=0d0f12`;
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20, flexWrap:"wrap", gap:10 }}>
+        <div>
+          <div style={{ fontSize:13, color:"#555d6e" }}>每位員工有專屬連結，WhatsApp發給佢哋即可</div>
+        </div>
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={copyAll}
+            style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#9aa0b4", borderRadius:8, padding:"8px 16px", cursor:"pointer", fontSize:12, fontWeight:600 }}>
+            📋 複製全部連結
+          </button>
+          <button onClick={printAll}
+            style={{ background:"#f0c000", color:"#0d0f12", border:"none", borderRadius:8, padding:"8px 16px", cursor:"pointer", fontSize:12, fontWeight:700 }}>
+            🖨️ 打印全部QR
+          </button>
+        </div>
+      </div>
+
+      {/* Info banner */}
+      <div style={{ background:"#0a1525", border:"1px solid #60a5fa33", borderRadius:10, padding:"12px 16px", marginBottom:20, fontSize:13, color:"#60a5fa", lineHeight:1.8 }}>
+        <div><strong>💬 「發送」按鈕用法：</strong>撳後會自動開你手機嘅 WhatsApp，並預填好訊息。你只需撳「傳送」即可。</div>
+        <div style={{marginTop:6, color:"#9aa0b4"}}>員工收到連結 → 開連結 → 揀更期 → 填上班時間 → 撳確認 → 自動入系統 ✅</div>
+      </div>
+
+      {/* Employee QR grid */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:14 }}>
+        {employees.map(emp => (
+          <div key={emp.id} style={{ background:"#13161c", border:"1px solid #1e2330", borderRadius:12, padding:16, display:"flex", gap:14, alignItems:"center" }}>
+            {/* QR Code */}
+            <div style={{ flexShrink:0, background:"#0d0f12", borderRadius:8, padding:6, border:"1px solid #2a3045" }}>
+              <img src={qrUrl(getUrl(emp))} width={80} height={80} alt={`QR ${emp.name}`}
+                style={{ display:"block", borderRadius:4 }} />
+            </div>
+
+            {/* Info */}
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                <div style={{ width:28, height:28, borderRadius:"50%", background:emp.color+"33", border:`2px solid ${emp.color}66`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800, color:emp.color, flexShrink:0 }}>
+                  {emp.name[0]}
+                </div>
+                <span style={{ fontWeight:700, fontSize:15 }}>{emp.name}</span>
+              </div>
+
+              <div style={{ fontSize:10, color:"#3a4255", marginBottom:8, wordBreak:"break-all", fontFamily:"monospace" }}>
+                {getUrl(emp).replace(window.location.origin,'')}
+              </div>
+
+              <div style={{ display:"flex", gap:6 }}>
+                <button onClick={() => copyLink(emp)}
+                  style={{ flex:1, background: copied===emp.id ? "#0a1a0a" : "#1e2330", border:`1px solid ${copied===emp.id ? "#22c55e" : "#2a3045"}`, color: copied===emp.id ? "#22c55e" : "#9aa0b4", borderRadius:6, padding:"6px 0", cursor:"pointer", fontSize:11, fontWeight:600 }}>
+                  {copied===emp.id ? "✅ 已複製" : "📋 複製"}
+                </button>
+                <button onClick={() => sendViaWhatsApp(emp)}
+                  style={{ flex:1, background:"#0a1a0a", border:"1px solid #22c55e44", color:"#22c55e", borderRadius:6, padding:"6px 0", cursor:"pointer", fontSize:11, fontWeight:600 }}>
+                  💬 發送
+                </button>
+                <a href={getUrl(emp)} target="_blank" rel="noreferrer"
+                  style={{ flex:"0 0 40px", background:"#1e2330", border:"1px solid #2a3045", color:"#9aa0b4", borderRadius:6, padding:"6px 0", cursor:"pointer", fontSize:11, fontWeight:600, textDecoration:"none", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                  🔗
+                </a>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Print styles */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          .print-area, .print-area * { visibility: visible; }
+        }
+      `}</style>
+    </div>
+  );
+}
 
 // ─── Company Calendar ─────────────────────────────────────────────────────────
 const CAL_EVENT_TYPES = {
@@ -1427,7 +1594,7 @@ function CompanyCalendar({ showToast, employees = EMPLOYEES, projects = INITIAL_
       </div>
 
       {/* ── KPI strip ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:14 }}>
+      <div className="kpi-grid" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:14 }}>
         {[
           { l:"本月事項總數", v:Object.values(events).flat().length, c:"#60a5fa" },
           { l:"工程截止/驗機", v:typeCount.project, c:"#60a5fa" },
@@ -2055,7 +2222,7 @@ function AttendanceCalendar({ showToast, employees = EMPLOYEES, projects = INITI
       </div>
 
       {/* ── KPI Strip ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:14 }}>
+      <div className="kpi-grid" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:14 }}>
         {[
           { l:"本月出勤總天數", v: monthStats.reduce((a,s)=>a+s.worked,0), c:"#22c55e" },
           { l:"遲到記錄",       v: monthStats.reduce((a,s)=>a+s.late,0),   c:"#e05c5c" },
@@ -3392,7 +3559,7 @@ function ProjectManager({ projects, setProjects, showToast, onAdd, onUpdate, onD
 
   // 🔔 Check deadlines every time cfList loads - send WhatsApp for projects ending within 10 days
   const BOSS_PHONE = "85254442099"; // 老闆電話 (852 + 5444 2099)
-  const MAKE_WEBHOOK_DEADLINE = "https://hook.eu2.make.com/YOUR_DEADLINE_WEBHOOK"; // Make webhook
+  const MAKE_WEBHOOK_DEADLINE = ""; // 留空直到設定 WhatsApp API
 
   const [cfDeadlineAlerts, setCfDeadlineAlerts] = useState([]);
   const [notifiedCFs, setNotifiedCFs] = useState(() => {
@@ -4814,6 +4981,7 @@ const mapEmployee = e => ({
 
 export default function App() {
   const [active, setActive] = useState("dashboard");
+  const [navOpen, setNavOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [projects, setProjectsState] = useState(INITIAL_PROJECTS);
   const [employees, setEmployees] = useState(EMPLOYEES);
@@ -4822,7 +4990,7 @@ export default function App() {
   const [deadlineAlerts, setDeadlineAlerts] = useState([]);
 
   // ── WhatsApp deadline notification via Make webhook ──
-  const MAKE_WEBHOOK = "https://hook.eu2.make.com/YOUR_WEBHOOK_ID"; // 換成你嘅 Make webhook
+  const MAKE_WEBHOOK = ""; // 留空直到設定 WhatsApp API
   const BOSS_PHONE = "85254442099"; // 你的 WhatsApp 號碼（香港格式）
 
   const checkDeadlines = async (projList) => {
@@ -4835,7 +5003,7 @@ export default function App() {
       if (daysLeft >= 0 && daysLeft <= 10) {
         alerts.push({ ...p, daysLeft });
         // Send WhatsApp via Make
-        try {
+        if (MAKE_WEBHOOK) try {
           await fetch(MAKE_WEBHOOK, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -4944,6 +5112,7 @@ export default function App() {
     attendance: { icon: "📍", title: "GPS 考勤", sub: "管理" },
     calendar:    { icon: "📅", title: "考勤月曆",   sub: "排更 / 補登 / 月覽" },
     "company-cal": { icon: "🗓", title: "公司月曆",   sub: "工程 / 請款 / 排更 / 會議" },
+    "qr-codes":    { icon: "📱", title: "員工報更QR", sub: "生成每位員工專屬報更連結" },
     progress: { icon: "📊", title: "施工進度", sub: "回報與預警" },
     invoice: { icon: "💰", title: "自動請款", sub: "上單系統" },
     payroll: { icon: "💼", title: "薪酬核算", sub: "自動計算" },
@@ -4958,7 +5127,9 @@ export default function App() {
     <>
       <style>{styles}</style>
       <div className="app">
-        <div className="sidebar">
+        <div className="hamburger" onClick={() => setNavOpen(o => !o)}>☰</div>
+        <div className={"sidebar-overlay" + (navOpen ? " open" : "")} onClick={() => setNavOpen(false)} />
+        <div className={"sidebar" + (navOpen ? " open" : "")}>
           <div className="logo-area">
             <div className="logo-icon">升</div>
             <div className="logo-text">電梯工程管理</div>
@@ -4977,7 +5148,7 @@ export default function App() {
               <div
                 key={item.id}
                 className={`nav-item ${active === item.id ? "active" : ""}`}
-                onClick={() => setActive(item.id)}
+                onClick={() => { setActive(item.id); setNavOpen(false); }}
               >
                 <span className="nav-icon">{item.icon}</span>
                 {item.label}
@@ -5036,6 +5207,7 @@ export default function App() {
             {active === "attendance" && <Attendance showToast={showToast} employees={employees} projects={projects} />}
             {active === "calendar"    && <AttendanceCalendar showToast={showToast} employees={employees} projects={projects} />}
             {active === "company-cal" && <CompanyCalendar showToast={showToast} employees={employees} projects={projects} />}
+            {active === "qr-codes"   && <QRCodesPage employees={employees} />}
             {active === "progress" && <Progress showToast={showToast} projects={projects} />}
             {active === "invoice" && <Invoice showToast={showToast} />}
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
