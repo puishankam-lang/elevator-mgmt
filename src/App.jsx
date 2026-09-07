@@ -1286,7 +1286,7 @@ function CheckinPage({ empId }) {
 
 
 function QRCodesPage({ employees = EMPLOYEES }) {
-  const BASE_URL = "https://elevator-mgmt-vert.vercel.app/#/checkin";
+  const BASE_URL = "https://junhui-checkin.vercel.app";
   const [copied, setCopied] = React.useState(null);
 
   const getUrl = (emp) => `${BASE_URL}?emp=${emp.id}`;
@@ -5400,4 +5400,3 @@ export default function App() {
     </>
   );
 }
-      
