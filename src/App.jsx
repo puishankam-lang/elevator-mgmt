@@ -529,6 +529,7 @@ const NAV_ITEMS = [
   { id: "calendar",   icon: "📅", label: "考勤月曆" },
   { id: "company-cal", icon: "🗓", label: "公司月曆" },
   { id: "qr-codes",   icon: "📱", label: "員工報更QR" },
+  { id: "msg-center", icon: "💬", label: "訊息發送中心" },
   { id: "progress",   icon: "📊", label: "施工進度回報", badge: 1 },
   { id: "invoice",    icon: "💰", label: "自動化請款" },
   { id: "payroll",    icon: "💼", label: "薪酬核算" },
@@ -1109,6 +1110,202 @@ const SITE_GPS = {
   "EC-530西灣河綜合大樓":          { lat: "22.2797", lng: "114.2253" },
 };
 
+// ─── Message Center ───────────────────────────────────────────────────────────
+const MSG_TEMPLATES = [
+  {
+    id: "checkin",
+    icon: "📅",
+    label: "員工報更",
+    color: "#22c55e",
+    bg: "#0a1a0a",
+    getUrl: (emp) => `https://junhui-checkin.vercel.app?emp=${emp.id}`,
+    getMessage: (emp) => `${emp.name}，你好！\n\n請用以下連結自助報更：\nhttps://junhui-checkin.vercel.app?emp=${emp.id}\n\n步驟：\n1️⃣ 開連結\n2️⃣ 揀更期\n3️⃣ 填上班時間\n4️⃣ 撳「確認報更」\n\n多謝合作！`,
+  },
+  {
+    id: "safety",
+    icon: "🛡",
+    label: "安全守則簽署",
+    color: "#f0c000",
+    bg: "#1a1500",
+    getUrl: (emp) => `https://junhui-safety.vercel.app?emp=${emp.id}`,
+    getMessage: (emp) => `${emp.name}，你好！\n\n請用以下連結簽署安全守則：\nhttps://junhui-safety.vercel.app?emp=${emp.id}\n\n步驟：\n1️⃣ 開連結\n2️⃣ 細閱安全守則\n3️⃣ 剔選同意\n4️⃣ 簽名確認\n\n有效期六個月，請盡快完成。多謝！`,
+  },
+  {
+    id: "progress",
+    icon: "🏗",
+    label: "施工進度日報",
+    color: "#60a5fa",
+    bg: "#0a1525",
+    getUrl: (emp) => `https://junhui-progress.vercel.app?emp=${emp.id}`,
+    getMessage: (emp) => `${emp.name}，你好！\n\n請用以下連結提交今日施工進度日報：\nhttps://junhui-progress.vercel.app?emp=${emp.id}\n\n請填寫：完成進度、今日工作、問題及明日計劃。\n\n多謝合作！`,
+  },
+  {
+    id: "payday",
+    icon: "💰",
+    label: "出糧確認簽署",
+    color: "#22c55e",
+    bg: "#0a1a0a",
+    getUrl: (emp) => `https://junhui-payday.vercel.app?emp=${emp.id}&month=${new Date().toISOString().slice(0,7)}`,
+    getMessage: (emp) => `${emp.name}，你好！\n\n本月薪酬已發放，請用以下連結確認簽收：\nhttps://junhui-payday.vercel.app?emp=${emp.id}&month=${new Date().toISOString().slice(0,7)}\n\n如金額有異議，可在連結內填寫異議說明。\n\n多謝！`,
+  },
+];
+
+function MessageCenter({ employees = EMPLOYEES, showToast }) {
+  const [selTemplate, setSelTemplate] = React.useState(MSG_TEMPLATES[0]);
+  const [selEmps, setSelEmps] = React.useState(new Set());
+  const [sentLog, setSentLog] = React.useState([]);
+  const [customMsg, setCustomMsg] = React.useState("");
+  const [useCustom, setUseCustom] = React.useState(false);
+
+  const toggleEmp = (id) => {
+    setSelEmps(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  };
+  const selectAll = () => setSelEmps(new Set(employees.map(e => e.id)));
+  const clearAll  = () => setSelEmps(new Set());
+
+  const sendToEmp = (emp) => {
+    const msg = useCustom && customMsg
+      ? customMsg.replace("{name}", emp.name).replace("{url}", selTemplate.getUrl(emp))
+      : selTemplate.getMessage(emp);
+    const phone = emp.phone ? emp.phone.replace(/[^0-9]/g,'') : '';
+    if (!phone) { showToast(`⚠️ ${emp.name} 未有電話號碼`,"error"); return; }
+    window.open(`https://wa.me/852${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+    setSentLog(prev => [{empName:emp.name, template:selTemplate.label, time:new Date().toLocaleTimeString('zh-HK'), phone}, ...prev.slice(0,49)]);
+    showToast(`✅ 已開啟 ${emp.name} 嘅 WhatsApp`, "success");
+  };
+
+  const sendBulk = () => {
+    if (selEmps.size === 0) { showToast("⚠️ 請先選擇員工","error"); return; }
+    const targets = employees.filter(e => selEmps.has(e.id));
+    targets.forEach((emp, i) => {
+      setTimeout(() => sendToEmp(emp), i * 800);
+    });
+    showToast(`📤 逐一開啟 ${targets.length} 個 WhatsApp...`, "success");
+  };
+
+  return (
+    <div style={{ display:"flex", gap:14, flexWrap:"wrap" }}>
+
+      {/* Left panel */}
+      <div style={{ flex:"1 1 300px", minWidth:280 }}>
+
+        {/* Template selector */}
+        <div className="card" style={{ marginBottom:14 }}>
+          <div className="card-header"><div className="card-title">📋 選擇訊息類型</div></div>
+          <div className="card-body" style={{ padding:"8px 12px" }}>
+            {MSG_TEMPLATES.map(t => (
+              <div key={t.id} onClick={()=>setSelTemplate(t)}
+                style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:8, marginBottom:6, cursor:"pointer",
+                  background:selTemplate.id===t.id?t.bg:"transparent",
+                  border:`1px solid ${selTemplate.id===t.id?t.color:"#2a3045"}` }}>
+                <span style={{ fontSize:20 }}>{t.icon}</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:selTemplate.id===t.id?t.color:"#e8eaf0" }}>{t.label}</div>
+                </div>
+                {selTemplate.id===t.id && <span style={{ color:t.color, fontSize:14 }}>✓</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Message preview */}
+        <div className="card" style={{ marginBottom:14 }}>
+          <div className="card-header">
+            <div className="card-title">💬 訊息預覽</div>
+            <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:"#9aa0b4", cursor:"pointer" }}>
+              <input type="checkbox" checked={useCustom} onChange={e=>setUseCustom(e.target.checked)} style={{ accentColor:"#f0c000" }} />
+              自訂訊息
+            </label>
+          </div>
+          <div className="card-body" style={{ padding:"8px 12px" }}>
+            {useCustom ? (
+              <div>
+                <div style={{ fontSize:11, color:"#555d6e", marginBottom:6 }}>可用變量：{"{name}"} = 員工名，{"{url}"} = 連結</div>
+                <textarea value={customMsg} onChange={e=>setCustomMsg(e.target.value)}
+                  placeholder={`${selTemplate.getMessage({name:"{name}", id:0, phone:""})}`}
+                  style={{ width:"100%", background:"#0d0f12", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:8, padding:"10px 12px", fontSize:12, resize:"none", height:160, fontFamily:"inherit", outline:"none", lineHeight:1.7, boxSizing:"border-box" }} />
+              </div>
+            ) : (
+              <div style={{ background:"#0d0f12", border:"1px solid #2a3045", borderRadius:8, padding:"10px 12px", fontSize:12, color:"#9aa0b4", lineHeight:1.7, whiteSpace:"pre-wrap", maxHeight:200, overflowY:"auto" }}>
+                {selTemplate.getMessage({ name:"【員工姓名】", id:"XX", phone:"" })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Bulk send button */}
+        <button onClick={sendBulk}
+          style={{ width:"100%", background:selEmps.size>0?"#f0c000":"#1e2330", color:selEmps.size>0?"#0d0f12":"#555d6e", border:"none", borderRadius:10, padding:"13px 0", fontWeight:800, fontSize:14, cursor:selEmps.size>0?"pointer":"not-allowed", marginBottom:8 }}>
+          📤 一鍵發送俾已選 {selEmps.size} 位員工
+        </button>
+
+        {/* Sent log */}
+        {sentLog.length > 0 && (
+          <div className="card">
+            <div className="card-header"><div className="card-title">📋 發送記錄</div><span style={{ fontSize:11, color:"#555d6e" }}>本次 {sentLog.length} 條</span></div>
+            <div className="card-body" style={{ padding:"6px 12px", maxHeight:180, overflowY:"auto" }}>
+              {sentLog.map((l,i)=>(
+                <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:"1px solid #1e2330", fontSize:12 }}>
+                  <span style={{ color:"#e8eaf0", fontWeight:600 }}>{l.empName}</span>
+                  <span style={{ color:"#555d6e" }}>{l.template} · {l.time}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Right panel — Employee list */}
+      <div style={{ flex:"1 1 300px", minWidth:280 }}>
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">👷 選擇員工</div>
+            <div style={{ display:"flex", gap:6 }}>
+              <button onClick={selectAll} style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#9aa0b4", borderRadius:6, padding:"4px 10px", cursor:"pointer", fontSize:11 }}>全選</button>
+              <button onClick={clearAll}  style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#9aa0b4", borderRadius:6, padding:"4px 10px", cursor:"pointer", fontSize:11 }}>清除</button>
+            </div>
+          </div>
+          <div className="card-body" style={{ padding:"8px 12px" }}>
+            <div style={{ fontSize:11, color:"#555d6e", marginBottom:8 }}>已選 {selEmps.size} / {employees.length} 人</div>
+            {employees.map(emp => {
+              const isSel = selEmps.has(emp.id);
+              return (
+                <div key={emp.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 10px", borderRadius:8, marginBottom:4,
+                  background:isSel?"#0a1525":"transparent", border:`1px solid ${isSel?"#60a5fa33":"#1e2330"}`, cursor:"pointer" }}
+                  onClick={()=>toggleEmp(emp.id)}>
+                  {/* Checkbox */}
+                  <div style={{ width:18, height:18, borderRadius:4, border:`2px solid ${isSel?"#60a5fa":"#2a3045"}`, background:isSel?"#60a5fa":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    {isSel && <span style={{ color:"#0d0f12", fontSize:11, fontWeight:800 }}>✓</span>}
+                  </div>
+                  {/* Avatar */}
+                  <div style={{ width:32, height:32, borderRadius:"50%", background:emp.color+"33", border:`2px solid ${emp.color}55`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:800, color:emp.color, flexShrink:0 }}>
+                    {emp.name[0]}
+                  </div>
+                  {/* Name + phone */}
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color: isSel?"#e8eaf0":"#9aa0b4" }}>{emp.name}</div>
+                    <div style={{ fontSize:10, color:"#555d6e" }}>{emp.phone ? `📱 ${emp.phone}` : "⚠️ 未有電話"}</div>
+                  </div>
+                  {/* Individual send button */}
+                  <button onClick={e=>{ e.stopPropagation(); sendToEmp(emp); }}
+                    style={{ background:selTemplate.bg, border:`1px solid ${selTemplate.color}44`, color:selTemplate.color, borderRadius:6, padding:"5px 10px", cursor:"pointer", fontSize:10, fontWeight:700, flexShrink:0 }}>
+                    {selTemplate.icon} 發送
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ─── QR Codes Page ────────────────────────────────────────────────────────────
 // ─── Employee Self-Service Check-in Page ──────────────────────────────────────
 const CHECKIN_EMPLOYEES = [
@@ -1286,7 +1483,13 @@ function CheckinPage({ empId }) {
 
 
 function QRCodesPage({ employees = EMPLOYEES }) {
-  const BASE_URL = "https://junhui-checkin.vercel.app";
+  const SITE_URLS = {
+    checkin:  "https://junhui-checkin.vercel.app",
+    safety:   "https://junhui-safety.vercel.app",
+    progress: "https://junhui-progress.vercel.app",
+    payday:   "https://junhui-payday.vercel.app",
+  };
+  const BASE_URL = SITE_URLS.checkin;
   const [copied, setCopied] = React.useState(null);
 
   const getUrl = (emp) => `${BASE_URL}?emp=${emp.id}`;
@@ -5288,6 +5491,7 @@ export default function App() {
     calendar:    { icon: "📅", title: "考勤月曆",   sub: "排更 / 補登 / 月覽" },
     "company-cal": { icon: "🗓", title: "公司月曆",   sub: "工程 / 請款 / 排更 / 會議" },
     "qr-codes":    { icon: "📱", title: "員工報更QR", sub: "生成每位員工專屬報更連結" },
+    "msg-center": { icon: "💬", title: "訊息發送中心", sub: "WhatsApp 發送安全守則 / 報更 / 出糧通知" },
     progress: { icon: "📊", title: "施工進度", sub: "回報與預警" },
     invoice: { icon: "💰", title: "自動請款", sub: "上單系統" },
     payroll: { icon: "💼", title: "薪酬核算", sub: "自動計算" },
@@ -5383,6 +5587,7 @@ export default function App() {
             {active === "calendar"    && <AttendanceCalendar showToast={showToast} employees={employees} projects={projects} />}
             {active === "company-cal" && <CompanyCalendar showToast={showToast} employees={employees} projects={projects} />}
             {active === "qr-codes"   && <QRCodesPage employees={employees} />}
+            {active === "msg-center" && <MessageCenter employees={employees} showToast={showToast} />}
             {active === "progress" && <Progress showToast={showToast} projects={projects} />}
             {active === "invoice" && <Invoice showToast={showToast} />}
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
