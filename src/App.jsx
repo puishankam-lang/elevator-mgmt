@@ -5561,6 +5561,10 @@ const mapEmployee = e => ({
 export default function App() {
   const [active, setActive] = useState("dashboard");
   const [navOpen, setNavOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [brightness, setBrightness] = useState(() => parseFloat(localStorage.getItem("jh_brightness") || "1"));
+  const [fontSize, setFontSize] = useState(() => parseFloat(localStorage.getItem("jh_fontsize") || "1"));
+  const [boldText, setBoldText] = useState(() => localStorage.getItem("jh_bold") === "true");
   const [toast, setToast] = useState(null);
   const [projects, setProjectsState] = useState(INITIAL_PROJECTS);
   const [employees, setEmployees] = useState(EMPLOYEES);
@@ -5571,6 +5575,16 @@ export default function App() {
   // ── WhatsApp deadline notification via Make webhook ──
   const MAKE_WEBHOOK = ""; // 留空直到設定 WhatsApp API
   const BOSS_PHONE = "85254442099"; // 你的 WhatsApp 號碼（香港格式）
+
+  // Apply display settings
+  useEffect(() => {
+    document.documentElement.style.filter = `brightness(${brightness})`;
+    document.documentElement.style.fontSize = `${fontSize * 14}px`;
+    document.body.style.fontWeight = boldText ? "600" : "400";
+    localStorage.setItem("jh_brightness", brightness);
+    localStorage.setItem("jh_fontsize", fontSize);
+    localStorage.setItem("jh_bold", boldText);
+  }, [brightness, fontSize, boldText]);
 
   const checkDeadlines = async (projList) => {
     const today = new Date();
@@ -5753,9 +5767,82 @@ export default function App() {
               <div className="alert-btn">
                 🔔 <div className="alert-dot" />
               </div>
+              <button onClick={() => setShowSettings(s => !s)}
+                style={{ background: showSettings?"#1e2330":"transparent", border:"1px solid #2a3045", borderRadius:8, color:"#9aa0b4", padding:"5px 10px", cursor:"pointer", fontSize:14 }}>
+                ⚙️
+              </button>
               <div className="avatar">Admin</div>
             </div>
           </div>
+
+          {/* ── Display Settings Panel ── */}
+          {showSettings && (
+            <div style={{ background:"#13161c", border:"1px solid #2a3045", borderRadius:12, padding:"20px 24px", margin:"0 0 16px 0", display:"flex", gap:32, flexWrap:"wrap", alignItems:"flex-start" }}>
+              <div style={{ minWidth:200, flex:1 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:"#f0c000", marginBottom:14 }}>⚙️ 顯示設定</div>
+
+                {/* Brightness */}
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                    <label style={{ fontSize:12, color:"#9aa0b4", fontWeight:600 }}>☀️ 亮度</label>
+                    <span style={{ fontSize:12, color:"#f0c000", fontWeight:700 }}>{Math.round(brightness*100)}%</span>
+                  </div>
+                  <input type="range" min="0.3" max="1.5" step="0.05" value={brightness}
+                    onChange={e => setBrightness(parseFloat(e.target.value))}
+                    style={{ width:"100%", accentColor:"#f0c000", cursor:"pointer" }} />
+                  <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"#3a4255", marginTop:3 }}>
+                    <span>暗</span><span>正常</span><span>亮</span>
+                  </div>
+                </div>
+
+                {/* Font Size */}
+                <div style={{ marginBottom:16 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                    <label style={{ fontSize:12, color:"#9aa0b4", fontWeight:600 }}>🔤 字體大小</label>
+                    <span style={{ fontSize:12, color:"#f0c000", fontWeight:700 }}>{fontSize === 0.85?"細" : fontSize === 1?"正常" : fontSize === 1.15?"大" : fontSize === 1.3?"特大":"自訂"}</span>
+                  </div>
+                  <div style={{ display:"flex", gap:8 }}>
+                    {[{v:0.85,l:"細"},{v:1,l:"正常"},{v:1.15,l:"大"},{v:1.3,l:"特大"}].map(({v,l}) => (
+                      <button key={v} onClick={() => setFontSize(v)}
+                        style={{ flex:1, padding:"7px 0", borderRadius:7, border:`1px solid ${fontSize===v?"#f0c000":"#2a3045"}`, background:fontSize===v?"#1a1500":"transparent", color:fontSize===v?"#f0c000":"#9aa0b4", cursor:"pointer", fontSize:12, fontWeight:600 }}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Bold text */}
+                <div style={{ marginBottom:16 }}>
+                  <label style={{ display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer" }}>
+                    <span style={{ fontSize:12, color:"#9aa0b4", fontWeight:600 }}>𝐁 粗體文字</span>
+                    <div onClick={() => setBoldText(b => !b)}
+                      style={{ width:44, height:24, borderRadius:12, background:boldText?"#f0c000":"#2a3045", position:"relative", cursor:"pointer", transition:"background 0.2s" }}>
+                      <div style={{ position:"absolute", top:3, left:boldText?22:3, width:18, height:18, borderRadius:"50%", background:boldText?"#0d0f12":"#9aa0b4", transition:"left 0.2s" }} />
+                    </div>
+                  </label>
+                </div>
+
+                {/* Reset */}
+                <button onClick={() => { setBrightness(1); setFontSize(1); setBoldText(false); }}
+                  style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#9aa0b4", borderRadius:7, padding:"6px 16px", cursor:"pointer", fontSize:12, fontWeight:600 }}>
+                  ↺ 還原預設
+                </button>
+              </div>
+
+              {/* Preview */}
+              <div style={{ flex:1, minWidth:200 }}>
+                <div style={{ fontSize:12, color:"#555d6e", marginBottom:8, fontWeight:600 }}>預覽</div>
+                <div style={{ background:"#0d0f12", border:"1px solid #1e2330", borderRadius:10, padding:16 }}>
+                  <div style={{ fontSize:`${fontSize*16}px`, fontWeight:boldText?700:400, color:"#e8eaf0", marginBottom:8 }}>姚奇敏 · 電梯技工</div>
+                  <div style={{ fontSize:`${fontSize*13}px`, fontWeight:boldText?600:400, color:"#9aa0b4", marginBottom:12 }}>2026年9月 · EC-505 · 早更</div>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <div style={{ background:"#22c55e22", border:"1px solid #22c55e44", borderRadius:6, padding:"4px 10px", fontSize:`${fontSize*11}px`, color:"#22c55e", fontWeight:boldText?700:600 }}>✅ 正常</div>
+                    <div style={{ background:"#f0c00022", border:"1px solid #f0c00044", borderRadius:6, padding:"4px 10px", fontSize:`${fontSize*11}px`, color:"#f0c000", fontWeight:boldText?700:600 }}>📅 今日</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="content">
             {active === "dashboard" && <Dashboard projects={projects} setActive={setActive} employees={employees} />}
