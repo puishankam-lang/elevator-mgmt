@@ -1118,8 +1118,8 @@ const MSG_TEMPLATES = [
     label: "員工報更",
     color: "#22c55e",
     bg: "#0a1a0a",
-    getUrl: (emp) => `https://junhui-checkin.vercel.app?emp=${emp.id}`,
-    getMessage: (emp) => `【俊輝電梯工程有限公司】\n\n${emp.name}，你好！\n\n請用以下連結自助報更：\nhttps://junhui-checkin.vercel.app?emp=${emp.id}\n\n步驟：\n(1) 開連結\n(2) 揀更期\n(3) 填上班時間\n(4) 撳「確認報更」\n\n多謝合作！`,
+    getUrl: (emp) => `https://junhui-checkin.vercel.app/#emp=${emp.id}`,
+    getMessage: (emp) => `【俊輝電梯工程有限公司】\n\n${emp.name}，你好！\n\n請用以下連結自助報更：\nhttps://junhui-checkin.vercel.app/#emp=${emp.id}\n\n步驟：\n(1) 開連結\n(2) 揀更期\n(3) 填上班時間\n(4) 撳「確認報更」\n\n多謝合作！`,
   },
   {
     id: "safety",
@@ -1127,8 +1127,8 @@ const MSG_TEMPLATES = [
     label: "安全守則簽署",
     color: "#f0c000",
     bg: "#1a1500",
-    getUrl: (emp) => `https://junhui-safety.vercel.app?emp=${emp.id}`,
-    getMessage: (emp) => `【俊輝電梯工程有限公司】\n\n${emp.name}，你好！\n\n請用以下連結簽署安全守則：\nhttps://junhui-safety.vercel.app?emp=${emp.id}\n\n步驟：\n(1) 開連結\n(2) 細閱安全守則\n(3) 剔選同意\n(4) 簽名確認\n\n有效期六個月，請盡快完成。\n\n多謝合作！`,
+    getUrl: (emp) => `https://junhui-safety.vercel.app/#emp=${emp.id}`,
+    getMessage: (emp) => `【俊輝電梯工程有限公司】\n\n${emp.name}，你好！\n\n請用以下連結簽署安全守則：\nhttps://junhui-safety.vercel.app/#emp=${emp.id}\n\n步驟：\n(1) 開連結\n(2) 細閱安全守則\n(3) 剔選同意\n(4) 簽名確認\n\n有效期六個月，請盡快完成。\n\n多謝合作！`,
   },
   {
     id: "progress",
@@ -1136,8 +1136,8 @@ const MSG_TEMPLATES = [
     label: "施工進度日報",
     color: "#60a5fa",
     bg: "#0a1525",
-    getUrl: (emp) => `https://junhui-progress.vercel.app?emp=${emp.id}`,
-    getMessage: (emp) => `【俊輝電梯工程有限公司】\n\n${emp.name}，你好！\n\n請用以下連結提交今日施工進度日報：\nhttps://junhui-progress.vercel.app?emp=${emp.id}\n\n請填寫：完成進度、今日工作、問題及明日計劃。\n\n多謝合作！`,
+    getUrl: (emp) => `https://junhui-progress.vercel.app/#emp=${emp.id}`,
+    getMessage: (emp) => `【俊輝電梯工程有限公司】\n\n${emp.name}，你好！\n\n請用以下連結提交今日施工進度日報：\nhttps://junhui-progress.vercel.app/#emp=${emp.id}\n\n請填寫：完成進度、今日工作、問題及明日計劃。\n\n多謝合作！`,
   },
   {
     id: "payday",
@@ -1145,8 +1145,8 @@ const MSG_TEMPLATES = [
     label: "出糧確認簽署",
     color: "#22c55e",
     bg: "#0a1a0a",
-    getUrl: (emp) => `https://junhui-payday.vercel.app?emp=${emp.id}&month=${new Date().toISOString().slice(0,7)}`,
-    getMessage: (emp) => `【俊輝電梯工程有限公司】\n\n${emp.name}，你好！\n\n本月薪酬已發放，請用以下連結確認簽收：\nhttps://junhui-payday.vercel.app?emp=${emp.id}&month=${new Date().toISOString().slice(0,7)}\n\n如金額有異議，可在連結內填寫異議說明。\n\n多謝！`,
+    getUrl: (emp) => `https://junhui-payday.vercel.app/#emp=${emp.id}&month=${new Date().toISOString().slice(0,7)}`,
+    getMessage: (emp) => `【俊輝電梯工程有限公司】\n\n${emp.name}，你好！\n\n本月薪酬已發放，請用以下連結確認簽收：\nhttps://junhui-payday.vercel.app/#emp=${emp.id}&month=${new Date().toISOString().slice(0,7)}\n\n如金額有異議，可在連結內填寫異議說明。\n\n多謝！`,
   },
 ];
 
@@ -1492,7 +1492,7 @@ function QRCodesPage({ employees = EMPLOYEES }) {
   const BASE_URL = SITE_URLS.checkin;
   const [copied, setCopied] = React.useState(null);
 
-  const getUrl = (emp) => `${BASE_URL}?emp=${emp.id}`;
+  const getUrl = (emp) => `${BASE_URL}/#emp=${emp.id}`;
 
   const copyLink = (emp) => {
     navigator.clipboard.writeText(getUrl(emp)).then(() => {
