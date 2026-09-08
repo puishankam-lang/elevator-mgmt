@@ -530,6 +530,7 @@ const NAV_ITEMS = [
   { id: "company-cal", icon: "📆", label: "公司月曆" },
   { id: "qr-codes",   icon: "📲", label: "員工報更QR" },
   { id: "msg-center", icon: "✉️", label: "訊息發送中心" },
+  { id: "records",    icon: "📊", label: "員工記錄總覽" },
   { id: "progress",   icon: "📊", label: "施工進度回報", badge: 1 },
   { id: "invoice",    icon: "📋", label: "自動化請款" },
   { id: "payroll",    icon: "💼", label: "薪酬核算" },
@@ -1109,6 +1110,205 @@ const SITE_GPS = {
   "EC-547將軍澳政府聯用辦工大樓":   { lat: "22.3059", lng: "114.2599" },
   "EC-530西灣河綜合大樓":          { lat: "22.2797", lng: "114.2253" },
 };
+
+// ─── Records Overview ─────────────────────────────────────────────────────────
+function RecordsOverview({ employees = EMPLOYEES, showToast }) {
+  const [activeTab, setActiveTab] = React.useState("checkin");
+  const [records, setRecords] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [filterEmp, setFilterEmp] = React.useState("all");
+  const [filterMonth, setFilterMonth] = React.useState(new Date().toISOString().slice(0,7));
+
+  const TABS = [
+    { id:"checkin",  label:"📅 報更記錄",     table:"attendance",           cols:["employee_name","date","shift_type","clock_in","clock_out","notes"] },
+    { id:"safety",   label:"🛡 安全守則簽署",  table:"safety_signs",         cols:["employee_name","signed_at"] },
+    { id:"progress", label:"🏗 施工進度日報",  table:"progress_reports",     cols:["employee_name","report_date","project_name","progress_pct","status","work_done","issues"] },
+    { id:"payday",   label:"💰 出糧確認記錄",  table:"payday_confirmations", cols:["employee_name","pay_month","amount","days","confirmed","dispute_reason","signed_at"] },
+  ];
+
+  const tab = TABS.find(t => t.id === activeTab);
+
+  useEffect(() => {
+    loadRecords();
+  }, [activeTab, filterEmp, filterMonth]);
+
+  const loadRecords = async () => {
+    setLoading(true);
+    setRecords([]);
+    try {
+      let url = `${SUPABASE_URL}/rest/v1/${tab.table}?order=`;
+      // Set order field based on table
+      const orderField = tab.table === "safety_signs" ? "signed_at" :
+                         tab.table === "attendance"    ? "date" :
+                         tab.table === "progress_reports" ? "report_date" : "signed_at";
+      url += `${orderField}.desc&limit=200`;
+
+      // Filter by employee
+      if (filterEmp !== "all") {
+        const emp = employees.find(e => e.id === parseInt(filterEmp));
+        if (emp) url += `&employee_name=eq.${encodeURIComponent(emp.name)}`;
+      }
+
+      // Filter by month
+      if (filterMonth) {
+        const dateField = tab.table === "safety_signs" ? "signed_at" :
+                          tab.table === "payday_confirmations" ? "signed_at" :
+                          tab.table === "progress_reports" ? "report_date" : "date";
+        url += `&${dateField}=gte.${filterMonth}-01&${dateField}=lte.${filterMonth}-31`;
+      }
+
+      const res = await fetch(url, { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } });
+      const data = await res.json();
+      if (Array.isArray(data)) setRecords(data);
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  // KPI counts
+  const kpis = {
+    checkin:  records.filter(r => r.status === "present" || r.shift_type).length,
+    safety:   (() => {
+      const seen = new Set(); 
+      return records.filter(r => { if(seen.has(r.employee_name)) return false; seen.add(r.employee_name); return true; }).length;
+    })(),
+    progress: records.length,
+    payday:   records.filter(r => r.confirmed).length,
+  };
+
+  const exportCSV = () => {
+    if (!records.length) { showToast("⚠️ 冇記錄可導出", "error"); return; }
+    const headers = tab.cols;
+    const rows = [headers, ...records.map(r => headers.map(h => {
+      const v = r[h];
+      if (v === null || v === undefined) return "";
+      if (typeof v === "boolean") return v ? "已確認" : "有異議";
+      if (typeof v === "string" && v.includes("T")) return v.slice(0,16).replace("T"," ");
+      return String(v);
+    }))];
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["﻿"+csv], {type:"text/csv;charset=utf-8;"}));
+    a.download = `${tab.label}_${filterMonth}.csv`;
+    a.click();
+    showToast("✅ 已導出 CSV", "success");
+  };
+
+  const formatVal = (key, val) => {
+    if (val === null || val === undefined) return <span style={{color:"#3a4255"}}>—</span>;
+    if (typeof val === "boolean") return val
+      ? <span style={{color:"#22c55e",fontWeight:700}}>✅ 已確認</span>
+      : <span style={{color:"#e05c5c",fontWeight:700}}>⚠️ 有異議</span>;
+    if (key === "progress_pct") return <span style={{color:"#f0c000",fontWeight:700}}>{val}%</span>;
+    if (key === "amount") return <span style={{color:"#22c55e",fontWeight:700}}>HK${Number(val).toLocaleString()}</span>;
+    if (key === "confirmed" ) return val
+      ? <span style={{color:"#22c55e"}}>✅ 已確認</span>
+      : <span style={{color:"#e05c5c"}}>⚠️ 有異議</span>;
+    if (key === "status") {
+      const colors = {"正常施工":"#22c55e","延誤":"#f0c000","待料":"#60a5fa","惡劣天氣停工":"#9aa0b4","驗收檢查":"#a78bfa","完工":"#f0c000"};
+      return <span style={{color:colors[val]||"#e8eaf0",fontWeight:600}}>{val}</span>;
+    }
+    if (typeof val === "string" && val.includes("T")) return val.slice(0,16).replace("T"," ");
+    if (typeof val === "string" && val.length > 40) return val.slice(0,40)+"...";
+    return val;
+  };
+
+  const colLabels = {
+    employee_name:"員工", date:"日期", shift_type:"更期", clock_in:"簽到",
+    clock_out:"簽退", notes:"備註", signed_at:"簽署時間", pay_month:"薪酬月份",
+    amount:"金額", days:"出勤天數", confirmed:"確認狀態", dispute_reason:"異議原因",
+    report_date:"日期", project_name:"工程", progress_pct:"進度", status:"狀態",
+    work_done:"工作內容", issues:"問題"
+  };
+
+  return (
+    <div>
+      {/* KPI strip */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:16 }}>
+        {TABS.map(t => (
+          <div key={t.id} onClick={()=>setActiveTab(t.id)}
+            style={{ background: activeTab===t.id ? "#13161c" : "#0d0f12",
+              border:`1px solid ${activeTab===t.id?"#f0c000":"#1e2330"}`,
+              borderRadius:10, padding:"10px 14px", cursor:"pointer" }}>
+            <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>{t.label}</div>
+            <div style={{ fontFamily:"'Barlow Condensed'", fontSize:24, fontWeight:800, color: activeTab===t.id?"#f0c000":"#e8eaf0" }}>
+              {loading && activeTab===t.id ? "…" : (activeTab===t.id ? kpis[t.id] : "—")}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:"flex", gap:10, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
+        <select value={filterEmp} onChange={e=>setFilterEmp(e.target.value)}
+          style={{ background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:8, padding:"7px 12px", fontSize:13, outline:"none" }}>
+          <option value="all">全部員工</option>
+          {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+
+        <input type="month" value={filterMonth} onChange={e=>setFilterMonth(e.target.value)}
+          style={{ background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:8, padding:"7px 12px", fontSize:13, outline:"none" }} />
+
+        <button onClick={loadRecords}
+          style={{ background:"#1e2330", border:"1px solid #2a3045", color:"#9aa0b4", borderRadius:8, padding:"7px 14px", cursor:"pointer", fontSize:13 }}>
+          🔄 重新載入
+        </button>
+
+        <div style={{ flex:1 }} />
+
+        <button onClick={exportCSV}
+          style={{ background:"transparent", border:"1px solid #f0c000", color:"#f0c000", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontSize:13, fontWeight:600 }}>
+          📥 導出 CSV
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="card" style={{ overflow:"hidden" }}>
+        <div className="card-header">
+          <div className="card-title">{tab.label}</div>
+          <span style={{ fontSize:11, color:"#555d6e" }}>{records.length} 筆記錄</span>
+        </div>
+
+        {loading ? (
+          <div style={{ padding:"40px 0", textAlign:"center", color:"#555d6e" }}>
+            <div style={{ width:32, height:32, border:"3px solid #1e2330", borderTop:"3px solid #f0c000", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto 12px" }} />
+            載入中...
+          </div>
+        ) : records.length === 0 ? (
+          <div style={{ padding:"40px 0", textAlign:"center", color:"#3a4255", fontSize:13 }}>
+            <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+            暫無記錄
+          </div>
+        ) : (
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+              <thead>
+                <tr style={{ borderBottom:"1px solid #2a3045" }}>
+                  {tab.cols.map(c => (
+                    <th key={c} style={{ padding:"10px 14px", textAlign:"left", color:"#555d6e", fontWeight:600, textTransform:"uppercase", fontSize:10, letterSpacing:"0.5px", whiteSpace:"nowrap" }}>
+                      {colLabels[c]||c}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {records.map((r,i) => (
+                  <tr key={i} style={{ borderBottom:"1px solid #1e2330", background: i%2===0?"transparent":"#0a0c0f" }}>
+                    {tab.cols.map(c => (
+                      <td key={c} style={{ padding:"9px 14px", color:"#e8eaf0", whiteSpace: c==="work_done"||c==="issues"?"normal":"nowrap" }}>
+                        {formatVal(c, r[c])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 // ─── Message Center ───────────────────────────────────────────────────────────
 const MSG_TEMPLATES = [
@@ -5493,6 +5693,7 @@ export default function App() {
     "company-cal": { icon: "📆", title: "公司月曆",   sub: "工程 / 請款 / 排更 / 會議" },
     "qr-codes":    { icon: "📲", title: "員工報更QR", sub: "生成每位員工專屬報更連結" },
     "msg-center": { icon: "✉️", title: "訊息發送中心", sub: "WhatsApp 發送安全守則 / 報更 / 出糧通知" },
+    "records":    { icon: "📊", title: "員工記錄總覽",   sub: "報更 / 安全守則 / 施工進度 / 出糧確認" },
     progress: { icon: "📊", title: "施工進度", sub: "回報與預警" },
     invoice: { icon: "📋", title: "自動請款", sub: "上單系統" },
     payroll: { icon: "💼", title: "薪酬核算", sub: "自動計算" },
@@ -5589,6 +5790,7 @@ export default function App() {
             {active === "company-cal" && <CompanyCalendar showToast={showToast} employees={employees} projects={projects} />}
             {active === "qr-codes"   && <QRCodesPage employees={employees} />}
             {active === "msg-center" && <MessageCenter employees={employees} showToast={showToast} />}
+            {active === "records"    && <RecordsOverview employees={employees} showToast={showToast} />}
             {active === "progress" && <Progress showToast={showToast} projects={projects} />}
             {active === "invoice" && <Invoice showToast={showToast} />}
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
