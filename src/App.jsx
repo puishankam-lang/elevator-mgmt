@@ -1323,6 +1323,7 @@ const CHECKIN_EMPLOYEES = [
   { id:47, name:"吳紹鵬", phone:"56111810", color:"#60A5FA" },
   { id:48, name:"蔡貴明", phone:"59383172", color:"#A78BFA" },
   { id:51, name:"李國森", phone:"68908731", color:"#FB923C" },
+  { id:52, name:"KK mario", phone:"96998241", color:"#FF6B1A" },
 ];
 
 function CheckinPage({ empId }) {
