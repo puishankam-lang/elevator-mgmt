@@ -522,16 +522,16 @@ const styles = `
 
 const NAV_ITEMS = [
   { id: "dashboard",  icon: "⬛", label: "總覽儀表板" },
-  { id: "projects",   icon: "🏗", label: "工程管理" },
+  { id: "projects",   icon: "🔧", label: "工程管理" },
   { id: "staff",      icon: "👷", label: "員工管理" },
-  { id: "safety",     icon: "🛡", label: "安全簽署", badge: 3 },
+  { id: "safety",     icon: "✅", label: "安全簽署", badge: 3 },
   { id: "attendance", icon: "📍", label: "GPS 考勤管理" },
-  { id: "calendar",   icon: "📅", label: "考勤月曆" },
-  { id: "company-cal", icon: "🗓", label: "公司月曆" },
-  { id: "qr-codes",   icon: "📱", label: "員工報更QR" },
-  { id: "msg-center", icon: "💬", label: "訊息發送中心" },
+  { id: "calendar",   icon: "📆", label: "考勤月曆" },
+  { id: "company-cal", icon: "📆", label: "公司月曆" },
+  { id: "qr-codes",   icon: "📲", label: "員工報更QR" },
+  { id: "msg-center", icon: "✉️", label: "訊息發送中心" },
   { id: "progress",   icon: "📊", label: "施工進度回報", badge: 1 },
-  { id: "invoice",    icon: "💰", label: "自動化請款" },
+  { id: "invoice",    icon: "📋", label: "自動化請款" },
   { id: "payroll",    icon: "💼", label: "薪酬核算" },
   { id: "empdocs",    icon: "📁", label: "員工文件" },
   { id: "profit",     icon: "📈", label: "報價利潤試算" },
@@ -1114,7 +1114,7 @@ const SITE_GPS = {
 const MSG_TEMPLATES = [
   {
     id: "checkin",
-    icon: "📅",
+    icon: "📆",
     label: "員工報更",
     color: "#22c55e",
     bg: "#0a1a0a",
@@ -1123,7 +1123,7 @@ const MSG_TEMPLATES = [
   },
   {
     id: "safety",
-    icon: "🛡",
+    icon: "✅",
     label: "安全守則簽署",
     color: "#f0c000",
     bg: "#1a1500",
@@ -1132,7 +1132,7 @@ const MSG_TEMPLATES = [
   },
   {
     id: "progress",
-    icon: "🏗",
+    icon: "🔧",
     label: "施工進度日報",
     color: "#60a5fa",
     bg: "#0a1525",
@@ -1141,7 +1141,7 @@ const MSG_TEMPLATES = [
   },
   {
     id: "payday",
-    icon: "💰",
+    icon: "📋",
     label: "出糧確認簽署",
     color: "#22c55e",
     bg: "#0a1a0a",
@@ -1407,7 +1407,7 @@ function CheckinPage({ empId }) {
       {/* Header */}
       <div style={{ textAlign:'center', marginBottom:28, paddingTop:12 }}>
         <div style={{ fontSize:36, marginBottom:8 }}>🏗️</div>
-        <div style={{ fontSize:18, fontWeight:700, color:'#f0c000' }}>俊輝電梯工程有限公司</div>
+        <div style={{ fontSize:18, fontWeight:700, color:'#f0c000' }}>巨揚工程有限公司</div>
         <div style={{ fontSize:13, color:'#555d6e', marginTop:4 }}>員工自助報更</div>
       </div>
 
@@ -1606,10 +1606,10 @@ function QRCodesPage({ employees = EMPLOYEES }) {
 
 // ─── Company Calendar ─────────────────────────────────────────────────────────
 const CAL_EVENT_TYPES = {
-  project:  { label:"工程截止/驗機", icon:"🏗", color:"#60a5fa",  bg:"#0a1525" },
-  invoice:  { label:"請款節點",      icon:"💰", color:"#f0c000",  bg:"#1a1500" },
+  project:  { label:"工程截止/驗機", icon:"🔧", color:"#60a5fa",  bg:"#0a1525" },
+  invoice:  { label:"請款節點",      icon:"📋", color:"#f0c000",  bg:"#1a1500" },
   shift:    { label:"員工排更",      icon:"👷", color:"#22c55e",  bg:"#0a1a0a" },
-  safety:   { label:"安全守則到期",  icon:"🛡", color:"#e05c5c",  bg:"#1a0a0a" },
+  safety:   { label:"安全守則到期",  icon:"✅", color:"#e05c5c",  bg:"#1a0a0a" },
   meeting:  { label:"會議/重要事項", icon:"📋", color:"#a78bfa",  bg:"#120a1a" },
   holiday:  { label:"公眾假期",      icon:"🎉", color:"#f97316",  bg:"#1a0f00" },
 };
@@ -3865,7 +3865,7 @@ function generateInvoicePDF(inv) {
   </table>
   <div class="footer">
     <div>Make all checks payable to <span class="co">Chun Fai Lifts Engineering Company Ltd.</span></div>
-    <div class="co">俊輝電梯工程有限公司</div><br/>
+    <div class="co">巨揚工程有限公司</div><br/>
     <div>If you have any questions concerning this invoice, contact Mr. Kam at 5444 2099.</div>
     <br/><div style="font-weight:bold">THANK YOU FOR YOUR BUSINESS!</div>
   </div>
@@ -4457,7 +4457,7 @@ function EmployeeDocs({ showToast, employees = [] }) {
       td{padding:8px 12px;border:1px solid #ddd}
       .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid #f0c000}
     </style></head><body>
-    <div class="header"><div><h2>員工文件存檔</h2><div style="font-size:12px;color:#666">俊輝電梯工程有限公司</div></div><div style="text-align:right;font-size:12px;color:#666">列印日期：${today}</div></div>
+    <div class="header"><div><h2>員工文件存檔</h2><div style="font-size:12px;color:#666">巨揚工程有限公司</div></div><div style="text-align:right;font-size:12px;color:#666">列印日期：${today}</div></div>
     <div style="background:#f9f9f9;padding:12px;border-radius:6px;margin-bottom:16px">
       <div style="font-size:16px;font-weight:700">${emp.name}</div>
       <div style="font-size:12px;color:#666">${emp.role||"電梯技工"} · 手機：${emp.phone||"–"}</div>
@@ -5484,16 +5484,16 @@ export default function App() {
 
   const PAGE_TITLES = {
     dashboard: { icon: "⬛", title: "總覽", sub: "儀表板" },
-    projects:  { icon: "🏗", title: "工程管理", sub: "新增 / 篩選 / 搜尋" },
+    projects:  { icon: "🔧", title: "工程管理", sub: "新增 / 篩選 / 搜尋" },
     staff:     { icon: "👷", title: "員工管理", sub: "人員 / PIN / 薪酬" },
-    safety: { icon: "🛡", title: "安全條款", sub: "電子簽署" },
+    safety: { icon: "✅", title: "安全條款", sub: "電子簽署" },
     attendance: { icon: "📍", title: "GPS 考勤", sub: "管理" },
-    calendar:    { icon: "📅", title: "考勤月曆",   sub: "排更 / 補登 / 月覽" },
-    "company-cal": { icon: "🗓", title: "公司月曆",   sub: "工程 / 請款 / 排更 / 會議" },
-    "qr-codes":    { icon: "📱", title: "員工報更QR", sub: "生成每位員工專屬報更連結" },
-    "msg-center": { icon: "💬", title: "訊息發送中心", sub: "WhatsApp 發送安全守則 / 報更 / 出糧通知" },
+    calendar:    { icon: "📆", title: "考勤月曆",   sub: "排更 / 補登 / 月覽" },
+    "company-cal": { icon: "📆", title: "公司月曆",   sub: "工程 / 請款 / 排更 / 會議" },
+    "qr-codes":    { icon: "📲", title: "員工報更QR", sub: "生成每位員工專屬報更連結" },
+    "msg-center": { icon: "✉️", title: "訊息發送中心", sub: "WhatsApp 發送安全守則 / 報更 / 出糧通知" },
     progress: { icon: "📊", title: "施工進度", sub: "回報與預警" },
-    invoice: { icon: "💰", title: "自動請款", sub: "上單系統" },
+    invoice: { icon: "📋", title: "自動請款", sub: "上單系統" },
     payroll: { icon: "💼", title: "薪酬核算", sub: "自動計算" },
     empdocs: { icon: "📁", title: "員工文件", sub: "綠卡 / ID / 住址證明" },
     profit: { icon: "📈", title: "報價利潤", sub: "試算工具" },
