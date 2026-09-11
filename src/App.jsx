@@ -1121,7 +1121,7 @@ function RecordsOverview({ employees = EMPLOYEES, showToast }) {
 
   const TABS = [
     { id:"checkin",  label:"📅 報更記錄",     table:"attendance",           cols:["employee_name","date","shift_type","clock_in","clock_out","notes"] },
-    { id:"safety",   label:"🛡 安全守則簽署",  table:"safety_signs",         cols:["employee_name","signed_at"] },
+    { id:"safety",   label:"🛡 安全守則簽署",  table:"safety_acknowledgments", cols:["employee_name","signed_at","valid_until"] },
     { id:"progress", label:"🏗 施工進度日報",  table:"progress_reports",     cols:["employee_name","report_date","project_name","progress_pct","status","work_done","issues"] },
     { id:"payday",   label:"💰 出糧確認記錄",  table:"payday_confirmations", cols:["employee_name","pay_month","amount","days","confirmed","dispute_reason","signed_at"] },
   ];
@@ -1136,31 +1136,39 @@ function RecordsOverview({ employees = EMPLOYEES, showToast }) {
     setLoading(true);
     setRecords([]);
     try {
-      let url = `${SUPABASE_URL}/rest/v1/${tab.table}?order=`;
-      // Set order field based on table
-      const orderField = tab.table === "safety_signs" ? "signed_at" :
-                         tab.table === "attendance"    ? "date" :
+      const isSafety = tab.table === "safety_acknowledgments";
+      const orderField = isSafety ? "signed_at" :
+                         tab.table === "attendance" ? "date" :
                          tab.table === "progress_reports" ? "report_date" : "signed_at";
-      url += `${orderField}.desc&limit=200`;
+      let url = `${SUPABASE_URL}/rest/v1/${tab.table}?order=${orderField}.desc&limit=200`;
 
-      // Filter by employee
       if (filterEmp !== "all") {
-        const emp = employees.find(e => e.id === parseInt(filterEmp));
-        if (emp) url += `&employee_name=eq.${encodeURIComponent(emp.name)}`;
+        if (isSafety) {
+          url += `&employee_id=eq.${filterEmp}`;
+        } else {
+          const emp = employees.find(e => e.id === parseInt(filterEmp));
+          if (emp) url += `&employee_name=eq.${encodeURIComponent(emp.name)}`;
+        }
       }
 
-      // Filter by month
       if (filterMonth) {
-        const dateField = tab.table === "safety_signs" ? "signed_at" :
+        const dateField = isSafety ? "signed_at" :
                           tab.table === "payday_confirmations" ? "signed_at" :
                           tab.table === "progress_reports" ? "report_date" : "date";
-        url += `&${dateField}=gte.${filterMonth}-01&${dateField}=lte.${filterMonth}-31`;
+        const [fy, fm] = filterMonth.split("-").map(Number);
+        const nextMonth = fm === 12 ? `${fy+1}-01-01` : `${fy}-${String(fm+1).padStart(2,"0")}-01`;
+        url += `&${dateField}=gte.${filterMonth}-01&${dateField}=lt.${nextMonth}`;
       }
 
       const res = await fetch(url, { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (Array.isArray(data)) setRecords(data);
-    } catch(e) {}
+      if (Array.isArray(data)) {
+        setRecords(isSafety
+          ? data.map(r => ({ ...r, employee_name: (employees.find(e => e.id === r.employee_id) || {}).name || `#${r.employee_id}` }))
+          : data);
+      }
+    } catch(e) { console.error("[RECORDS]", e.message); }
     setLoading(false);
   };
 
