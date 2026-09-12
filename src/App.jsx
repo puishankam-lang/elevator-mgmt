@@ -1239,7 +1239,7 @@ function RecordsOverview({ employees = EMPLOYEES, showToast }) {
               borderRadius:10, padding:"10px 14px", cursor:"pointer" }}>
             <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>{t.label}</div>
             <div style={{ fontFamily:"'Barlow Condensed'", fontSize:24, fontWeight:800, color: activeTab===t.id?"#f0c000":"#e8eaf0" }}>
-              {loading && activeTab===t.id ? "…" : (activeTab===t.id ? kpis[t.id] : "—")}
+            {loading ? "…" : (counts[t.id] ?? 0)}
             </div>
           </div>
         ))}
