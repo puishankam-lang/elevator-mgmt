@@ -1132,55 +1132,56 @@ function RecordsOverview({ employees = EMPLOYEES, showToast }) {
     loadRecords();
   }, [activeTab, filterEmp, filterMonth]);
 
-  const loadRecords = async () => {
-    setLoading(true);
-    setRecords([]);
-    try {
-      const isSafety = tab.table === "safety_acknowledgments";
-      const orderField = isSafety ? "signed_at" :
-                         tab.table === "attendance" ? "date" :
-                         tab.table === "progress_reports" ? "report_date" : "signed_at";
-      let url = `${SUPABASE_URL}/rest/v1/${tab.table}?order=${orderField}.desc&limit=200`;
+  const [counts, setCounts] = React.useState({});
 
-      if (filterEmp !== "all") {
-        if (isSafety) {
-          url += `&employee_id=eq.${filterEmp}`;
-        } else {
-          const emp = employees.find(e => e.id === parseInt(filterEmp));
-          if (emp) url += `&employee_name=eq.${encodeURIComponent(emp.name)}`;
-        }
-      }
+  const buildUrl = (t) => {
+    const isSafety = t.table === "safety_acknowledgments";
+    const orderField = isSafety ? "signed_at" :
+                       t.table === "attendance" ? "date" :
+                       t.table === "progress_reports" ? "report_date" : "signed_at";
+    let url = `${SUPABASE_URL}/rest/v1/${t.table}?order=${orderField}.desc&limit=200`;
 
-      if (filterMonth) {
-        const dateField = isSafety ? "signed_at" :
-                          tab.table === "payday_confirmations" ? "signed_at" :
-                          tab.table === "progress_reports" ? "report_date" : "date";
-        const [fy, fm] = filterMonth.split("-").map(Number);
-        const nextMonth = fm === 12 ? `${fy+1}-01-01` : `${fy}-${String(fm+1).padStart(2,"0")}-01`;
-        url += `&${dateField}=gte.${filterMonth}-01&${dateField}=lt.${nextMonth}`;
+    if (filterEmp !== "all") {
+      if (isSafety) {
+        url += `&employee_id=eq.${filterEmp}`;
+      } else {
+        const emp = employees.find(e => e.id === parseInt(filterEmp));
+        if (emp) url += `&employee_name=eq.${encodeURIComponent(emp.name)}`;
       }
+    }
 
-      const res = await fetch(url, { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setRecords(isSafety
-          ? data.map(r => ({ ...r, employee_name: (employees.find(e => e.id === r.employee_id) || {}).name || `#${r.employee_id}` }))
-          : data);
-      }
-    } catch(e) { console.error("[RECORDS]", e.message); }
-    setLoading(false);
+    if (filterMonth) {
+      const dateField = isSafety ? "signed_at" :
+                        t.table === "payday_confirmations" ? "signed_at" :
+                        t.table === "progress_reports" ? "report_date" : "date";
+      const [fy, fm] = filterMonth.split("-").map(Number);
+      const nextMonth = fm === 12 ? `${fy+1}-01-01` : `${fy}-${String(fm+1).padStart(2,"0")}-01`;
+      url += `&${dateField}=gte.${filterMonth}-01&${dateField}=lt.${nextMonth}`;
+    }
+    return url;
   };
 
-  // KPI counts
-  const kpis = {
-    checkin:  records.filter(r => r.status === "present" || r.shift_type).length,
-    safety:   (() => {
-      const seen = new Set(); 
-      return records.filter(r => { if(seen.has(r.employee_name)) return false; seen.add(r.employee_name); return true; }).length;
-    })(),
-    progress: records.length,
-    payday:   records.filter(r => r.confirmed).length,
+  const fetchTab = async (t) => {
+    try {
+      const res = await fetch(buildUrl(t), { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!Array.isArray(data)) return [];
+      return t.table === "safety_acknowledgments"
+        ? data.map(r => ({ ...r, employee_name: (employees.find(e => e.id === r.employee_id) || {}).name || `#${r.employee_id}` }))
+        : data;
+    } catch(e) { console.error("[RECORDS]", t.id, e.message); return []; }
+  };
+
+  const loadRecords = async () => {
+    setLoading(true);
+    const results = await Promise.all(TABS.map(fetchTab));
+    const c = {};
+    TABS.forEach((t, i) => { c[t.id] = results[i].length; });
+    setCounts(c);
+    const idx = TABS.findIndex(t => t.id === activeTab);
+    setRecords(results[idx] || []);
+    setLoading(false);
   };
 
   const exportCSV = () => {
