@@ -905,7 +905,7 @@ function Safety({ showToast, employees = EMPLOYEES }) {
     const load = async () => {
       try {
         const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/safety_signs?select=*&order=signed_at.desc`,
+          `${SUPABASE_URL}/rest/v1/safety_acknowledgments?select=*&ack_type=eq.safety_guidelines&order=signed_at.desc`,
           { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
         );
         const data = await res.json();
@@ -917,7 +917,8 @@ function Safety({ showToast, employees = EMPLOYEES }) {
   }, []);
 
   const getStatus = (empName) => {
-    const recs = safetyRecords.filter(r => r.employee_name === empName);
+    const emp = employees.find(x => x.name === empName) || {};
+    const recs = safetyRecords.filter(r => r.employee_id === emp.id);
     if (!recs.length) return { status: "never", label: "從未簽署", badge: "red" };
     const latest = recs.sort((a,b) => new Date(b.signed_at) - new Date(a.signed_at))[0];
     const signedDate = new Date(latest.signed_at);
@@ -1082,7 +1083,7 @@ function Safety({ showToast, employees = EMPLOYEES }) {
                 const expired = expiryDate < new Date();
                 return (
                   <tr key={i}>
-                    <td className="td-name">{r.employee_name}</td>
+                    <td className="td-name">{(employees.find(x => x.id === r.employee_id) || {}).name || ("#" + r.employee_id)}</td>
                     <td>{signedDate.toLocaleDateString('zh-HK')}</td>
                     <td>{expiryDate.toLocaleDateString('zh-HK')}</td>
                     <td style={{ fontSize:11 }}>{r.device || "—"}</td>
