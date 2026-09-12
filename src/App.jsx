@@ -1224,7 +1224,7 @@ function RecordsOverview({ employees = EMPLOYEES, showToast }) {
     employee_name:"員工", date:"日期", shift_type:"更期", clock_in:"簽到",
     clock_out:"簽退", notes:"備註", signed_at:"簽署時間", pay_month:"薪酬月份",
     amount:"金額", days:"出勤天數", confirmed:"確認狀態", dispute_reason:"異議原因",
-    report_date:"日期", project_name:"工程", progress_pct:"進度", status:"狀態",
+    valid_until:"有效至",, project_name:"工程", progress_pct:"進度", status:"狀態",
     work_done:"工作內容", issues:"問題"
   };
 
