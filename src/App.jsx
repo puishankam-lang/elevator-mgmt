@@ -1541,6 +1541,18 @@ function RecordsOverview({ employees = EMPLOYEES, showToast }) {
                         </button>
                       </td>
                     )}
+                    {activeTab==="payday" && (
+                      <td style={{ padding:"9px 14px", whiteSpace:"nowrap" }}>
+                        <button onClick={e => downloadPaydayPDF(r.employee_name, r, e.currentTarget)}
+                          style={{ background:"none", border:"1px solid #2a3045", color:"#60a5fa", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer", marginRight:6 }}>
+                          📄 下載 PDF
+                        </button>
+                        <button onClick={() => deletePaydayRecord(r.employee_name, r, loadRecords)}
+                          style={{ background:"rgba(214,48,48,0.1)", border:"1px solid #d6303044", color:"#d63030", borderRadius:5, padding:"4px 10px", fontSize:11, cursor:"pointer" }}>
+                          🗑 刪除
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
