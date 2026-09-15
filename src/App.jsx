@@ -1251,6 +1251,71 @@ async function downloadSafetyPDF(name, rec, btn) {
   }
 }
 
+async function downloadPaydayPDF(name, rec, btn) {
+  const original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '產生中...'; }
+
+  const signedISO = rec.signed_at;
+  const sig = rec.signature_data || '';
+
+  const sheet = document.createElement('div');
+  sheet.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;padding:56px 64px;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,"PingFang HK","Microsoft JhengHei",sans-serif;box-sizing:border-box;';
+  sheet.innerHTML =
+    '<div style="text-align:center;border-bottom:3px solid #b8860b;padding-bottom:18px;margin-bottom:26px">' +
+      '<div style="font-size:26px;font-weight:800;letter-spacing:2px">巨揚工程有限公司</div>' +
+      '<div style="font-size:13px;color:#666;margin-top:4px">Keung Yeung Engineering Co. Ltd.</div>' +
+      '<div style="font-size:17px;font-weight:700;margin-top:14px">出糧確認簽署</div>' +
+    '</div>' +
+    '<table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:26px">' +
+      '<tr><td style="padding:8px 0;color:#666;width:120px">員工姓名</td><td style="padding:8px 0;font-weight:700;font-size:16px">' + name + '</td></tr>' +
+      '<tr><td style="padding:8px 0;color:#666">薪酬月份</td><td style="padding:8px 0;font-weight:600">' + (rec.pay_month || '-') + '</td></tr>' +
+      '<tr><td style="padding:8px 0;color:#666">出勤日數</td><td style="padding:8px 0;font-weight:700;color:#b8860b">' + (rec.days != null ? rec.days : '-') + ' 日</td></tr>' +
+      '<tr><td style="padding:8px 0;color:#666">確認時間</td><td style="padding:8px 0;font-weight:600">' + String(signedISO).slice(0,10) + '　' + String(signedISO).slice(11,16) + ' HKT</td></tr>' +
+    '</table>' +
+    '<div style="font-size:13px;font-weight:600;margin-bottom:20px">本人已核對本月出勤紀錄，確認資料無誤，並同意以此紀錄作為出糧依據。</div>' +
+    '<div>' +
+      '<div style="font-size:13px;color:#666;margin-bottom:6px">員工簽名 Employee Signature</div>' +
+      '<div style="border:1px solid #bbb;height:110px;display:flex;align-items:center;justify-content:center;background:#fafafa">' +
+        (sig ? '<img src="' + sig + '" style="max-height:100px;max-width:96%;filter:invert(1) hue-rotate(180deg) saturate(0) contrast(2)">' : '<span style="color:#bbb;font-size:12px">簽名未存檔</span>') +
+      '</div>' +
+    '</div>' +
+    '<div style="margin-top:30px;padding-top:14px;border-top:1px solid #ddd;text-align:center;font-size:10px;color:#888;line-height:1.8">' +
+      '本文件以電子方式簽署，具法律約束力<br>巨揚工程有限公司安全管理系統　產生時間：' + new Date().toLocaleString('zh-HK', { timeZone: 'Asia/Hong_Kong' }) +
+    '</div>';
+
+  document.body.appendChild(sheet);
+  try {
+    const cv = await window.html2canvas(sheet, { scale: 1.5, backgroundColor: '#ffffff', logging: false });
+    const jsPDFCtor = window.jspdf.jsPDF;
+    const doc = new jsPDFCtor({ orientation: 'p', unit: 'mm', format: 'a4' });
+    const imgW = 210, imgH = (cv.height * imgW) / cv.width;
+    doc.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgW, imgH);
+    doc.save(name + '_出糧確認_' + (rec.pay_month || '') + '.pdf');
+  } catch (e) {
+    console.error('[PDF ERROR]', e.message);
+    alert('PDF 產生失敗：' + e.message);
+  } finally {
+    sheet.remove();
+    if (btn) { btn.disabled = false; btn.textContent = original; }
+  }
+}
+
+async function deletePaydayRecord(name, rec, onDone) {
+  const when = rec.pay_month || '';
+  if (!window.confirm('確定刪除 ' + name + ' 於 ' + when + ' 嘅出糧確認紀錄？\n\n此紀錄屬法律文件，刪除後無法復原。\n建議先下載 PDF 存檔。')) return;
+  try {
+    const resp = await fetch(SUPABASE_URL + '/rest/v1/payday_confirmations?id=eq.' + rec.id, {
+      method: 'DELETE',
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    if (onDone) onDone();
+  } catch (err) {
+    console.error('[DELETE ERROR]', err.message);
+    alert('刪除失敗：' + err.message);
+  }
+}
+
 async function deleteSafetyRecord(name, rec, onDone) {
   const when = String(rec.signed_at).slice(0, 10);
   if (!window.confirm("確定刪除 " + name + " 於 " + when + " 嘅簽署紀錄？\n\n此紀錄屬法律文件，刪除後無法復原。\n建議先下載 PDF 存檔。")) return;
@@ -1453,6 +1518,7 @@ function RecordsOverview({ employees = EMPLOYEES, showToast }) {
                     </th>
                   ))}
                   {activeTab==="safety" && <th style={{ padding:"10px 14px", textAlign:"left", color:"#555d6e", fontWeight:600, fontSize:10, whiteSpace:"nowrap" }}>操作</th>}
+                  {activeTab==="payday" && <th style={{ padding:"10px 14px", textAlign:"left", color:"#555d6e", fontWeight:600, fontSize:10, whiteSpace:"nowrap" }}>操作</th>}
                 </tr>
               </thead>
               <tbody>
