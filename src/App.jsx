@@ -1589,6 +1589,19 @@ function MessageCenter({ employees = EMPLOYEES, showToast }) {
           </div>
         </div>
 
+        
+      {/* 排更管理捷徑 */}
+      <div className="card" style={{ marginBottom:14 }}>
+        <div
+          onClick={() => window.open('https://junhui-checkin.vercel.app/schedule.html', '_blank')}
+          style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:8, cursor:"pointer", border:"1px solid #2a3045" }}
+        >
+          <span style={{ fontSize:20 }}>📋</span>
+          <div style={{ flex:1, fontWeight:700, fontSize:13 }}>排更管理 / 產生連結</div>
+          <span style={{ color:"#555d6e" }}>→</span>
+        </div>
+      </div>
+        
         {/* Message preview */}
         <div className="card" style={{ marginBottom:14 }}>
           <div className="card-header">
