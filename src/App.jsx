@@ -1257,9 +1257,38 @@ async function downloadPaydayPDF(name, rec, btn) {
 
   const signedISO = rec.signed_at;
   const sig = rec.signature_data || '';
+  const hasPayroll = rec.gross_pay != null;
 
   const sheet = document.createElement('div');
   sheet.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;padding:56px 64px;background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,"PingFang HK","Microsoft JhengHei",sans-serif;box-sizing:border-box;';
+
+  const payrollHTML = !hasPayroll
+    ? '<div style="font-size:13px;color:#666;margin-bottom:26px">出勤日數：<b style="color:#111">' + (rec.days != null ? rec.days : '-') + ' 日</b>（此紀錄無薪酬明細）</div>'
+    : (function () {
+        const mpfMonthlyTotal = Number(rec.mpf_employee || 0) + Number(rec.mpf_employer || 0);
+        return (
+        '<div style="font-size:15px;font-weight:700;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #ddd">薪酬明細</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px">' +
+          '<tr><td style="padding:9px 4px;color:#555">職位</td><td style="padding:9px 4px;text-align:right;font-weight:700">電梯技工</td></tr>' +
+          '<tr style="border-top:1px solid #eee"><td style="padding:9px 4px;color:#555">出勤天數</td><td style="padding:9px 4px;text-align:right;font-weight:700;color:#b8860b">' + rec.days + ' 天</td></tr>' +
+          '<tr style="border-top:1px solid #eee"><td style="padding:9px 4px;color:#555">日薪</td><td style="padding:9px 4px;text-align:right;font-weight:700">HK$' + Number(rec.daily_rate).toLocaleString() + '</td></tr>' +
+          '<tr style="border-top:1px solid #eee"><td style="padding:9px 4px;color:#555">薪酬小計</td><td style="padding:9px 4px;text-align:right;font-weight:700">HK$' + Number(rec.gross_pay).toLocaleString() + '</td></tr>' +
+          '<tr style="border-top:1px solid #eee"><td style="padding:9px 4px;color:#555">MPF 員工供款</td><td style="padding:9px 4px;text-align:right;font-weight:700;color:#d33">-HK$' + Number(rec.mpf_employee).toLocaleString() + '</td></tr>' +
+        '</table>' +
+        '<div style="background:#eafaf0;border:1px solid #22c55e55;border-radius:8px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">' +
+          '<span style="font-size:14px;font-weight:700;color:#166534">實際到手</span>' +
+          '<span style="font-size:20px;font-weight:800;color:#16a34a">HK$' + Number(rec.net_pay).toLocaleString() + '</span>' +
+        '</div>' +
+        '<div style="font-size:12px;font-weight:700;color:#8a6d00;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">MPF 供款詳情</div>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:6px">' +
+          '<tr><td style="padding:7px 4px;color:#555">你的供款（員工）</td><td style="padding:7px 4px;text-align:right;font-weight:700;color:#d33">-HK$' + Number(rec.mpf_employee).toLocaleString() + '/月</td></tr>' +
+          '<tr style="border-top:1px solid #eee"><td style="padding:7px 4px;color:#555">僱主供款</td><td style="padding:7px 4px;text-align:right;font-weight:700;color:#16a34a">+HK$' + Number(rec.mpf_employer).toLocaleString() + '/月</td></tr>' +
+          '<tr style="border-top:1px solid #eee"><td style="padding:7px 4px;color:#555">MPF 戶口每月增加</td><td style="padding:7px 4px;text-align:right;font-weight:700;color:#2563eb">HK$' + mpfMonthlyTotal.toLocaleString() + '/月</td></tr>' +
+        '</table>' +
+        '<div style="font-size:11px;color:#888;line-height:1.6;margin-bottom:26px">💡 MPF 係你嘅退休儲蓄，僱主供款部分係額外福利，唔係從你薪酬扣除。</div>'
+        );
+      })();
+
   sheet.innerHTML =
     '<div style="text-align:center;border-bottom:3px solid #b8860b;padding-bottom:18px;margin-bottom:26px">' +
       '<div style="font-size:26px;font-weight:800;letter-spacing:2px">巨揚工程有限公司</div>' +
@@ -1268,19 +1297,25 @@ async function downloadPaydayPDF(name, rec, btn) {
     '</div>' +
     '<table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:26px">' +
       '<tr><td style="padding:8px 0;color:#666;width:120px">員工姓名</td><td style="padding:8px 0;font-weight:700;font-size:16px">' + name + '</td></tr>' +
+      '<tr><td style="padding:8px 0;color:#666">身份證號碼</td><td style="padding:8px 0;font-weight:600">' + (rec.hkid_masked || '＿＿＿＿＿＿＿＿') + '</td></tr>' +
       '<tr><td style="padding:8px 0;color:#666">薪酬月份</td><td style="padding:8px 0;font-weight:600">' + (rec.pay_month || '-') + '</td></tr>' +
-      '<tr><td style="padding:8px 0;color:#666">出勤日數</td><td style="padding:8px 0;font-weight:700;color:#b8860b">' + (rec.days != null ? rec.days : '-') + ' 日</td></tr>' +
       '<tr><td style="padding:8px 0;color:#666">確認時間</td><td style="padding:8px 0;font-weight:600">' + String(signedISO).slice(0,10) + '　' + String(signedISO).slice(11,16) + ' HKT</td></tr>' +
     '</table>' +
-    '<div style="font-size:13px;font-weight:600;margin-bottom:20px">本人已核對本月出勤紀錄，確認資料無誤，並同意以此紀錄作為出糧依據。</div>' +
+    payrollHTML +
+    '<div style="font-size:13px;font-weight:600;margin-bottom:20px">本人已核對本月出勤紀錄' + (hasPayroll ? '及薪酬明細' : '') + '，確認資料無誤，並同意以此紀錄作為出糧依據。</div>' +
     '<div>' +
       '<div style="font-size:13px;color:#666;margin-bottom:6px">員工簽名 Employee Signature</div>' +
       '<div style="border:1px solid #bbb;height:110px;display:flex;align-items:center;justify-content:center;background:#fafafa">' +
         (sig ? '<img src="' + sig + '" style="max-height:100px;max-width:96%;filter:invert(1) hue-rotate(180deg) saturate(0) contrast(2)">' : '<span style="color:#bbb;font-size:12px">簽名未存檔</span>') +
       '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-top:10px">' +
+        '<span>姓名：<b style="color:#111">' + name + '</b></span>' +
+        '<span>身份證：<b style="color:#111">' + (rec.hkid_masked || '＿＿＿＿') + '</b></span>' +
+        '<span>日期：<b style="color:#111">' + String(signedISO).slice(0,10) + '</b></span>' +
+      '</div>' +
     '</div>' +
     '<div style="margin-top:30px;padding-top:14px;border-top:1px solid #ddd;text-align:center;font-size:10px;color:#888;line-height:1.8">' +
-      '本文件以電子方式簽署，具法律約束力<br>巨揚工程有限公司安全管理系統　產生時間：' + new Date().toLocaleString('zh-HK', { timeZone: 'Asia/Hong_Kong' }) +
+      '本文件以電子方式簽署，具法律約束力<br>巨揚工程有限公司薪酬管理系統　產生時間：' + new Date().toLocaleString('zh-HK', { timeZone: 'Asia/Hong_Kong' }) +
     '</div>';
 
   document.body.appendChild(sheet);
@@ -1289,7 +1324,27 @@ async function downloadPaydayPDF(name, rec, btn) {
     const jsPDFCtor = window.jspdf.jsPDF;
     const doc = new jsPDFCtor({ orientation: 'p', unit: 'mm', format: 'a4' });
     const imgW = 210, imgH = (cv.height * imgW) / cv.width;
-    doc.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgW, imgH);
+
+    if (imgH <= 297) {
+      doc.addImage(cv.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgW, imgH);
+    } else {
+      const pxPerMm = cv.width / imgW;
+      const pageBodyPx = Math.floor(297 * pxPerMm);
+      let posY = 0, first = true;
+      while (posY < cv.height) {
+        const sliceH = Math.min(pageBodyPx, cv.height - posY);
+        const tmp = document.createElement('canvas');
+        tmp.width = cv.width; tmp.height = sliceH;
+        const tctx = tmp.getContext('2d');
+        tctx.fillStyle = '#fff'; tctx.fillRect(0,0,tmp.width,tmp.height);
+        tctx.drawImage(cv, 0, posY, cv.width, sliceH, 0, 0, cv.width, sliceH);
+        if (!first) doc.addPage();
+        doc.addImage(tmp.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, imgW, sliceH / pxPerMm);
+        posY += sliceH;
+        first = false;
+      }
+    }
+
     doc.save(name + '_出糧確認_' + (rec.pay_month || '') + '.pdf');
   } catch (e) {
     console.error('[PDF ERROR]', e.message);
