@@ -537,6 +537,7 @@ const NAV_ITEMS = [
   { id: "empdocs",    icon: "📁", label: "員工文件" },
   { id: "profit",     icon: "📈", label: "報價利潤試算" },
   { id: "tax",        icon: "🧾", label: "老闆稅務計算" },
+  { id: "mpf-guide",  icon: "📘", label: "MPF 新手指南" },
 ];
 
 const INITIAL_PROJECTS = [];
@@ -1400,6 +1401,7 @@ function RecordsOverview({ employees = EMPLOYEES, showToast }) {
   const [loading, setLoading] = React.useState(false);
   const [filterEmp, setFilterEmp] = React.useState("all");
   const [filterMonth, setFilterMonth] = React.useState(new Date().toISOString().slice(0,7));
+  const [showMpfGuide, setShowMpfGuide] = React.useState(false);
 
   const TABS = [
     { id:"checkin",  label:"📅 報更記錄",     table:"attendance",           cols:["employee_name","date","shift_type","clock_in","clock_out","notes"] },
@@ -1528,7 +1530,64 @@ function RecordsOverview({ employees = EMPLOYEES, showToast }) {
         ))}
       </div>
 
-      {/* Filters */}
+      {/* MPF 供款指南（淨係出糧確認記錄先顯示） */}
+      {activeTab === "payday" && (
+        <div style={{ background:"#0d1a10", border:"1px solid #22c55e33", borderRadius:10, marginBottom:16, overflow:"hidden" }}>
+          <div onClick={() => setShowMpfGuide(!showMpfGuide)}
+            style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", cursor:"pointer" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ fontSize:16 }}>📘</span>
+              <span style={{ fontSize:13, fontWeight:700, color:"#22c55e" }}>MPF 供款指南（不熟悉 MPF 必讀）</span>
+            </div>
+            <span style={{ fontSize:12, color:"#555d6e" }}>{showMpfGuide ? "▲ 收起" : "▼ 展開"}</span>
+          </div>
+          {showMpfGuide && (
+            <div style={{ padding:"0 16px 16px", fontSize:13, color:"#c8d0e0", lineHeight:1.8 }}>
+              <div style={{ height:1, background:"#1e2330", marginBottom:14 }} />
+
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+                <div style={{ background:"#0d0f12", border:"1px solid #1e2330", borderRadius:8, padding:"12px 14px" }}>
+                  <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>供款比率</div>
+                  <div style={{ fontSize:18, fontWeight:800, color:"#f0c000" }}>5% + 5%</div>
+                  <div style={{ fontSize:11, color:"#555d6e", marginTop:2 }}>僱主 5% ＋ 僱員 5%，各自嘅「有關入息」</div>
+                </div>
+                <div style={{ background:"#0d0f12", border:"1px solid #1e2330", borderRadius:8, padding:"12px 14px" }}>
+                  <div style={{ fontSize:11, color:"#555d6e", marginBottom:4 }}>入息上下限（現行）</div>
+                  <div style={{ fontSize:18, fontWeight:800, color:"#f0c000" }}>$7,100 ／ $30,000</div>
+                  <div style={{ fontSize:11, color:"#555d6e", marginTop:2 }}>最低／最高有關入息水平（每月）</div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom:12 }}>
+                <div style={{ fontWeight:700, color:"#e8eaf0", marginBottom:4 }}>① 月薪點計</div>
+                <div style={{ color:"#9aa0b4" }}>
+                  月入息 <b style={{color:"#e8eaf0"}}>低於 $7,100</b>：僱員毋須供款，但<b style={{color:"#f0c000"}}>僱主仍要供 5%</b>。<br/>
+                  月入息 <b style={{color:"#e8eaf0"}}>$7,100 至 $30,000</b>：雙方各供 5%（實際金額）。<br/>
+                  月入息 <b style={{color:"#e8eaf0"}}>超過 $30,000</b>：供款<b style={{color:"#f0c000"}}>封頂 $1,500</b>（每邊），唔會跟住人工同步上升。
+                </div>
+              </div>
+
+              <div style={{ marginBottom:12 }}>
+                <div style={{ fontWeight:700, color:"#e8eaf0", marginBottom:4 }}>② 新員工幾時開始供</div>
+                <div style={{ color:"#9aa0b4" }}>
+                  <b style={{color:"#e8eaf0"}}>一般僱員（連續受僱）</b>：僱主須喺入職首 <b style={{color:"#f0c000"}}>60 日內</b>完成登記；供款由第 60 日開始計，之前唔使供。<br/>
+                  <b style={{color:"#e8eaf0"}}>建造業／飲食業散工計劃</b>：適用員工須喺首 <b style={{color:"#f0c000"}}>10 日內</b>登記，供款由<b style={{color:"#f0c000"}}>第一日</b>就要計，冇 60 日寬限期。
+                </div>
+              </div>
+
+              <div style={{ background:"#1a1608", border:"1px solid #f0c00033", borderRadius:8, padding:"10px 14px", fontSize:12, color:"#e0c060" }}>
+                ⚠️ 我哋啲師傅係日薪計，究竟屬於「一般僱員」定「建造業散工計劃」，會直接影響邊個要供、幾時開始供 —— 呢個位建議向公司 MPF 受託人或會計師確認清楚。
+              </div>
+
+              <div style={{ fontSize:11, color:"#3a4255", marginTop:10 }}>
+                資料來源：積金局（MPFA）現行規定，2026年9月。MPFA 已提出將上下限調升至 $10,500／$40,000，但截至目前仍未生效。
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+
       <div style={{ display:"flex", gap:10, marginBottom:14, flexWrap:"wrap", alignItems:"center" }}>
         <select value={filterEmp} onChange={e=>setFilterEmp(e.target.value)}
           style={{ background:"#13161c", border:"1px solid #2a3045", color:"#e8eaf0", borderRadius:8, padding:"7px 12px", fontSize:13, outline:"none" }}>
@@ -5258,6 +5317,222 @@ function StaffManagement({ employees, setEmployees, showToast }) {
 // Salaries Tax progressive: 2% / 6% / 10% / 14% / 17%
 // MPF: employer 5%, max HK$1,500/month per employee (cap at HK$30,000/month income)
 
+function MPFGuide({ showToast, employees = [] }) {
+  const [calcType, setCalcType] = useState("long"); // "long" | "casual"
+  const [monthlyIncome, setMonthlyIncome] = useState(17000);
+  const [dailyIncome, setDailyIncome] = useState(850);
+  const [daysPerMonth, setDaysPerMonth] = useState(20);
+
+  const calcLongMpf = (income) => {
+    if (income < 7100) return 0;
+    const relevant = Math.min(income, 30000);
+    return relevant * 0.05;
+  };
+  const calcCasualDailyMpf = (daily) => {
+    if (daily < 280) return 0;
+    return Math.min(daily, 1000) * 0.05;
+  };
+
+  const longMpf = calcLongMpf(monthlyIncome);
+  const casualDailyMpf = calcCasualDailyMpf(dailyIncome);
+  const casualMonthlyMpf = casualDailyMpf * daysPerMonth;
+
+  const Box = ({ icon, title, color = "#60a5fa", children }) => (
+    <div style={{ background: `rgba(96,165,250,0.05)`, border: `1px solid ${color}33`, borderRadius: 8, padding: "14px 16px", marginBottom: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color, marginBottom: 8 }}>{icon} {title}</div>
+      <div style={{ fontSize: 12, color: "#9aa0b4", lineHeight: 1.8 }}>{children}</div>
+    </div>
+  );
+
+  const Step = ({ n, title, children }) => (
+    <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+      <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#f0c000", color: "#0d0f12", fontWeight: 800, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{n}</div>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#e8eaf0", marginBottom: 4 }}>{title}</div>
+        <div style={{ fontSize: 12, color: "#9aa0b4", lineHeight: 1.7 }}>{children}</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ background: "rgba(250,204,21,0.06)", border: "1px solid rgba(250,204,21,0.2)", borderRadius: 8, padding: "10px 14px", marginBottom: 20, fontSize: 12, color: "#9a8a50", display: "flex", gap: 8 }}>
+        <span>⚠️</span>
+        <span>本頁供公司內部參考，唔構成專業意見。實際個案請向強積金計劃受託人或積金局（MPFA）查詢：<b>2918 0102</b>。</span>
+      </div>
+
+      <div className="sign-card">
+        <div className="sign-title">📘 乜嘢係 MPF？</div>
+        <div style={{ fontSize: 13, color: "#9aa0b4", lineHeight: 1.8, marginBottom: 4 }}>
+          強制性公積金（MPF）係香港法例規定，僱主同僱員每人每月供款 <b style={{ color: "#c8d0e0" }}>5%</b> 入員工嘅退休戶口。
+          僱主供款係額外開支（唔係從員工人工扣），員工供款就係從人工扣返嚟。兩邊供款一齊落入同一個 MPF 戶口，員工可以喺 65 歲後或者符合法定條件時提取。
+        </div>
+      </div>
+
+      <div className="sign-card">
+        <div className="sign-title">👷 新員工入職 —— 幾時開始供款？</div>
+        <Step n="1" title="員工係「長工」定「散工」？">
+          <b style={{ color: "#c8d0e0" }}>長工</b>：受僱期 60 日或以上（或者一開始已經同意做滿 60 日）。<br/>
+          <b style={{ color: "#c8d0e0" }}>散工</b>（建造業／飲食業常見）：受僱期少於 60 日，或者無固定僱傭合約，逐日/逐次出糧。
+        </Step>
+
+        <div style={{ background: "rgba(240,192,0,0.06)", border: "1px solid rgba(240,192,0,0.25)", borderRadius: 8, padding: "12px 16px", margin: "0 0 18px 38px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#f0c000", marginBottom: 6 }}>📌 巨揚工程情況：兩種員工都有</div>
+          <div style={{ fontSize: 12, color: "#9aa0b4", lineHeight: 1.8 }}>
+            公司同時聘用<b style={{ color: "#c8d0e0" }}>固定月薪長工</b>同<b style={{ color: "#c8d0e0" }}>逐日出糧散工</b>，兩者規則<b style={{color:"#f0c000"}}>唔一樣</b>，一定要逐個員工分開判斷，唔可以一刀切：<br/>
+            • 出糧前先確認呢個員工今個月係用邊種方式計工資<br/>
+            • 長工用月薪計 → 有 60 日豁免期 + 月薪門檻/上限<br/>
+            • 散工用日薪計 → 冇豁免期 + 日薪門檻/上限<br/>
+            • 同一個人如果由散工轉做長工（或相反），由轉制嗰日開始要跟新規則
+          </div>
+        </div>
+
+        <Step n="2" title="長工：60日豁免期">
+          長工首 60 日受僱期內<b style={{ color: "#f0c000" }}>豁免供款</b>（僱主同僱員都唔使供）。第 61 日開始，之後嘅出糧就要開始供款。
+        </Step>
+        <Step n="3" title="散工：即日起計">
+          散工<b style={{ color: "#f0c000" }}>無 60 日豁免期</b>，僱主由僱員受僱首日起就要供款（前提係當日入息達 HK$280 或以上）。
+        </Step>
+        <Step n="4" title="幾時交錢畀強積金受託人？">
+          長工：每月供款要喺<b style={{ color: "#c8d0e0" }}>下個月 10 號前</b>過數。<br/>
+          散工：每次出糧後 <b style={{ color: "#c8d0e0" }}>10 個工作天內</b>供款。<br/>
+          遲交會被積金局罰款（附加費 5%，仲有可能加徵及檢控）。
+        </Step>
+        <Step n="5" title="員工離職點算？">
+          最後一次出糧都要照常供款，僱主須喺離職後 <b style={{ color: "#c8d0e0" }}>30 日內</b> 完成最後供款同通知受託人。
+        </Step>
+      </div>
+
+      <div className="sign-card">
+        <div className="sign-title">🧮 供款金額點計？</div>
+        <Box icon="💡" title="核心公式" color="#f0c000">
+          僱主供款 ＝ 僱員供款 ＝ 「有關入息」× <b style={{ color: "#c8d0e0" }}>5%</b>，但設有上下限：
+        </Box>
+
+        <div className="grid-2">
+          <div style={{ background: "#0d0f12", border: "1px solid #1e2330", borderRadius: 8, padding: "14px 16px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#22c55e", marginBottom: 8 }}>長工（月薪計）</div>
+            <div style={{ fontSize: 12, color: "#9aa0b4", lineHeight: 1.9 }}>
+              • 月薪 <b style={{ color: "#c8d0e0" }}>&lt; HK$7,100</b> → 僱主同僱員<b style={{color:"#f0c000"}}>都豁免</b>供款<br/>
+              • 月薪 HK$7,100 – HK$30,000 → 供 <b style={{ color: "#c8d0e0" }}>5%</b><br/>
+              • 月薪 <b style={{ color: "#c8d0e0" }}>&gt; HK$30,000</b> → 以 HK$30,000 為上限計，即最多每月供 <b style={{color:"#f0c000"}}>HK$1,500</b>
+            </div>
+          </div>
+          <div style={{ background: "#0d0f12", border: "1px solid #1e2330", borderRadius: 8, padding: "14px 16px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#60a5fa", marginBottom: 8 }}>散工（日薪計）</div>
+            <div style={{ fontSize: 12, color: "#9aa0b4", lineHeight: 1.9 }}>
+              • 日薪 <b style={{ color: "#c8d0e0" }}>&lt; HK$280</b> → 當日<b style={{color:"#f0c000"}}>豁免</b>供款<br/>
+              • 日薪 HK$280 – HK$1,000 → 供 <b style={{ color: "#c8d0e0" }}>5%</b><br/>
+              • 日薪 <b style={{ color: "#c8d0e0" }}>&gt; HK$1,000</b> → 以 HK$1,000 為上限計，最多每日供 <b style={{color:"#f0c000"}}>HK$50</b>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">🧮 快速試算</div>
+        </div>
+        <div className="card-body">
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            {[{ v: "long", l: "👷 長工（月薪）" }, { v: "casual", l: "🔨 散工（日薪）" }].map(o => (
+              <button key={o.v} className={`btn btn-sm ${calcType === o.v ? "btn-primary" : "btn-secondary"}`}
+                style={{ flex: 1 }} onClick={() => setCalcType(o.v)}>{o.l}</button>
+            ))}
+          </div>
+
+          {calcType === "long" ? (
+            <div className="grid-2">
+              <div>
+                <div className="form-group">
+                  <label className="form-label">員工月薪（HK$）</label>
+                  <input className="form-input" type="number" value={monthlyIncome}
+                    onChange={e => setMonthlyIncome(Number(e.target.value))}
+                    style={{ fontSize: 18, fontFamily: "'Barlow Condensed'", fontWeight: 700, color: "#f0c000" }} />
+                </div>
+              </div>
+              <div style={{ background: "#0d0f12", borderRadius: 8, padding: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 11, color: "#555d6e", marginBottom: 6 }}>僱主 / 僱員 每月各供</div>
+                <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 28, fontWeight: 800, color: longMpf > 0 ? "#60a5fa" : "#3a4255" }}>
+                  HK${Math.round(longMpf).toLocaleString()}
+                </div>
+                <div style={{ fontSize: 11, color: "#555d6e", marginTop: 4 }}>
+                  {monthlyIncome < 7100 ? "月薪低於 $7,100，豁免供款" : "僱員實得：月薪 − 上面呢個數"}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid-2">
+              <div>
+                <div className="form-group">
+                  <label className="form-label">日薪（HK$）</label>
+                  <input className="form-input" type="number" value={dailyIncome}
+                    onChange={e => setDailyIncome(Number(e.target.value))}
+                    style={{ fontSize: 18, fontFamily: "'Barlow Condensed'", fontWeight: 700, color: "#f0c000" }} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">本月出勤日數</label>
+                  <input className="form-input" type="number" value={daysPerMonth}
+                    onChange={e => setDaysPerMonth(Number(e.target.value))} />
+                </div>
+              </div>
+              <div style={{ background: "#0d0f12", borderRadius: 8, padding: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 11, color: "#555d6e", marginBottom: 6 }}>僱主 / 僱員 每日各供</div>
+                <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 24, fontWeight: 800, color: casualDailyMpf > 0 ? "#60a5fa" : "#3a4255" }}>
+                  HK${Math.round(casualDailyMpf).toLocaleString()}
+                </div>
+                <div style={{ height: 1, background: "#1e2330", margin: "10px 0" }} />
+                <div style={{ fontSize: 11, color: "#555d6e", marginBottom: 6 }}>本月各供合計</div>
+                <div style={{ fontFamily: "'Barlow Condensed'", fontSize: 24, fontWeight: 800, color: "#22c55e" }}>
+                  HK${Math.round(casualMonthlyMpf).toLocaleString()}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {employees.length > 0 && (
+        <div className="card" style={{ marginTop: 20 }}>
+          <div className="card-header">
+            <div className="card-title">👷 現有員工 —— 本月僱主供款一覽</div>
+          </div>
+          <div className="card-body" style={{ padding: 0 }}>
+            <table className="data-table">
+              <thead><tr><th>員工</th><th>日薪</th><th>假設出勤 22 日</th><th>僱主 MPF（月）</th></tr></thead>
+              <tbody>
+                {employees.map((e, i) => {
+                  const rate = e.daily_rate || e.rate || 2000;
+                  const dailyMpf = calcCasualDailyMpf(rate);
+                  const monthly = dailyMpf * 22;
+                  return (
+                    <tr key={i}>
+                      <td className="td-name">{e.name}</td>
+                      <td>HK${rate.toLocaleString()}</td>
+                      <td>HK${(rate*22).toLocaleString()}</td>
+                      <td style={{ color: "#60a5fa", fontWeight: 700 }}>HK${Math.round(monthly).toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div style={{ background: "rgba(214,48,48,0.06)", border: "1px solid rgba(214,48,48,0.2)", borderRadius: 8, padding: "14px 16px", marginTop: 20 }}>
+        <div style={{ fontSize: 12, color: "#e05c5c", fontWeight: 700, marginBottom: 6 }}>⚠️ 常見錯誤</div>
+        <div style={{ fontSize: 12, color: "#9aa0b4", lineHeight: 1.8 }}>
+          • 誤以為散工都有 60 日豁免期（<b style={{color:"#c8d0e0"}}>散工冇豁免期</b>）<br/>
+          • 遲交供款 —— 積金局會收 5% 附加費，仲會保留檢控權<br/>
+          • 未有幫兼職／短期工人登記 —— 只要月入 ≥ $7,100（長工）或日薪 ≥ $280（散工）就要供<br/>
+          • 用錯「有關入息」基數 —— 記住上限係月薪 $30,000 / 日薪 $1,000，超過都係以上限計
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TaxCalc({ showToast }) {
   const [tab, setTab] = useState("profits");
 
@@ -6213,6 +6488,7 @@ export default function App() {
             {active === "payroll" && <Payroll showToast={showToast} employees={employees} />}
             {active === "profit" && <ProfitCalc showToast={showToast} />}
             {active === "tax" && <TaxCalc showToast={showToast} />}
+            {active === "mpf-guide" && <MPFGuide showToast={showToast} employees={employees} />}
           </div>
         </div>
       </div>
