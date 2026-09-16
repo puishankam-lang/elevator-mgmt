@@ -1157,15 +1157,16 @@ async function downloadSafetyPDF(name, rec, btn) {
         '（六）明白本承諾書之簽署屬法律文件，將作為本人已接受安全培訓之正式紀錄，有效期為六個月，屆滿須重新簽署。' +
       '</div>' +
 
-      '<div style="font-size:13px;font-weight:600;margin-bottom:14px">本人已細閱並完全理解以上安全守則全文，並以下方簽名確認同意遵守所有條款。</div>' +
-
-      '<div>' +
+      '<div id="sigBlock">' +
+        '<div style="font-size:13px;font-weight:600;margin-bottom:14px">本人已細閱並完全理解以上安全守則全文，並以下方簽名確認同意遵守所有條款。</div>' +
         '<div style="font-size:13px;color:#666;margin-bottom:6px">員工簽名 Employee Signature</div>' +
         '<div style="border:1px solid #bbb;height:120px;display:flex;align-items:center;justify-content:center;background:#fafafa">' +
           (sig ? '<img src="' + sig + '" style="max-height:110px;max-width:96%;filter:invert(1) hue-rotate(180deg) saturate(0) contrast(2)">' : '<span style="color:#bbb;font-size:12px">簽名未存檔</span>') +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-top:8px">' +
-          '<span>姓名：' + name + '</span><span>日期：' + signedISO.slice(0, 10) + '</span>' +
+          '<span>姓名：<b style="color:#111">' + name + '</b></span>' +
+          '<span>身份證：<b style="color:#111">' + (rec.hkid_masked || '＿＿＿＿') + '</b></span>' +
+          '<span>日期：<b style="color:#111">' + signedISO.slice(0, 10) + '</b></span>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -1197,12 +1198,18 @@ async function downloadSafetyPDF(name, rec, btn) {
       return true;
     };
 
+    // 簽名區（連確認文字）唔可以被分開：記低佢喺 canvas 上嘅起點做強制分頁
+    const sb = sheet.querySelector('#sigBlock');
+    const forced = sb ? Math.round(sb.offsetTop * 1.5) : -1;
+
     // 先計好每頁切喺邊，得出總頁數
     const cuts = [];
     let pos = 0;
     while (pos < cv.height) {
       let end = Math.min(pos + bodyPx, cv.height);
-      if (end < cv.height) {
+      if (forced > pos + 40 && forced < end) {
+        end = forced; // 喺簽名區之前斷開
+      } else if (end < cv.height) {
         const limit = Math.max(pos + Math.floor(bodyPx * 0.5), end - 160);
         let y = end;
         while (y > limit && !rowIsBlank(y)) y--;
